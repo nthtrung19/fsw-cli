@@ -1,0 +1,5 @@
+# Smoke-test script: one command per line.
+
+fsw ds noop
+   # indented comment
+fsw ds set_app_state disable
