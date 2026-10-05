@@ -1,0 +1,47 @@
+// fswcli target profiles. Comments (// and /* */) are allowed.
+//
+// Each target defines:
+//   endian     byte order of the FSW CPU: "little" or "big"
+//   catalog    command definition files, relative to this file
+//   format     packet format plug-in   { "type": "ccsds_v1", ...options }
+//   layers     optional wrapping layers, applied in order (e.g. CSP, later)
+//   transport  transport plug-in        { "type": "udp", "host": ..., "port": ... }
+//
+// Built-in plug-ins and their options:
+//   format    ccsds_v1   checksum: true|false (default true)
+//   transport udp        host (default "127.0.0.1"), port (required)
+//   transport dryrun     (no options) - print packets, send nothing
+//
+// Select a target with --target NAME; list them with --list-targets.
+{
+  "default_target": "sil",
+
+  "targets": {
+    "sil": {
+      "description": "cFS on this PC, ci_lab on UDP 1234",
+      "endian": "little",
+      "catalog": ["catalog/ds.json"],
+      "format":    { "type": "ccsds_v1" },
+      "layers":    [],
+      "transport": { "type": "udp", "host": "127.0.0.1", "port": 1234 }
+    },
+
+    "sil-dry": {
+      "description": "Same as sil, but nothing is sent",
+      "endian": "little",
+      "catalog": ["catalog/ds.json"],
+      "format":    { "type": "ccsds_v1" },
+      "transport": { "type": "dryrun" }
+    }
+
+    // Example for later, once a "csp" layer plug-in exists:
+    // "lab-csp": {
+    //   "description": "Lab board, CSP over UDP",
+    //   "endian": "little",
+    //   "catalog": ["catalog/ds.json"],
+    //   "format":    { "type": "ccsds_v1" },
+    //   "layers":    [ { "type": "csp", "src": 10, "dst": 1, "dport": 10, "crc32": true } ],
+    //   "transport": { "type": "udp", "host": "192.168.1.50", "port": 9600 }
+    // }
+  }
+}

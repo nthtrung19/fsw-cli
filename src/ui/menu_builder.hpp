@@ -1,34 +1,29 @@
 #pragma once
 
-// ui/ is the ONLY module allowed to include <cli/...>.
-// Everything else in the project must stay independent of the CLI library.
+// ui/ (with app/) is the ONLY module allowed to include <cli/...>.
 
-#include <functional>
+#include "service/command_service.hpp"
+
+#include <cstddef>
 #include <memory>
-#include <ostream>
-#include <string>
-#include <vector>
 
 namespace cli { class Menu; }
 
 namespace fswcli::ui {
 
-// Called whenever the user runs "fsw <app> <cmd> [args...]".
-// The UI layer only collects the tokens; validation and sending happen
-// in the service layer (wired up from M3 onward).
-using CommandHandler = std::function<void(std::ostream& out,
-                                          const std::string& app,
-                                          const std::string& cmd,
-                                          const std::vector<std::string>& args)>;
-
-// Builds the complete menu tree:
-//   <root>
-//   └── fsw
-//       └── <app>
-//           └── <cmd> [args...]
+// Builds the whole menu tree from the catalog; no command is hard-coded:
 //
-// M1: the app/command list is a temporary hard-coded placeholder.
-// M3: it will be generated from the command catalog.
-std::unique_ptr<cli::Menu> buildRootMenu(const CommandHandler& handler);
+//   fswcli
+//   ├── fsw
+//   │   └── <app>              one submenu per catalog app
+//   │       └── <cmd> <params> one FswCommand per catalog command
+//   ├── target                 show the active target
+//   ├── verbose [on|off]       hexdump every sent packet
+//   ├── raw <hex bytes...>     send pre-built packet bytes
+//   └── arm                    allow the next critical command
+//
+// `sessionErrors` is incremented when a session command (verbose, ...) is
+// used wrongly; FSW command failures are counted by the service.
+std::unique_ptr<cli::Menu> buildRootMenu(CommandService& service, std::size_t& sessionErrors);
 
 } // namespace fswcli::ui

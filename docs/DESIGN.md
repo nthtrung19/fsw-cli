@@ -1,6 +1,6 @@
 # fswcli — Design Specification
 
-Status: **DRAFT v1.0, for review before prototype implementation**
+Status: **v1.1, implemented in fswcli 0.2.0 (prototype)**. All decisions in §10 confirmed.
 Scope of this document: the complete design of the prototype, plus the extension
 points that later apps, targets, protocols and transports plug into.
 
@@ -237,7 +237,8 @@ Rules:
 - Number of args must equal the number of user-visible fields.
 - Integers accept decimal, `0x` hex, and enum names (case-insensitive) when the
   field has `enumValues`. Values are range-checked against the type and
-  `min`/`max`.
+  `min`/`max`. A field with `enumValues` accepts only its listed values, by name
+  or by number (e.g. `set_app_state 7` is refused although 7 fits a u16).
 - Floats accept decimal notation.
 - Strings must fit `size - 1` bytes (NUL-terminated, zero-filled), matching the
   cFS `char[N]` convention.
@@ -440,10 +441,13 @@ fswcli>
 └── (library built-ins) help, exit, history
 ```
 
+Session commands live at the top level (`fswcli>`); inside an app menu only
+that app's commands (plus `..`, `help`, `exit`) are available.
+
 **Command-line options**
 
 ```
-fswcli [--config FILE] [--target NAME] [--dry-run] [--verbose]
+fswcli [--config FILE] [-t|--target NAME] [-n|--dry-run] [-v|--verbose]
        [--log-dir DIR | --no-log] [-c CMD]... [-f FILE] [--list-targets]
        [-h] [--version]
 ```
@@ -470,17 +474,17 @@ fsw-cli/
 │   ├── json/                         nlohmann/json (latest release tag)
 │   └── googletest/                   googletest (latest release tag)
 ├── src/
-│   ├── core/       bytes.hpp, byte_writer.*, hex.*, errors.hpp
+│   ├── core/       bytes.*, byte_writer.*, hex.*, text.*, options.*, errors.hpp
 │   ├── catalog/    field_def.hpp, command_def.hpp, catalog.*
 │   ├── encode/     payload_encoder.*
 │   ├── protocol/   command_message.hpp, packet_format.hpp, framing_layer.hpp, ccsds_v1_format.*
 │   ├── transport/  transport.hpp, udp_transport.*, dry_run_transport.*
 │   ├── registry/   plugin_registry.*, builtin_plugins.cpp
 │   ├── pipeline/   pipeline.*
-│   ├── config/     target_config.*, catalog_loader.*, config_paths.*
+│   ├── config/     json_util.*, target_config.*, catalog_loader.*, config_paths.*, pipeline_factory.*
 │   ├── log/        packet_log.*
 │   ├── service/    command_service.*
-│   ├── ui/         menu_builder.*, fsw_command.*, session_commands.*
+│   ├── ui/         menu_builder.*, fsw_command.*
 │   └── app/        main.cpp, options.*
 └── tests/
     ├── unit/       one test file per module
@@ -543,14 +547,28 @@ HK decoding (command verification) · runtime `target use` · EDS import ·
 `critical` confirmation for dangerous commands in other apps · remaining DS
 filter commands once `ds_msg.h` is provided.
 
-## 10. Decisions to confirm
+## 10. Decisions (confirmed)
 
-| # | Decision | Proposed |
+| # | Decision | Chosen |
 |---|---|---|
 | D1 | Catalog format | JSON files, loaded at startup (instead of C++ tables) |
-| D2 | JSON library | nlohmann/json, git submodule |
-| D3 | Unit test framework | GoogleTest, git submodule |
+| D2 | JSON library | nlohmann/json v3.12.0, git submodule (shallow) |
+| D3 | Unit test framework | GoogleTest v1.17.0, git submodule (shallow) |
 | D4 | Oracle test against original `ccsds.c` | Include |
 | D5 | Target selection | At startup (`--target`), not switchable at runtime |
 | D6 | Packet log | On by default, daily file in current directory |
 | D7 | Third-party fetching | Git submodules (offline-friendly), not CMake FetchContent |
+
+## 11. Implementation notes
+
+- Config files accept `//` and `/* */` comments.
+- Plug-in options may be JSON strings, numbers or booleans; they reach the
+  plug-in as text (`"port": 1234` and `"port": "1234"` are equivalent).
+- Critical commands use an `arm` → command sequence instead of a y/N prompt,
+  so the same rule works in interactive, `-c` and `-f` modes. An invalid
+  critical command does not consume the arming.
+- The oracle test compiles the unmodified cFE 6.7 `ccsds.h`/`ccsds.c` (Apache
+  2.0) with small stand-in headers; it is skipped on big-endian hosts.
+- `UdpTransport` uses an unconnected socket (`sendto`), so a missing listener
+  is never reported as an error; success means the datagram was handed to the
+  OS.

@@ -1,0 +1,6 @@
+# Smoke-test script: one command per line; blank lines and # comments are ignored.
+
+fsw ds noop
+   # indented comment
+fsw ds set_app_state enable
+fsw ds reset

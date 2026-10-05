@@ -1,0 +1,39 @@
+// DS (Data Storage) ground commands. Source: ds_msgdefs.h, ds_msg.h.
+//
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   enum     { "name": value, ... }  names accepted as arguments, shown in help
+//   min/max  inclusive range for integer fields
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 8-byte command header.
+{
+  "app": "ds",
+  "mid": "0x194B",
+  "help": "Data Storage application",
+  "commands": [
+    {
+      "name": "noop",
+      "cc": 0,
+      "help": "No-op: increments the command counter and reports the DS version"
+    },
+    {
+      "name": "reset",
+      "cc": 1,
+      "help": "Reset housekeeping counters"
+    },
+    {
+      "name": "set_app_state",
+      "cc": 2,
+      "help": "Enable or disable DS (DS_AppStateCmd_t)",
+      "fields": [
+        { "name": "state", "type": "u16", "enum": { "disable": 0, "enable": 1 },
+          "help": "EnableState" },
+        { "type": "padding", "size": 2 }
+      ]
+    }
+
+    // DS_SET_FILTER_FILE_CC (3), DS_SET_FILTER_TYPE_CC (4) and
+    // DS_SET_FILTER_PARMS_CC (5) are added here once their ds_msg.h
+    // structures are confirmed.
+  ]
+}

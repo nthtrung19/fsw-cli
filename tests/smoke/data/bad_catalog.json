@@ -1,0 +1,8 @@
+{
+  "app": "ds",
+  "mid": "0x194B",
+  "commands": [
+    { "name": "noop",  "cc": 0 },
+    { "name": "reset", "cc": 0 }
+  ]
+}

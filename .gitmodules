@@ -1,3 +1,11 @@
 [submodule "external/cli"]
 	path = external/cli
 	url = https://github.com/daniele77/cli
+[submodule "external/json"]
+	path = external/json
+	url = https://github.com/nlohmann/json
+	shallow = true
+[submodule "external/googletest"]
+	path = external/googletest
+	url = https://github.com/google/googletest
+	shallow = true

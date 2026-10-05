@@ -1,0 +1,11 @@
+// Target whose catalog has a duplicate command code: fswcli must refuse to start (exit 3).
+{
+  "targets": {
+    "broken": {
+      "endian": "little",
+      "catalog": ["bad_catalog.json"],
+      "format": { "type": "ccsds_v1" },
+      "transport": { "type": "dryrun" }
+    }
+  }
+}
