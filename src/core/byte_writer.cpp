@@ -5,7 +5,7 @@
 #include <cstring>
 #include <string>
 
-namespace fswcli {
+namespace mcs {
 
 void ByteWriter::writeUnsigned(std::uint64_t v, std::size_t width)
 {
@@ -68,4 +68,4 @@ void ByteWriter::patchU16BE(Bytes& buffer, std::size_t offset, std::uint16_t v)
     buffer.at(offset + 1) = static_cast<std::uint8_t>(v & 0xFFU);
 }
 
-} // namespace fswcli
+} // namespace mcs

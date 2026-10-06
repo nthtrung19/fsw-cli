@@ -9,7 +9,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-namespace fswcli {
+namespace mcs {
 
 UdpTransport::UdpTransport(std::string host, std::uint16_t port)
     : host_(std::move(host)), port_(port)
@@ -71,4 +71,4 @@ std::string UdpTransport::describe() const
     return "udp://" + (ipv6Literal ? "[" + host_ + "]" : host_) + ":" + std::to_string(port_);
 }
 
-} // namespace fswcli
+} // namespace mcs

@@ -6,7 +6,7 @@
 #include <string>
 #include <sys/socket.h>
 
-namespace fswcli {
+namespace mcs {
 
 // Sends each packet as one UDP datagram (unconnected socket, fire-and-forget,
 // as cFS ci_lab expects). The host name is resolved once, at construction.
@@ -30,4 +30,4 @@ private:
     socklen_t addressLength_ = 0;
 };
 
-} // namespace fswcli
+} // namespace mcs

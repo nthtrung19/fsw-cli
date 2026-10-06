@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace fswcli {
+namespace mcs {
 
 // The protocol stack of one target:  format -> layer 1 -> ... -> layer N -> transport.
 class Pipeline {
@@ -47,4 +47,4 @@ private:
     std::unique_ptr<ITransport> transport_;
 };
 
-} // namespace fswcli
+} // namespace mcs

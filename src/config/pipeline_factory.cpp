@@ -2,7 +2,7 @@
 
 #include "core/errors.hpp"
 
-namespace fswcli {
+namespace mcs {
 
 std::unique_ptr<Pipeline> buildPipeline(const TargetConfig& target, const PluginRegistry& registry,
                                         bool forceDryRun)
@@ -27,4 +27,4 @@ std::unique_ptr<Pipeline> buildPipeline(const TargetConfig& target, const Plugin
     }
 }
 
-} // namespace fswcli
+} // namespace mcs

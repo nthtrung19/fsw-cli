@@ -6,7 +6,7 @@
 
 #include <memory>
 
-namespace fswcli {
+namespace mcs {
 
 // Creates the target's format, layers and transport through the registry.
 // With forceDryRun the configured transport is replaced by "dryrun".
@@ -14,4 +14,4 @@ namespace fswcli {
 std::unique_ptr<Pipeline> buildPipeline(const TargetConfig& target, const PluginRegistry& registry,
                                         bool forceDryRun);
 
-} // namespace fswcli
+} // namespace mcs

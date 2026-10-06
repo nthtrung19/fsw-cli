@@ -10,11 +10,11 @@
 
 #include <cstdlib>
 
-using namespace fswcli;
+using namespace mcs;
 
 namespace {
 
-const std::string kSourceDir = FSWCLI_SOURCE_DIR;
+const std::string kSourceDir = mcs_SOURCE_DIR;
 
 std::string configErrorOf(const std::function<void()>& fn)
 {
@@ -236,9 +236,9 @@ TEST(ConfigPaths, ExplicitPathWinsAndMustExist)
 
 TEST(ConfigPaths, EnvironmentVariableIsSearchedFirst)
 {
-    ::setenv("FSWCLI_CONFIG", "/tmp/from-env.json", 1);
+    ::setenv("mcs_CONFIG", "/tmp/from-env.json", 1);
     const auto candidates = targetsFileCandidates(std::nullopt);
-    ::unsetenv("FSWCLI_CONFIG");
+    ::unsetenv("mcs_CONFIG");
     ASSERT_GE(candidates.size(), 2U);
     EXPECT_EQ(candidates[0], std::filesystem::path("/tmp/from-env.json"));
     EXPECT_EQ(candidates[1], std::filesystem::path("config/targets.json"));

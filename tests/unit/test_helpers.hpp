@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-namespace fswcli::test {
+namespace mcs::test {
 
 // The DS app as defined in config/catalog/ds.json, built in code.
 inline AppDef dsApp()
@@ -78,7 +78,7 @@ public:
         static std::atomic<unsigned> counter{0};
         std::random_device rd;
         path_ = std::filesystem::temp_directory_path()
-              / ("fswcli-test-" + std::to_string(rd()) + "-" + std::to_string(counter++));
+              / ("mcs-test-" + std::to_string(rd()) + "-" + std::to_string(counter++));
         std::filesystem::create_directories(path_);
     }
     ~TempDir()
@@ -103,4 +103,4 @@ private:
     std::filesystem::path path_;
 };
 
-} // namespace fswcli::test
+} // namespace mcs::test

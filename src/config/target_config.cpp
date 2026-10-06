@@ -6,7 +6,7 @@
 
 #include <cctype>
 
-namespace fswcli {
+namespace mcs {
 
 using jsonutil::Json;
 
@@ -131,4 +131,4 @@ const TargetConfig& selectTarget(const TargetsFile& targets, const std::optional
                       + " (available: " + join(names, ", ") + ")");
 }
 
-} // namespace fswcli
+} // namespace mcs

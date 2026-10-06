@@ -7,7 +7,7 @@
 #include <cmath>
 #include <limits>
 
-namespace fswcli {
+namespace mcs {
 
 namespace {
 
@@ -197,4 +197,4 @@ Bytes PayloadEncoder::encode(const CommandDef& command, const std::vector<std::s
     return w.take();
 }
 
-} // namespace fswcli
+} // namespace mcs

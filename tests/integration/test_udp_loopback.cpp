@@ -20,7 +20,7 @@
 
 #include <sstream>
 
-using namespace fswcli;
+using namespace mcs;
 
 namespace {
 
@@ -96,7 +96,7 @@ TEST(UdpLoopback, OneDatagramPerPacket)
 TEST(UdpLoopback, FullServiceWithShippedCatalog)
 {
     Receiver rx;
-    const CommandCatalog catalog = loadCatalog({std::string(FSWCLI_SOURCE_DIR) + "/config/catalog/ds.json"});
+    const CommandCatalog catalog = loadCatalog({std::string(mcs_SOURCE_DIR) + "/config/catalog/ds.json"});
     auto pipeline = buildPipeline(udpTarget(rx.port()), builtinPlugins(), false);
     CommandService service(catalog, PayloadEncoder(Endian::Little), *pipeline, nullptr, "loopback");
 

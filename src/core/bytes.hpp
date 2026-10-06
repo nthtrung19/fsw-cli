@@ -5,7 +5,7 @@
 #include <string_view>
 #include <vector>
 
-namespace fswcli {
+namespace mcs {
 
 using Bytes = std::vector<std::uint8_t>;
 
@@ -18,4 +18,4 @@ Endian parseEndian(std::string_view text);
 // "little" / "big"
 std::string toString(Endian endian);
 
-} // namespace fswcli
+} // namespace mcs

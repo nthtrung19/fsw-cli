@@ -4,7 +4,7 @@
 
 #include <gtest/gtest.h>
 
-using namespace fswcli;
+using namespace mcs;
 
 TEST(Text, ParseUnsignedDecimalAndHex)
 {

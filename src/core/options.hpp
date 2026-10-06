@@ -10,7 +10,7 @@
 #include <string>
 #include <string_view>
 
-namespace fswcli {
+namespace mcs {
 
 using Options = std::map<std::string, std::string>;
 
@@ -33,4 +33,4 @@ std::uint64_t optUInt(const Options& opts, const std::string& key, std::uint64_t
 // "true"/"false"/"1"/"0"/"yes"/"no"/"on"/"off" (case-insensitive).
 bool optBool(const Options& opts, const std::string& key, bool fallback, std::string_view owner);
 
-} // namespace fswcli
+} // namespace mcs

@@ -1,4 +1,4 @@
-// fswcli target profiles. Comments (// and /* */) are allowed.
+// mcs target profiles. Comments (// and /* */) are allowed.
 //
 // Each target defines:
 //   endian     byte order of the FSW CPU: "little" or "big"

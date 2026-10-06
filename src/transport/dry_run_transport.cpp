@@ -1,10 +1,10 @@
 #include "transport/dry_run_transport.hpp"
 
-namespace fswcli {
+namespace mcs {
 
 void DryRunTransport::send(const Bytes& /*data*/)
 {
     ++count_;
 }
 
-} // namespace fswcli
+} // namespace mcs

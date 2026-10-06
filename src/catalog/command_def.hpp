@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-namespace fswcli {
+namespace mcs {
 
 // One ground command of an app: its function code and payload layout.
 struct CommandDef {
@@ -37,4 +37,4 @@ struct AppDef {
     const CommandDef* findCommand(std::string_view commandName) const;
 };
 
-} // namespace fswcli
+} // namespace mcs

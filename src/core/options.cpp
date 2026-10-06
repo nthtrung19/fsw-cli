@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <vector>
 
-namespace fswcli {
+namespace mcs {
 
 namespace {
 
@@ -82,4 +82,4 @@ bool optBool(const Options& opts, const std::string& key, bool fallback, std::st
     fail(owner, "option '" + key + "' must be true or false, got '" + it->second + "'");
 }
 
-} // namespace fswcli
+} // namespace mcs

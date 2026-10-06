@@ -5,7 +5,7 @@
 #include <array>
 #include <utility>
 
-namespace fswcli {
+namespace mcs {
 
 namespace {
 
@@ -123,4 +123,4 @@ FieldDef FieldDef::padding(std::size_t fieldSize)
     return f;
 }
 
-} // namespace fswcli
+} // namespace mcs

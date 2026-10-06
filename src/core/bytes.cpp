@@ -3,7 +3,7 @@
 #include "core/errors.hpp"
 #include "core/text.hpp"
 
-namespace fswcli {
+namespace mcs {
 
 Endian parseEndian(std::string_view text)
 {
@@ -22,4 +22,4 @@ std::string toString(Endian endian)
     return endian == Endian::Little ? "little" : "big";
 }
 
-} // namespace fswcli
+} // namespace mcs

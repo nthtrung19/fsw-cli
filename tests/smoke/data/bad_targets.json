@@ -1,4 +1,4 @@
-// Target whose catalog has a duplicate command code: fswcli must refuse to start (exit 3).
+// Target whose catalog has a duplicate command code: mcs must refuse to start (exit 3).
 {
   "targets": {
     "broken": {

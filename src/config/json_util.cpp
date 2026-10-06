@@ -8,7 +8,7 @@
 #include <limits>
 #include <vector>
 
-namespace fswcli::jsonutil {
+namespace mcs::jsonutil {
 
 namespace {
 
@@ -186,4 +186,4 @@ Options toOptions(const Json& object, const std::string& ctx)
     return opts;
 }
 
-} // namespace fswcli::jsonutil
+} // namespace mcs::jsonutil

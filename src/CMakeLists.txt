@@ -1,12 +1,12 @@
 # ----------------------------------------------------------------------------
-# fswcli_core: all logic that does NOT depend on the cli library.
+# mcs_core: all logic that does NOT depend on the cli library.
 # Dependency rules (see docs/DESIGN.md §3.2):
 #   core      <- nothing
 #   catalog, encode, protocol, transport, registry, pipeline, log <- core
 #   config    <- the above + nlohmann/json (the ONLY JSON-aware module)
 #   service   <- catalog, encode, pipeline, log
 # ----------------------------------------------------------------------------
-add_library(fswcli_core STATIC
+add_library(mcs_core STATIC
     core/bytes.cpp
     core/byte_writer.cpp
     core/hex.cpp
@@ -39,19 +39,19 @@ add_library(fswcli_core STATIC
 
     service/command_service.cpp)
 
-target_include_directories(fswcli_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(fswcli_core
-    PUBLIC  fswcli_warnings
+target_include_directories(mcs_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(mcs_core
+    PUBLIC  mcs_warnings
     PRIVATE nlohmann_json::nlohmann_json)
 
 # ----------------------------------------------------------------------------
-# fswcli: the executable. Only ui/ and app/ may include <cli/...>.
+# mcs: the executable. Only ui/ and app/ may include <cli/...>.
 # ----------------------------------------------------------------------------
-add_executable(fswcli
+add_executable(mcs
     ui/fsw_command.cpp
     ui/menu_builder.cpp
     app/options.cpp
     app/main.cpp)
 
-target_link_libraries(fswcli PRIVATE fswcli_core cli::cli fswcli_warnings)
-target_compile_definitions(fswcli PRIVATE FSWCLI_VERSION="${PROJECT_VERSION}")
+target_link_libraries(mcs PRIVATE mcs_core cli::cli mcs_warnings)
+target_compile_definitions(mcs PRIVATE mcs_VERSION="${PROJECT_VERSION}")

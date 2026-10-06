@@ -5,6 +5,6 @@
 by the Administrator of NASA), licensed under the Apache License 2.0 (see the
 file headers).
 
-They are compiled only into `fswcli_oracle_tests`, with stand-in headers from
-`../stubs/`, to check that fswcli builds byte-identical packets. They are not
-part of the fswcli executable.
+They are compiled only into `mcs_oracle_tests`, with stand-in headers from
+`../stubs/`, to check that mcs builds byte-identical packets. They are not
+part of the mcs executable.

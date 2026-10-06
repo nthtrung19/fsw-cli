@@ -14,7 +14,7 @@
 
 #include <memory>
 
-namespace fswcli {
+namespace mcs {
 
 PluginRegistry builtinPlugins()
 {
@@ -50,4 +50,4 @@ PluginRegistry builtinPlugins()
     return registry;
 }
 
-} // namespace fswcli
+} // namespace mcs

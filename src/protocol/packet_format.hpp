@@ -4,7 +4,7 @@
 
 #include <string>
 
-namespace fswcli {
+namespace mcs {
 
 // Plug-in kind 1: builds a complete packet from a protocol-independent command.
 // May keep per-packet state such as sequence counters.
@@ -22,4 +22,4 @@ public:
     virtual std::string describe() const = 0;
 };
 
-} // namespace fswcli
+} // namespace mcs

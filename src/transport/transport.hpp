@@ -4,7 +4,7 @@
 
 #include <string>
 
-namespace fswcli {
+namespace mcs {
 
 // Plug-in kind 3: delivers bytes to the target.
 //
@@ -25,4 +25,4 @@ public:
     virtual bool isDryRun() const { return false; }
 };
 
-} // namespace fswcli
+} // namespace mcs

@@ -2,7 +2,7 @@
 
 #include "core/errors.hpp"
 
-namespace fswcli {
+namespace mcs {
 
 Pipeline::Pipeline(std::unique_ptr<IPacketFormat> format,
                    std::vector<std::unique_ptr<IFramingLayer>> layers,
@@ -49,4 +49,4 @@ std::string Pipeline::describe() const
     return out + " -> " + transport_->describe();
 }
 
-} // namespace fswcli
+} // namespace mcs

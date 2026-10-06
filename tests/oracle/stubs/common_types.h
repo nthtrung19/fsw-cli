@@ -1,5 +1,5 @@
 /* Minimal stand-in for OSAL common_types.h, enough to compile cFE 6.7 ccsds.c
- * on the host for the oracle test. Not used by fswcli itself. */
+ * on the host for the oracle test. Not used by mcs itself. */
 #ifndef ORACLE_COMMON_TYPES_H
 #define ORACLE_COMMON_TYPES_H
 

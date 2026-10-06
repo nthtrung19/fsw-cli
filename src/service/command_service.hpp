@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-namespace fswcli {
+namespace mcs {
 
 // Executes operator commands end to end:
 //   catalog lookup -> payload encoding -> (arm check) -> pipeline -> log -> status line.
@@ -58,4 +58,4 @@ private:
     std::size_t sent_ = 0;
 };
 
-} // namespace fswcli
+} // namespace mcs

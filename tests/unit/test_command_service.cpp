@@ -8,7 +8,7 @@
 
 #include <sstream>
 
-using namespace fswcli;
+using namespace mcs;
 
 namespace {
 

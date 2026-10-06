@@ -5,7 +5,7 @@
 
 #include <limits>
 
-namespace fswcli {
+namespace mcs {
 
 using jsonutil::Json;
 
@@ -111,4 +111,4 @@ CommandCatalog loadCatalog(const std::vector<std::filesystem::path>& files)
     return catalog;
 }
 
-} // namespace fswcli
+} // namespace mcs

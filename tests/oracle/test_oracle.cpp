@@ -1,8 +1,8 @@
-// Oracle test: packets built by fswcli must be byte-identical to packets built
+// Oracle test: packets built by mcs must be byte-identical to packets built
 // on this (little-endian) host with cFE 6.7's own ccsds.h macros and
 // CCSDS_LoadCheckSum() from ccsds.c, exactly as the FSW lays them out in memory.
 //
-// The fswcli side uses the real shipped catalog (config/catalog/ds.json), so
+// The mcs side uses the real shipped catalog (config/catalog/ds.json), so
 // this also checks that the catalog matches the FSW structures.
 
 #include "catalog/catalog.hpp"
@@ -18,7 +18,7 @@ extern "C" {
 
 #include <cstring>
 
-using namespace fswcli;
+using namespace mcs;
 
 namespace {
 
@@ -69,10 +69,10 @@ protected:
         if (first != 1) {
             GTEST_SKIP() << "oracle needs a little-endian host (the target is little-endian)";
         }
-        catalog_ = loadCatalog({std::string(FSWCLI_SOURCE_DIR) + "/config/catalog/ds.json"});
+        catalog_ = loadCatalog({std::string(mcs_SOURCE_DIR) + "/config/catalog/ds.json"});
     }
 
-    // Full fswcli path: catalog -> encoder -> CCSDS v1 format.
+    // Full mcs path: catalog -> encoder -> CCSDS v1 format.
     Bytes ours(const std::string& cmd, const std::vector<std::string>& args, int repeat = 1)
     {
         const AppDef* app = catalog_.findApp("ds");

@@ -4,7 +4,7 @@
 
 #include <string>
 
-namespace fswcli {
+namespace mcs {
 
 // Plug-in kind 2: wraps an already-built packet before it is transported
 // (e.g. a CSP header, KISS framing, a CRC, encryption). Layers are applied in
@@ -23,4 +23,4 @@ public:
     virtual std::string describe() const = 0;
 };
 
-} // namespace fswcli
+} // namespace mcs

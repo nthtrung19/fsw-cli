@@ -4,7 +4,7 @@
 #include "core/errors.hpp"
 #include "core/text.hpp"
 
-namespace fswcli {
+namespace mcs {
 
 namespace {
 
@@ -87,4 +87,4 @@ std::string CcsdsV1Format::describe() const
     return "ccsds_v1 (" + toString(target_) + "-endian" + (checksum_ ? "" : ", no checksum") + ")";
 }
 
-} // namespace fswcli
+} // namespace mcs

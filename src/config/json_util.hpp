@@ -14,7 +14,7 @@
 #include <string>
 #include <string_view>
 
-namespace fswcli::jsonutil {
+namespace mcs::jsonutil {
 
 // ordered_json keeps object keys in file order (needed for enum help text).
 using Json = nlohmann::ordered_json;
@@ -51,4 +51,4 @@ std::optional<std::int64_t> optInt(const Json& object, const std::string& key,
 // booleans are converted to text.
 Options toOptions(const Json& object, const std::string& ctx);
 
-} // namespace fswcli::jsonutil
+} // namespace mcs::jsonutil

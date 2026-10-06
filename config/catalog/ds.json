@@ -24,16 +24,31 @@
     {
       "name": "set_app_state",
       "cc": 2,
-      "help": "Enable or disable DS (DS_AppStateCmd_t)",
+      "help": "Enable or disable DS",
       "fields": [
-        { "name": "state", "type": "u16", "enum": { "disable": 0, "enable": 1 },
-          "help": "EnableState" },
-        { "type": "padding", "size": 2 }
+        {
+          "name": "state",
+          "type": "u16",
+          "enum": {
+            "disable": 0,
+            "enable": 1
+          },
+          "help": "EnableState"
+        },
+        {
+          "type": "padding",
+          "size": 2
+        }
       ]
     }
-
-    // DS_SET_FILTER_FILE_CC (3), DS_SET_FILTER_TYPE_CC (4) and
-    // DS_SET_FILTER_PARMS_CC (5) are added here once their ds_msg.h
-    // structures are confirmed.
+    // {
+    //   "name": "set_filter_file",
+    //   "cc": 3,
+    //   "help": "Set filter file name",
+    //   "fields": [
+    //     { "name": "filename", "type": "string", "size": 20,
+    //       "help": "Filter file name" }
+    //   ]
+    // }
   ]
 }

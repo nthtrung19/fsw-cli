@@ -4,7 +4,7 @@
 
 #include <cctype>
 
-namespace fswcli {
+namespace mcs {
 
 namespace {
 
@@ -96,4 +96,4 @@ Bytes parseHex(std::string_view text)
     return out;
 }
 
-} // namespace fswcli
+} // namespace mcs

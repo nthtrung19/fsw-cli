@@ -5,7 +5,7 @@
 
 #include <cli/cli.h>
 
-namespace fswcli::ui {
+namespace mcs::ui {
 
 namespace {
 
@@ -82,10 +82,10 @@ void insertSessionCommands(cli::Menu& root, CommandService& service, std::size_t
 
 std::unique_ptr<cli::Menu> buildRootMenu(CommandService& service, std::size_t& sessionErrors)
 {
-    auto root = std::make_unique<cli::Menu>("fswcli");
+    auto root = std::make_unique<cli::Menu>("mcs");
     root->Insert(buildFswMenu(service));
     insertSessionCommands(*root, service, sessionErrors);
     return root;
 }
 
-} // namespace fswcli::ui
+} // namespace mcs::ui

@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace fswcli {
+namespace mcs {
 
 // A plug-in reference from the configuration: its registered type name and
 // its options (every other key of the JSON object).
@@ -44,4 +44,4 @@ TargetsFile loadTargetsFile(const std::filesystem::path& file);
 // Throws ConfigError listing the available targets if not found.
 const TargetConfig& selectTarget(const TargetsFile& targets, const std::optional<std::string>& name);
 
-} // namespace fswcli
+} // namespace mcs

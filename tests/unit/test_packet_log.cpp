@@ -7,7 +7,7 @@
 #include <regex>
 #include <sstream>
 
-using namespace fswcli;
+using namespace mcs;
 
 namespace {
 
@@ -35,7 +35,7 @@ TEST(PacketLog, AppendsOneLinePerPacket)
     EXPECT_FALSE(log.record({"sil", "fsw ds say \"hi\"", "apid=0x14B seq=1", {0xAA}, true}));
 
     const std::string file = log.currentFile().filename().string();
-    EXPECT_TRUE(std::regex_match(file, std::regex(R"(fswcli-\d{8}\.log)"))) << file;
+    EXPECT_TRUE(std::regex_match(file, std::regex(R"(mcs-\d{8}\.log)"))) << file;
 
     const std::string text = readAll(log.currentFile());
     EXPECT_NE(text.find(" target=sil cmd=\"fsw ds noop\" apid=0x14B seq=0 bytes=2 wire=19 4B\n"),

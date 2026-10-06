@@ -7,7 +7,7 @@
 #include <string_view>
 #include <utility>
 
-namespace fswcli {
+namespace mcs {
 
 // Appends values to a growing byte buffer in a fixed byte order.
 // Used by the payload encoder (target byte order) and by packet formats.
@@ -49,4 +49,4 @@ private:
     Bytes buffer_;
 };
 
-} // namespace fswcli
+} // namespace mcs

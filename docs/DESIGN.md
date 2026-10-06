@@ -1,6 +1,6 @@
-# fswcli — Design Specification
+# mcs — Design Specification
 
-Status: **v1.1, implemented in fswcli 0.2.0 (prototype)**. All decisions in §10 confirmed.
+Status: **v1.1, implemented in mcs 0.2.0 (prototype)**. All decisions in §10 confirmed.
 Scope of this document: the complete design of the prototype, plus the extension
 points that later apps, targets, protocols and transports plug into.
 
@@ -8,7 +8,7 @@ points that later apps, targets, protocols and transports plug into.
 
 ## 1. Purpose and scope
 
-`fswcli` is a ground-side command-line tool that sends commands to cFS flight
+`mcs` is a ground-side command-line tool that sends commands to cFS flight
 software (FSW). An operator types
 
 ```
@@ -139,7 +139,7 @@ ds set_app_state disable 19 4B C0 00 00 05 6A 02 00 00 00 00
    C++ structs and uses the registries to create objects.
 4. `service/` wires catalog + encoder + pipeline + log together.
 5. `ui/` and `app/` are the only modules that include `<cli/...>`.
-6. Everything except `ui/` and `app/` is the static library `fswcli_core`.
+6. Everything except `ui/` and `app/` is the static library `mcs_core`.
 
 Breaking any of these rules is a design defect, not a style issue.
 
@@ -175,7 +175,7 @@ PacketLog::record(...), output "sent 12 bytes to udp://127.0.0.1:1234 (seq 0)"
 | `ByteWriter` | Append `u8/u16/u32/u64`, `i8..i64`, `f32/f64`, raw bytes, fixed-length strings, zero padding, in a chosen byte order. Also `patchU16BE(offset, v)` for headers. |
 | `hexdump()` | `"19 4B C0 …"` single-line and offset-prefixed multi-line forms |
 | `parseHex()` | `"19 4b c0"` / `"194BC0"` → `Bytes` (for the `raw` command) |
-| errors | `FswcliError` base; `ParseError` (user input), `ConfigError`, `EncodeError`, `TransportError` |
+| errors | `mcsError` base; `ParseError` (user input), `ConfigError`, `EncodeError`, `TransportError` |
 
 ### 4.2 `catalog/` — what commands exist
 
@@ -394,8 +394,8 @@ The only JSON-aware module (nlohmann/json).
 Loader responsibilities: schema checks with file/line-level messages, numbers
 as decimal or `"0x…"` strings, then `CommandCatalog::add`.
 
-**File lookup order**: `--config <file>` → `$FSWCLI_CONFIG` →
-`./config/targets.json` → `<exe dir>/../share/fswcli/targets.json`.
+**File lookup order**: `--config <file>` → `$mcs_CONFIG` →
+`./config/targets.json` → `<exe dir>/../share/mcs/targets.json`.
 
 ### 4.9 `log/`
 
@@ -405,7 +405,7 @@ as decimal or `"0x…"` strings, then `CommandCatalog::add`.
 2026-10-05T22:30:01.123+07:00 target=sil cmd="fsw ds noop" seq=0 bytes=8 wire=19 4B C0 00 00 01 6C 00
 ```
 
-Default file `fswcli-YYYYMMDD.log` in `--log-dir` (default: current dir);
+Default file `mcs-YYYYMMDD.log` in `--log-dir` (default: current dir);
 `--no-log` disables it. Logging failure warns once and never blocks sending.
 
 ### 4.10 `service/`
@@ -431,7 +431,7 @@ exception into the CLI library. Return/flag used for batch exit codes.
 **Menu tree** (generated from the loaded catalog):
 
 ```
-fswcli>
+mcs>
 ├── fsw
 │   └── <app>                         one submenu per catalog app
 │       └── <cmd> <param>...          FswCommand node; help shows params and enum values
@@ -441,13 +441,13 @@ fswcli>
 └── (library built-ins) help, exit, history
 ```
 
-Session commands live at the top level (`fswcli>`); inside an app menu only
+Session commands live at the top level (`mcs>`); inside an app menu only
 that app's commands (plus `..`, `help`, `exit`) are available.
 
 **Command-line options**
 
 ```
-fswcli [--config FILE] [-t|--target NAME] [-n|--dry-run] [-v|--verbose]
+mcs [--config FILE] [-t|--target NAME] [-n|--dry-run] [-v|--verbose]
        [--log-dir DIR | --no-log] [-c CMD]... [-f FILE] [--list-targets]
        [-h] [--version]
 ```
@@ -462,7 +462,7 @@ fswcli [--config FILE] [-t|--target NAME] [-n|--dry-run] [-v|--verbose]
 ## 5. Directory layout
 
 ```
-fsw-cli/
+mcs/
 ├── CMakeLists.txt
 ├── README.md
 ├── docs/DESIGN.md                    this document
@@ -489,7 +489,7 @@ fsw-cli/
 └── tests/
     ├── unit/       one test file per module
     ├── oracle/     cFE ccsds.h/ccsds.c + stubs, compares against our packets
-    ├── integration/ UDP loopback: real socket receives what fswcli sends
+    ├── integration/ UDP loopback: real socket receives what mcs sends
     └── smoke/      CTest runs of the executable (-c, -f, exit codes)
 ```
 
@@ -533,7 +533,7 @@ Example: CSP over UDP later is just a new class plus this target entry:
 ## 8. Prototype acceptance criteria
 
 1. Build from a clean clone with zero warnings; all automated tests pass.
-2. `fswcli --dry-run -c "fsw ds noop"` prints `19 4B C0 00 00 01 6C 00`.
+2. `mcs --dry-run -c "fsw ds noop"` prints `19 4B C0 00 00 01 6C 00`.
 3. With cFS running and `ci_lab` listening on 127.0.0.1:1234:
    - `fsw ds noop` → DS no-op event message appears; DS command counter +1.
    - `fsw ds set_app_state disable` / `enable` → DS state changes in housekeeping/events.

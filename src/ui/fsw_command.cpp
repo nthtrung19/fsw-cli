@@ -1,6 +1,6 @@
 #include "ui/fsw_command.hpp"
 
-namespace fswcli::ui {
+namespace mcs::ui {
 
 FswCommand::FswCommand(std::string commandName, std::string help, std::vector<std::string> params,
                        Handler handler)
@@ -33,4 +33,4 @@ void FswCommand::Help(std::ostream& out) const
     out << "\n\t" << help_ << "\n";
 }
 
-} // namespace fswcli::ui
+} // namespace mcs::ui

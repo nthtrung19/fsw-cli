@@ -8,7 +8,7 @@
 #include <fstream>
 #include <system_error>
 
-namespace fswcli {
+namespace mcs {
 
 namespace {
 
@@ -40,7 +40,7 @@ std::filesystem::path PacketLog::currentFile() const
 {
     const std::tm tm = localNow(std::chrono::system_clock::now());
     char name[32];
-    std::strftime(name, sizeof name, "fswcli-%Y%m%d.log", &tm);
+    std::strftime(name, sizeof name, "mcs-%Y%m%d.log", &tm);
     return directory_ / name;
 }
 
@@ -84,4 +84,4 @@ std::optional<std::string> PacketLog::record(const LogEntry& entry)
     return "cannot write packet log " + file.string() + " (logging continues to be attempted)";
 }
 
-} // namespace fswcli
+} // namespace mcs

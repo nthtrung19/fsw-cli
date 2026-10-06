@@ -6,7 +6,7 @@
 #include <optional>
 #include <string>
 
-namespace fswcli {
+namespace mcs {
 
 struct LogEntry {
     std::string target;
@@ -16,7 +16,7 @@ struct LogEntry {
     bool dryRun = false;
 };
 
-// Audit trail: appends one line per sent packet to <dir>/fswcli-YYYYMMDD.log
+// Audit trail: appends one line per sent packet to <dir>/mcs-YYYYMMDD.log
 //   2026-10-05T22:30:01.123+07:00 target=sil cmd="fsw ds noop" apid=0x14B seq=0 bytes=8 wire=19 4B ...
 // A logging failure never prevents sending; it is reported once.
 class PacketLog {
@@ -37,4 +37,4 @@ private:
     bool warned_ = false;
 };
 
-} // namespace fswcli
+} // namespace mcs

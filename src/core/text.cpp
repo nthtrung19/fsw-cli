@@ -6,7 +6,7 @@
 #include <cstdlib>
 #include <limits>
 
-namespace fswcli {
+namespace mcs {
 
 std::string toLower(std::string_view text)
 {
@@ -132,4 +132,4 @@ std::string toHexString(std::uint64_t value, int digits)
     return "0x" + out;
 }
 
-} // namespace fswcli
+} // namespace mcs

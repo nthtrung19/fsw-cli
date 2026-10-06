@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-namespace fswcli {
+namespace mcs {
 
 // Maps plug-in type names ("ccsds_v1", "udp", ...) to factories.
 // The configuration refers to plug-ins only by these names, so adding a
@@ -47,7 +47,7 @@ private:
     std::map<std::string, TransportFactory> transports_;
 };
 
-// Registry with every plug-in shipped in fswcli (ccsds_v1, udp, dryrun).
+// Registry with every plug-in shipped in mcs (ccsds_v1, udp, dryrun).
 PluginRegistry builtinPlugins();
 
-} // namespace fswcli
+} // namespace mcs

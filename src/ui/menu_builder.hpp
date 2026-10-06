@@ -9,11 +9,11 @@
 
 namespace cli { class Menu; }
 
-namespace fswcli::ui {
+namespace mcs::ui {
 
 // Builds the whole menu tree from the catalog; no command is hard-coded:
 //
-//   fswcli
+//   mcs
 //   ├── fsw
 //   │   └── <app>              one submenu per catalog app
 //   │       └── <cmd> <params> one FswCommand per catalog command
@@ -26,4 +26,4 @@ namespace fswcli::ui {
 // used wrongly; FSW command failures are counted by the service.
 std::unique_ptr<cli::Menu> buildRootMenu(CommandService& service, std::size_t& sessionErrors);
 
-} // namespace fswcli::ui
+} // namespace mcs::ui

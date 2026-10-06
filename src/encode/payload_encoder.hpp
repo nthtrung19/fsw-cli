@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace fswcli {
+namespace mcs {
 
 // Turns user argument strings into payload bytes, following a CommandDef.
 //
@@ -31,4 +31,4 @@ private:
     Endian endian_;
 };
 
-} // namespace fswcli
+} // namespace mcs

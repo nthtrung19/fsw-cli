@@ -1,11 +1,11 @@
-# fswcli
+# mcs
 
 Command-line tool for sending commands to cFS flight software.
 
 ```
-$ fswcli
-fswcli 0.2.0  target 'sil': ccsds_v1 (little-endian) -> udp://127.0.0.1:1234
-fswcli> fsw ds set_app_state enable
+$ mcs
+mcs 0.2.0  target 'sil': ccsds_v1 (little-endian) -> udp://127.0.0.1:1234
+mcs> fsw ds set_app_state enable
 sent fsw ds set_app_state enable -> udp://127.0.0.1:1234  (12 bytes, apid=0x14B seq=0)
 ```
 
@@ -19,8 +19,8 @@ plug-ins. See [docs/DESIGN.md](docs/DESIGN.md) for the full design.
 Requirements: Linux, CMake ≥ 3.16, a C++17 compiler (tested with GCC 13).
 
 ```sh
-git clone --recurse-submodules <repo-url> fsw-cli      # or extract the archive
-cd fsw-cli
+git clone --recurse-submodules <repo-url> mcs      # or extract the archive
+cd mcs
 cmake -S . -B build
 cmake --build build -j
 ctest --test-dir build                                  # 126 tests
@@ -42,13 +42,13 @@ so the build needs no network once the repository is checked out:
 ## Usage
 
 ```sh
-./build/src/fswcli                                   # interactive session
-./build/src/fswcli -c "fsw ds noop"                  # one command, then exit
-./build/src/fswcli -n -c "fsw ds set_app_state enable"   # dry run: print, don't send
-./build/src/fswcli -f commands.txt                   # script, one command per line
-./build/src/fswcli --target sil-dry                  # pick a target profile
-./build/src/fswcli --list-targets
-./build/src/fswcli --help
+./build/src/mcs                                   # interactive session
+./build/src/mcs -c "fsw ds noop"                  # one command, then exit
+./build/src/mcs -n -c "fsw ds set_app_state enable"   # dry run: print, don't send
+./build/src/mcs -f commands.txt                   # script, one command per line
+./build/src/mcs --target sil-dry                  # pick a target profile
+./build/src/mcs --list-targets
+./build/src/mcs --help
 ```
 
 Exit codes: `0` ok, `1` a command failed, `2` bad options, `3` configuration error.
@@ -67,16 +67,16 @@ Exit codes: `0` ok, `1` a command failed, `2` bad options, `3` configuration err
 | `history`, `exit` | Library built-ins |
 
 Session commands (`target`, `verbose`, `raw`, `arm`) are typed at the top level
-(`fswcli>`).
+(`mcs>`).
 
-Every sent packet is appended to `fswcli-YYYYMMDD.log` in the current directory
+Every sent packet is appended to `mcs-YYYYMMDD.log` in the current directory
 (`--log-dir DIR` to change, `--no-log` to disable).
 
 ### Configuration
 
 `config/targets.json` holds target profiles (byte order, catalog files,
 packet format, optional wrapping layers, transport). The file is found via
-`--config FILE`, then `$FSWCLI_CONFIG`, then `./config/targets.json`, then the
+`--config FILE`, then `$mcs_CONFIG`, then `./config/targets.json`, then the
 `config/` directory next to the build or install tree.
 
 `config/catalog/<app>.json` defines an app's MID and commands. Supported field
@@ -112,7 +112,7 @@ src/service     CommandService: one command end to end
 src/ui          menu tree from the catalog (only module using the cli library)
 src/app         main, command-line options
 tests/unit        GoogleTest per module
-tests/oracle      fswcli packets vs. cFE 6.7 ccsds.h/ccsds.c
+tests/oracle      mcs packets vs. cFE 6.7 ccsds.h/ccsds.c
 tests/integration real UDP on loopback
 tests/smoke       the executable, checked for output and exit codes
 ```
@@ -121,9 +121,9 @@ tests/smoke       the executable, checked for output and exit codes
 
 With cFS running and `ci_lab` listening on 127.0.0.1:1234:
 
-1. `fswcli -c "fsw ds noop"` → DS no-op event message; DS command counter +1.
-2. `fswcli -c "fsw ds set_app_state disable"` then `enable` → DS state changes in events / housekeeping.
-3. `fswcli -c "fsw ds set_app_state maybe"` → rejected locally, nothing sent (exit 1).
+1. `mcs -c "fsw ds noop"` → DS no-op event message; DS command counter +1.
+2. `mcs -c "fsw ds set_app_state disable"` then `enable` → DS state changes in events / housekeeping.
+3. `mcs -c "fsw ds set_app_state maybe"` → rejected locally, nothing sent (exit 1).
 
 UDP is fire-and-forget: "sent" means the datagram left this machine. Confirm
 reception in the cFS event log.

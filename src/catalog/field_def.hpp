@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-namespace fswcli {
+namespace mcs {
 
 enum class FieldType { U8, U16, U32, U64, I8, I16, I32, I64, F32, F64, String, Padding };
 
@@ -51,4 +51,4 @@ struct FieldDef {
     static FieldDef padding(std::size_t size);
 };
 
-} // namespace fswcli
+} // namespace mcs

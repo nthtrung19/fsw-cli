@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <unordered_map>
 
-namespace fswcli {
+namespace mcs {
 
 // CCSDS Space Packet v1 command, as produced by cFE 6.7 (ccsds.h / ccsds.c).
 //
@@ -42,4 +42,4 @@ private:
     std::unordered_map<std::uint16_t, std::uint16_t> nextSequence_;   // per APID
 };
 
-} // namespace fswcli
+} // namespace mcs

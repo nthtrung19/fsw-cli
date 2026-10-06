@@ -2,7 +2,7 @@
 
 #include <stdexcept>
 
-namespace fswcli::app {
+namespace mcs::app {
 
 Options parseOptions(int argc, char* argv[])
 {
@@ -62,7 +62,7 @@ std::string usageText(const std::string& programName)
            "interactive session.\n"
            "\n"
            "Target selection:\n"
-           "      --config FILE     Targets file (default: $FSWCLI_CONFIG, ./config/targets.json,\n"
+           "      --config FILE     Targets file (default: $mcs_CONFIG, ./config/targets.json,\n"
            "                        or the config/ directory next to the executable)\n"
            "  -t, --target NAME     Target profile to use (default: default_target in the file)\n"
            "      --list-targets    List the targets in the file and exit\n"
@@ -89,4 +89,4 @@ std::string usageText(const std::string& programName)
            "  " + programName + " --target sil -f commands.txt\n";
 }
 
-} // namespace fswcli::app
+} // namespace mcs::app

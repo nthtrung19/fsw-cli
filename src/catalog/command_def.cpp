@@ -1,6 +1,6 @@
 #include "catalog/command_def.hpp"
 
-namespace fswcli {
+namespace mcs {
 
 std::size_t CommandDef::payloadSize() const
 {
@@ -52,4 +52,4 @@ const CommandDef* AppDef::findCommand(std::string_view commandName) const
     return nullptr;
 }
 
-} // namespace fswcli
+} // namespace mcs

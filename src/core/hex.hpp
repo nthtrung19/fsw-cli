@@ -5,7 +5,7 @@
 #include <string>
 #include <string_view>
 
-namespace fswcli {
+namespace mcs {
 
 // "19 4B C0 00" (uppercase, single spaces, no trailing space).
 std::string toHex(const Bytes& data);
@@ -19,4 +19,4 @@ std::string hexdump(const Bytes& data, std::string_view indent = "");
 // Examples: "19 4B C0", "0x19,0x4b", "194bc0". Throws ParseError.
 Bytes parseHex(std::string_view text);
 
-} // namespace fswcli
+} // namespace mcs

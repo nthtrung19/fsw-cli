@@ -3,7 +3,7 @@
 #include "core/errors.hpp"
 #include "core/text.hpp"
 
-namespace fswcli {
+namespace mcs {
 
 namespace {
 
@@ -79,4 +79,4 @@ std::vector<std::string> PluginRegistry::formatNames() const { return keysOf(for
 std::vector<std::string> PluginRegistry::layerNames() const { return keysOf(layers_); }
 std::vector<std::string> PluginRegistry::transportNames() const { return keysOf(transports_); }
 
-} // namespace fswcli
+} // namespace mcs

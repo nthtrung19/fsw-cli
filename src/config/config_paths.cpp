@@ -5,7 +5,7 @@
 #include <cstdlib>
 #include <system_error>
 
-namespace fswcli {
+namespace mcs {
 
 namespace {
 
@@ -28,14 +28,14 @@ std::vector<std::filesystem::path> targetsFileCandidates(const std::optional<std
     }
 
     std::vector<std::filesystem::path> out;
-    if (const char* env = std::getenv("FSWCLI_CONFIG"); env != nullptr && *env != '\0') {
+    if (const char* env = std::getenv("mcs_CONFIG"); env != nullptr && *env != '\0') {
         out.emplace_back(env);
     }
     out.emplace_back(std::filesystem::path("config") / "targets.json");
     if (const auto dir = executableDir()) {
         out.push_back((*dir / ".." / "config" / "targets.json").lexically_normal());
         out.push_back((*dir / ".." / ".." / "config" / "targets.json").lexically_normal());
-        out.push_back((*dir / ".." / "share" / "fswcli" / "targets.json").lexically_normal());
+        out.push_back((*dir / ".." / "share" / "mcs" / "targets.json").lexically_normal());
     }
     return out;
 }
@@ -55,7 +55,7 @@ std::filesystem::path findTargetsFile(const std::optional<std::string>& explicit
         throw ConfigError("config file not found: " + *explicitPath);
     }
     throw ConfigError("no targets.json found; searched:" + searched
-                      + "\n  (use --config FILE or set FSWCLI_CONFIG)");
+                      + "\n  (use --config FILE or set mcs_CONFIG)");
 }
 
-} // namespace fswcli
+} // namespace mcs

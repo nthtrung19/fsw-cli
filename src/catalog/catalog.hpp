@@ -5,7 +5,7 @@
 #include <string_view>
 #include <vector>
 
-namespace fswcli {
+namespace mcs {
 
 // The set of apps and commands known for the active target.
 // Pure data: knows nothing about files, protocols or the CLI.
@@ -27,4 +27,4 @@ private:
     std::vector<AppDef> apps_;
 };
 
-} // namespace fswcli
+} // namespace mcs

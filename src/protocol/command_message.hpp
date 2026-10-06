@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <string>
 
-namespace fswcli {
+namespace mcs {
 
 // A command independent of any protocol: who it is for (MID), which command
 // (function code) and the already-encoded payload.
@@ -22,4 +22,4 @@ struct BuiltPacket {
     std::string note;
 };
 
-} // namespace fswcli
+} // namespace mcs

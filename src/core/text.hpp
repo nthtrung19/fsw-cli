@@ -8,7 +8,7 @@
 #include <string_view>
 #include <vector>
 
-namespace fswcli {
+namespace mcs {
 
 std::string toLower(std::string_view text);
 
@@ -34,4 +34,4 @@ std::optional<double> parseDouble(std::string_view text);
 // "0x194B" style, uppercase, zero-padded to `digits`.
 std::string toHexString(std::uint64_t value, int digits);
 
-} // namespace fswcli
+} // namespace mcs

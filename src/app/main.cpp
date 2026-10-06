@@ -1,7 +1,7 @@
-// fswcli: command-line tool for commanding cFS flight software.
+// mcs: command-line tool for commanding cFS flight software.
 //
 // Start-up: options -> targets file -> target -> catalog -> pipeline -> service -> menu.
-// Everything except the menu and the session lives in fswcli_core.
+// Everything except the menu and the session lives in mcs_core.
 
 #include "app/options.hpp"
 #include "config/catalog_loader.hpp"
@@ -23,11 +23,11 @@
 #include <iostream>
 #include <sstream>
 
-using namespace fswcli;
+using namespace mcs;
 
 namespace {
 
-const std::string kProgram = "fswcli";
+const std::string kProgram = "mcs";
 
 std::vector<std::string> readScript(const std::string& path)
 {
@@ -102,7 +102,7 @@ int runInteractive(cli::Cli& cli, const CommandService& service)
         out << "error: " << cmd << ": " << e.what() << '\n';
     });
 
-    std::cout << kProgram << ' ' << FSWCLI_VERSION << "  target '" << service.targetName()
+    std::cout << kProgram << ' ' << mcs_VERSION << "  target '" << service.targetName()
               << "': " << service.pipeline().describe() << '\n'
               << service.catalog().commandCount() << " command(s) in "
               << service.catalog().apps().size() << " app(s). Type 'help', or e.g. 'fsw ds noop'.\n";
@@ -133,7 +133,7 @@ int main(int argc, char* argv[])
         return app::kExitOk;
     }
     if (opts.showVersion) {
-        std::cout << kProgram << ' ' << FSWCLI_VERSION << '\n';
+        std::cout << kProgram << ' ' << mcs_VERSION << '\n';
         return app::kExitOk;
     }
 
@@ -151,7 +151,7 @@ int main(int argc, char* argv[])
         target = &selectTarget(targets, opts.target);
         catalog = std::make_unique<CommandCatalog>(loadCatalog(target->catalogFiles));
         pipeline = buildPipeline(*target, builtinPlugins(), opts.dryRun);
-    } catch (const FswcliError& e) {
+    } catch (const mcsError& e) {
         std::cerr << kProgram << ": " << e.what() << '\n';
         return app::kExitConfigError;
     } catch (const std::exception& e) {

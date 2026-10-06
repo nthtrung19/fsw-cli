@@ -4,7 +4,7 @@
 #include "core/hex.hpp"
 #include "core/text.hpp"
 
-namespace fswcli {
+namespace mcs {
 
 namespace {
 
@@ -72,7 +72,7 @@ bool CommandService::execute(const std::string& app, const std::string& command,
         }
         report(line, result, out);
         return true;
-    } catch (const FswcliError& e) {
+    } catch (const mcsError& e) {
         return fail(e.what(), out);
     } catch (const std::exception& e) {
         return fail(std::string("unexpected: ") + e.what(), out);
@@ -87,7 +87,7 @@ bool CommandService::executeRaw(const std::vector<std::string>& hexTokens, std::
         const Pipeline::Result result = pipeline_.sendRaw(packet);
         report("raw " + toHex(packet), result, out);
         return true;
-    } catch (const FswcliError& e) {
+    } catch (const mcsError& e) {
         return fail(std::string("raw: ") + e.what(), out);
     } catch (const std::exception& e) {
         return fail(std::string("raw: unexpected: ") + e.what(), out);
@@ -124,4 +124,4 @@ void CommandService::report(const std::string& commandLine, const Pipeline::Resu
     }
 }
 
-} // namespace fswcli
+} // namespace mcs

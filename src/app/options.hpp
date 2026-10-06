@@ -4,9 +4,9 @@
 #include <string>
 #include <vector>
 
-namespace fswcli::app {
+namespace mcs::app {
 
-// Parsed command-line options of the fswcli executable.
+// Parsed command-line options of the mcs executable.
 struct Options {
     std::optional<std::string> configFile;   // --config FILE
     std::optional<std::string> target;       // --target NAME
@@ -32,4 +32,4 @@ inline constexpr int kExitCommandFailed = 1;
 inline constexpr int kExitBadOptions = 2;
 inline constexpr int kExitConfigError = 3;
 
-} // namespace fswcli::app
+} // namespace mcs::app

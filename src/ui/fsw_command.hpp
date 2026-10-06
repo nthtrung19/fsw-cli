@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace fswcli::ui {
+namespace mcs::ui {
 
 // A leaf node of the cli menu tree that passes its raw argument tokens to a
 // handler. Used for every FSW command and session command.
@@ -30,4 +30,4 @@ private:
     Handler handler_;
 };
 
-} // namespace fswcli::ui
+} // namespace mcs::ui

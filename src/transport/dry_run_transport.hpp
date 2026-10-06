@@ -2,7 +2,7 @@
 
 #include "transport/transport.hpp"
 
-namespace fswcli {
+namespace mcs {
 
 // Sends nothing. The service prints the packet instead.
 class DryRunTransport : public ITransport {
@@ -18,4 +18,4 @@ private:
     std::size_t count_ = 0;
 };
 
-} // namespace fswcli
+} // namespace mcs

@@ -7,7 +7,7 @@
 #include <set>
 #include <utility>
 
-namespace fswcli {
+namespace mcs {
 
 namespace {
 
@@ -150,4 +150,4 @@ std::size_t CommandCatalog::commandCount() const
     return n;
 }
 
-} // namespace fswcli
+} // namespace mcs
