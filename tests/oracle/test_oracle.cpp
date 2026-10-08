@@ -30,6 +30,40 @@ struct DS_AppStateCmd_t {
 };
 static_assert(sizeof(DS_AppStateCmd_t) == 12, "unexpected padding");
 
+struct DS_FilterParmsCmd_t {
+    uint8 CmdHeader[8];
+    uint16 MessageID;
+    uint16 FilterParmsIndex;
+    uint16 Algorithm_N;
+    uint16 Algorithm_X;
+    uint16 Algorithm_O;
+    uint16 Padding;
+};
+static_assert(sizeof(DS_FilterParmsCmd_t) == 20, "unexpected padding");
+
+struct DS_DestTypeCmd_t {
+    uint8 CmdHeader[8];
+    uint16 FileTableIndex;
+    uint16 FileNameType;
+};
+static_assert(sizeof(DS_DestTypeCmd_t) == 12, "unexpected padding");
+
+struct DS_DestPathCmd_t {
+    uint8 CmdHeader[8];
+    uint16 FileTableIndex;
+    uint16 Padding;
+    char Pathname[64];   // DS_PATHNAME_BUFSIZE = OS_MAX_PATH_LEN
+};
+static_assert(sizeof(DS_DestPathCmd_t) == 76, "unexpected padding");
+
+struct DS_DestSizeCmd_t {
+    uint8 CmdHeader[8];
+    uint16 FileTableIndex;
+    uint16 Padding;
+    uint32 MaxFileSize;
+};
+static_assert(sizeof(DS_DestSizeCmd_t) == 16, "unexpected padding");
+
 // cFE's macros (unmodified NASA code) do implicit narrowing; silence those
 // warnings for the code that expands them, and only there.
 #pragma GCC diagnostic push
@@ -41,7 +75,7 @@ static_assert(sizeof(DS_AppStateCmd_t) == 12, "unexpected padding");
 Bytes cfeBuild(std::uint16_t mid, std::uint8_t fc, std::uint16_t seq, const void* cmd,
                std::size_t totalSize)
 {
-    alignas(8) std::uint8_t buffer[64] = {};
+    alignas(8) std::uint8_t buffer[128] = {};
     std::memcpy(buffer, cmd, totalSize);   // payload (header bytes are overwritten below)
     auto* pkt = reinterpret_cast<CCSDS_CommandPacket_t*>(buffer);
 
@@ -140,6 +174,42 @@ TEST_F(Oracle, FswReadsBackOurFields)
     std::memcpy(&cmd, packet.data(), sizeof cmd);
     EXPECT_EQ(cmd.EnableState, 1);
     EXPECT_EQ(cmd.Padding, 0);
+}
+
+TEST_F(Oracle, SetFilterParmsMatchesCfe)
+{
+    DS_FilterParmsCmd_t cmd{};
+    cmd.MessageID = 0x0801;
+    cmd.FilterParmsIndex = 2;
+    cmd.Algorithm_N = 1;
+    cmd.Algorithm_X = 4;
+    cmd.Algorithm_O = 3;
+    EXPECT_EQ(ours("set_filter_parms", {"0x0801", "2", "1", "4", "3"}),
+              cfeBuild(0x194B, 5, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, SetDestTypeMatchesCfe)
+{
+    DS_DestTypeCmd_t cmd{};
+    cmd.FileTableIndex = 15;
+    cmd.FileNameType = 2;   // DS_BY_TIME
+    EXPECT_EQ(ours("set_dest_type", {"15", "time"}), cfeBuild(0x194B, 6, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, SetDestPathMatchesCfe)
+{
+    DS_DestPathCmd_t cmd{};
+    cmd.FileTableIndex = 3;
+    std::strcpy(cmd.Pathname, "/ram/ds/");
+    EXPECT_EQ(ours("set_dest_path", {"3", "/ram/ds/"}), cfeBuild(0x194B, 8, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, SetDestSizeMatchesCfe)
+{
+    DS_DestSizeCmd_t cmd{};
+    cmd.FileTableIndex = 7;
+    cmd.MaxFileSize = 0x00123456;
+    EXPECT_EQ(ours("set_dest_size", {"7", "0x123456"}), cfeBuild(0x194B, 11, 0, &cmd, sizeof cmd));
 }
 
 } // namespace

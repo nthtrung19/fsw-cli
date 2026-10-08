@@ -1,0 +1,7 @@
+2026-10-07T09:00:09.903+07:00 target=sil cmd="fsw ds noop" apid=0x14B seq=0 bytes=8 wire=19 4B C0 00 00 01 6C 00
+2026-10-07T09:00:50.189+07:00 target=sil cmd="fsw ds noop" apid=0x14B seq=0 bytes=8 wire=19 4B C0 00 00 01 6C 00
+2026-10-07T09:01:09.076+07:00 target=sil cmd="fsw ds set_app_state enable" apid=0x14B seq=1 bytes=12 wire=19 4B C0 01 00 05 6A 02 01 00 00 00
+2026-10-07T09:01:13.783+07:00 target=sil cmd="fsw ds noop" apid=0x14B seq=2 bytes=8 wire=19 4B C0 02 00 01 6E 00
+2026-10-07T09:01:38.135+07:00 target=sil cmd="fsw ds reset" apid=0x14B seq=3 bytes=8 wire=19 4B C0 03 00 01 6E 01
+2026-10-07T09:01:42.377+07:00 target=sil cmd="fsw ds set_app_state enable" apid=0x14B seq=4 bytes=12 wire=19 4B C0 04 00 05 6F 02 01 00 00 00
+2026-10-07T17:05:14.579+07:00 target=sil cmd="fsw ds set_app_state enable" apid=0x14B seq=0 bytes=12 wire=19 4B C0 00 00 05 6B 02 01 00 00 00

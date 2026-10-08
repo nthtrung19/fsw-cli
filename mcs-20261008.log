@@ -1,0 +1,2 @@
+2026-10-08T09:04:23.038+07:00 target=sil cmd="fsw ds set_app_state enable" apid=0x14B seq=0 bytes=12 wire=19 4B C0 00 00 05 6B 02 01 00 00 00
+2026-10-08T09:04:34.196+07:00 target=sil cmd="fsw ds set_app_state enable" apid=0x14B seq=1 bytes=12 wire=19 4B C0 01 00 05 6A 02 01 00 00 00

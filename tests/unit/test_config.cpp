@@ -43,13 +43,38 @@ TEST(ShippedConfig, DsCatalogMatchesTheDesign)
     const AppDef* ds = catalog.findApp("ds");
     ASSERT_NE(ds, nullptr);
     EXPECT_EQ(ds->mid, 0x194B);
-    ASSERT_EQ(ds->commands.size(), 3U);
+    ASSERT_EQ(ds->commands.size(), 18U);
     EXPECT_EQ(catalog.findCommand("ds", "noop")->cc, 0);
     EXPECT_EQ(catalog.findCommand("ds", "reset")->cc, 1);
     const CommandDef* set = catalog.findCommand("ds", "set_app_state");
     EXPECT_EQ(set->cc, 2);
     EXPECT_EQ(set->payloadSize(), 4U);   // DS_AppStateCmd_t = 8 header + 4
     EXPECT_EQ(set->usage(), "set_app_state <state: disable|enable>");   // file order kept
+}
+
+TEST(ShippedConfig, DsCatalogMatchesDsMsgH)
+{
+    // Command code (ds_msgdefs.h) and payload size = sizeof(DS_*Cmd_t) - 8 (ds_msg.h).
+    struct Expected {
+        const char* name;
+        int cc;
+        std::size_t payload;
+    };
+    const Expected expected[] = {
+        {"noop", 0, 0},             {"reset", 1, 0},           {"set_app_state", 2, 4},
+        {"set_filter_file", 3, 8},  {"set_filter_type", 4, 8}, {"set_filter_parms", 5, 12},
+        {"set_dest_type", 6, 4},    {"set_dest_state", 7, 4},  {"set_dest_path", 8, 68},
+        {"set_dest_base", 9, 68},   {"set_dest_ext", 10, 12},  {"set_dest_size", 11, 8},
+        {"set_dest_age", 12, 8},    {"set_dest_count", 13, 8}, {"close_file", 14, 4},
+        {"get_file_info", 15, 0},   {"add_mid", 16, 4},        {"close_all", 17, 0},
+    };
+    const CommandCatalog catalog = loadCatalog({kSourceDir + "/config/catalog/ds.json"});
+    for (const auto& e : expected) {
+        const CommandDef* def = catalog.findCommand("ds", e.name);
+        ASSERT_NE(def, nullptr) << e.name;
+        EXPECT_EQ(def->cc, e.cc) << e.name;
+        EXPECT_EQ(def->payloadSize(), e.payload) << e.name;
+    }
 }
 
 TEST(ShippedConfig, TargetsFileLoadsAndBuilds)
