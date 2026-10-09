@@ -17,7 +17,7 @@ protected:
     void SetUp() override
     {
         AppDef ds = test::dsApp();
-        CommandDef critical{"wipe", 9, "Dangerous", {}, true};
+        CommandDef critical{"wipe", 9, "Dangerous", {}, true, 0x194B};
         ds.commands.push_back(critical);
         catalog_.add(ds);
         makeService(/*dryRun=*/false, /*withLog=*/false);
@@ -65,6 +65,20 @@ TEST_F(ServiceTest, SendsAndReports)
               "sent fsw ds set_app_state enable -> fake://  (12 bytes, apid=0x14B seq=0)\n");
     EXPECT_EQ(service_->packetsSent(), 1U);
     EXPECT_EQ(service_->failures(), 0U);
+}
+
+TEST_F(ServiceTest, EachCommandIsSentOnItsOwnMid)
+{
+    AppDef hk;
+    hk.name = "hk";
+    hk.commands.push_back({"noop", 0, "", {}, false, 0x1934});
+    hk.commands.push_back({"send", 0, "", {}, false, 0x1935});
+    catalog_.add(hk);
+    EXPECT_TRUE(service_->execute("hk", "noop", {}, out_));
+    EXPECT_TRUE(service_->execute("hk", "send", {}, out_));
+    ASSERT_EQ(sent_.size(), 2U);
+    EXPECT_EQ(toHex(sent_[0]).substr(0, 5), "19 34");
+    EXPECT_EQ(toHex(sent_[1]).substr(0, 5), "19 35");
 }
 
 TEST_F(ServiceTest, VerboseAddsHexdump)
@@ -154,8 +168,7 @@ TEST_F(ServiceTest, ArgumentsWithSpacesAreQuotedInReports)
 {
     AppDef app;
     app.name = "fm";
-    app.mid = 0x188C;
-    app.commands.push_back({"delete", 4, "", {FieldDef::string("path", 32)}, false});
+    app.commands.push_back({"delete", 4, "", {FieldDef::string("path", 32)}, false, 0x188C});
     catalog_.add(app);
     out_.str("");
     EXPECT_TRUE(service_->execute("fm", "delete", {"/cf/my file"}, out_));

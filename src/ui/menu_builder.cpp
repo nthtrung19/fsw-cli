@@ -18,8 +18,12 @@ std::unique_ptr<cli::Menu> buildFswMenu(CommandService& service)
         auto appMenu = std::make_unique<cli::Menu>(
             app.name, app.help.empty() ? "Commands for " + app.name : app.help);
 
+        const bool severalMids = app.mids().size() > 1;
         for (const auto& cmd : app.commands) {
             std::string help = cmd.help;
+            if (severalMids) {
+                help += " [mid " + toHexString(cmd.mid, 4) + "]";
+            }
             if (cmd.critical) {
                 help += " [critical: 'arm' first]";
             }
@@ -45,7 +49,11 @@ void insertSessionCommands(cli::Menu& root, CommandService& service, std::size_t
                 << "catalog:  " << service.catalog().apps().size() << " app(s), "
                 << service.catalog().commandCount() << " command(s)\n";
             for (const auto& app : service.catalog().apps()) {
-                out << "          " << app.name << "  mid=" << toHexString(app.mid, 4) << "  "
+                std::string mids;
+                for (const std::uint16_t mid : app.mids()) {
+                    mids += (mids.empty() ? "" : ",") + toHexString(mid, 4);
+                }
+                out << "          " << app.name << "  mid=" << mids << "  "
                     << app.commands.size() << " command(s)\n";
             }
         }));

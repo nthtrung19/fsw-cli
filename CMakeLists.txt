@@ -41,7 +41,36 @@ function(mcs_as_system_headers target)
     set_target_properties(${target} PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_inc}")
 endfunction()
 
+# Local fixes to a submodule, kept as patch files in external/patches/ and
+# applied here (idempotent: skipped when already applied).
+function(mcs_apply_patch dep patch)
+    set(_patch "${CMAKE_CURRENT_SOURCE_DIR}/external/patches/${patch}")
+    set(_dir "${CMAKE_CURRENT_SOURCE_DIR}/external/${dep}")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_patch}")
+    if(NOT GIT_FOUND)
+        message(WARNING "git not found: ${patch} not applied to external/${dep}")
+        return()
+    endif()
+    execute_process(COMMAND "${GIT_EXECUTABLE}" apply --reverse --check "${_patch}"
+                    WORKING_DIRECTORY "${_dir}" RESULT_VARIABLE _applied
+                    OUTPUT_QUIET ERROR_QUIET)
+    if(_applied EQUAL 0)
+        return()
+    endif()
+    execute_process(COMMAND "${GIT_EXECUTABLE}" apply "${_patch}"
+                    WORKING_DIRECTORY "${_dir}" RESULT_VARIABLE _result
+                    ERROR_VARIABLE _error)
+    if(NOT _result EQUAL 0)
+        message(FATAL_ERROR "cannot apply external/patches/${patch} to external/${dep} "
+                            "(submodule changed? refresh the patch):\n${_error}")
+    endif()
+    message(STATUS "Applied external/patches/${patch}")
+endfunction()
+find_package(Git QUIET)
+
 # daniele77/cli v2.2.0 (header-only). No Asio: the built-in LoopScheduler is enough.
+# Patched: tab completion lists only the word being completed.
+mcs_apply_patch(cli cli-tab-completion.patch)
 add_subdirectory(external/cli EXCLUDE_FROM_ALL)
 mcs_as_system_headers(cli)
 

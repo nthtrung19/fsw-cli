@@ -1,6 +1,8 @@
 [submodule "external/cli"]
 	path = external/cli
 	url = https://github.com/daniele77/cli
+	# external/patches/cli-tab-completion.patch is applied at configure time
+	ignore = dirty
 [submodule "external/json"]
 	path = external/json
 	url = https://github.com/nlohmann/json

@@ -3,6 +3,7 @@
 #include "core/errors.hpp"
 #include "core/text.hpp"
 
+#include <algorithm>
 #include <limits>
 #include <set>
 #include <utility>
@@ -95,8 +96,19 @@ void CommandCatalog::add(AppDef app)
         throw ConfigError(appWhere + ": defined more than once");
     }
 
-    std::set<std::string> names;
-    std::set<unsigned> codes;
+    // A MID is routed to one app in the FSW, so it belongs to one app here.
+    for (const std::uint16_t mid : app.mids()) {
+        for (const auto& other : apps_) {
+            const auto otherMids = other.mids();
+            if (std::find(otherMids.begin(), otherMids.end(), mid) != otherMids.end()) {
+                throw ConfigError(appWhere + ": MID " + toHexString(mid, 4)
+                                  + " is already used by app '" + other.name + "'");
+            }
+        }
+    }
+
+    std::set<std::string> names;                    // the menu is flat: fsw <app> <name>
+    std::set<std::pair<unsigned, unsigned>> codes;  // (MID, cc): codes are per MID
     for (const auto& cmd : app.commands) {
         const std::string where = appWhere + " command '" + cmd.name + "'";
         if (!isIdentifier(cmd.name)) {
@@ -109,9 +121,9 @@ void CommandCatalog::add(AppDef app)
             throw ConfigError(where + ": command code " + std::to_string(cmd.cc)
                               + " is out of range 0..127");
         }
-        if (!codes.insert(cmd.cc).second) {
+        if (!codes.insert({cmd.mid, cmd.cc}).second) {
             throw ConfigError(where + ": command code " + std::to_string(cmd.cc)
-                              + " is already used in this app");
+                              + " is already used on MID " + toHexString(cmd.mid, 4));
         }
 
         std::set<std::string> fieldNames;

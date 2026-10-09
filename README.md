@@ -31,7 +31,10 @@ Moved or copied the project? Delete `build/` and configure again (CMake caches
 absolute paths).
 
 Third-party code lives in `external/` as git submodules pinned to release tags,
-so the build needs no network once the repository is checked out:
+so the build needs no network once the repository is checked out. The only local
+change is `external/patches/cli-tab-completion.patch` (tab completion lists just
+the word being completed), which CMake applies to `external/cli` when
+configuring:
 
 | Library | Version | Used by |
 |---|---|---|
@@ -79,7 +82,11 @@ packet format, optional wrapping layers, transport). The file is found via
 `--config FILE`, then `$mcs_CONFIG`, then `./config/targets.json`, then the
 `config/` directory next to the build or install tree.
 
-`config/catalog/<app>.json` defines an app's MID and commands. Supported field
+`config/catalog/<app>.json` defines an app's commands, grouped by the MID they
+are sent on: `"mids": [ { "mid": ..., "commands": [...] }, ... ]` (an app with a
+single MID may write `"mid"` + `"commands"` instead). `fsw ds noop` and
+`fsw ds hk` can thus go to different MIDs. Command codes are unique per MID,
+command names per app, and a MID belongs to one app. Supported field
 types: `u8..u64`, `i8..i64`, `f32`, `f64`, `string` (with `size`), `padding`
 (with `size`); integer fields may have `enum`, `min`, `max`. Enum fields accept
 only their listed values, by name or number.
@@ -98,7 +105,7 @@ only their listed values, by name or number.
 ```
 config/         targets.json, catalog/*.json (shipped configuration)
 docs/DESIGN.md  design specification
-external/       third-party submodules (do not edit)
+external/       third-party submodules (do not edit; local fixes go in external/patches/)
 src/core        bytes, byte order, hex, plug-in options, errors
 src/catalog     app/command/field definitions + validation
 src/encode      arguments -> payload bytes

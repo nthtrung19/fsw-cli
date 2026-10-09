@@ -109,12 +109,11 @@ protected:
     // Full mcs path: catalog -> encoder -> CCSDS v1 format.
     Bytes ours(const std::string& cmd, const std::vector<std::string>& args, int repeat = 1)
     {
-        const AppDef* app = catalog_.findApp("ds");
         const CommandDef* def = catalog_.findCommand("ds", cmd);
         EXPECT_NE(def, nullptr);
         BuiltPacket built;
         for (int i = 0; i < repeat; ++i) {
-            built = format_.build({app->mid, def->cc, encoder_.encode(*def, args)});
+            built = format_.build({def->mid, def->cc, encoder_.encode(*def, args)});
         }
         return built.bytes;
     }
@@ -148,6 +147,13 @@ TEST_F(Oracle, SetAppStateDisableMatchesCfe)
     DS_AppStateCmd_t cmd{};
     cmd.EnableState = 0;
     EXPECT_EQ(ours("set_app_state", {"disable"}), cfeBuild(0x194B, 2, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, DsHkMatchesCfe)
+{
+    // DS_SEND_HK_MID: header only; DS checks the length, not the command code.
+    std::uint8_t header[8] = {};
+    EXPECT_EQ(ours("hk", {}), cfeBuild(0x194C, 0, 0, header, sizeof header));
 }
 
 TEST_F(Oracle, SequenceCountMatchesCfe)

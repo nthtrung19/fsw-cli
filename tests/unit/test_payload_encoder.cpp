@@ -10,7 +10,7 @@ namespace {
 
 CommandDef commandWith(std::vector<FieldDef> fields)
 {
-    return {"cmd", 9, "test command", std::move(fields), false};
+    return {"cmd", 9, "test command", std::move(fields), false, 0x194B};
 }
 
 std::string errorOf(const PayloadEncoder& enc, const CommandDef& cmd,

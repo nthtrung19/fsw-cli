@@ -1,0 +1,5 @@
+2026-10-09T14:45:29.634+07:00 target=sil cmd="fsw ds hk" apid=0x14C seq=0 bytes=8 wire=19 4C C0 00 00 01 6B 00
+2026-10-09T14:45:43.434+07:00 target=sil cmd="fsw ds noop" apid=0x14B seq=0 bytes=8 wire=19 4B C0 00 00 01 6C 00
+2026-10-09T14:56:50.419+07:00 target=sil cmd="fsw ds hk" apid=0x14C seq=0 bytes=8 wire=19 4C C0 00 00 01 6B 00
+2026-10-09T15:02:21.428+07:00 target=sil cmd="raw 19 4B C0 00 00 01 6C 00" raw bytes=8 wire=19 4B C0 00 00 01 6C 00
+2026-10-09T15:02:44.418+07:00 target=sil cmd="raw 19 4B C0 00 00 01 6C 00" raw bytes=8 wire=19 4B C0 00 00 01 6C 00

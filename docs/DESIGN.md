@@ -391,6 +391,25 @@ The only JSON-aware module (nlohmann/json).
 }
 ```
 
+An app that receives commands on several MIDs (one FSW processing routine
+each) groups its commands by MID; the single `"mid"` + `"commands"` form above
+is shorthand for one group:
+
+```json
+{
+  "app": "ds",
+  "help": "Data Storage application",
+  "mids": [
+    { "mid": "0x194B", "commands": [ { "name": "noop", "cc": 0 }, ... ] },
+    { "mid": "0x194C", "commands": [ { "name": "hk", "cc": 0 } ] }
+  ]
+}
+```
+
+Each command carries the MID of its group (`CommandDef::mid`). Command codes
+are unique per MID, command names per app (the menu is `fsw <app> <name>`),
+and a MID belongs to one app.
+
 Loader responsibilities: schema checks with file/line-level messages, numbers
 as decimal or `"0x…"` strings, then `CommandCatalog::add`.
 

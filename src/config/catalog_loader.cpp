@@ -70,25 +70,55 @@ CommandDef parseCommand(const Json& j, const std::string& ctx)
     return c;
 }
 
+// One MID and the commands sent on it: { "mid": ..., "commands": [...] }.
+// `ctx` locates the group ("file.json" or "file.json: mids[1]").
+void parseMidGroup(const Json& group, const std::string& ctx, AppDef& app)
+{
+    const auto mid = static_cast<std::uint16_t>(jsonutil::getUInt(group, "mid", ctx, 0xFFFF));
+    const Json& commands = jsonutil::require(group, "commands", ctx);
+    if (!commands.is_array() || commands.empty()) {
+        throw ConfigError(ctx + ": 'commands' must be a non-empty array");
+    }
+    const std::string prefix = ctx.find(": ") == std::string::npos ? ctx + ": " : ctx + " ";
+    for (std::size_t i = 0; i < commands.size(); ++i) {
+        CommandDef cmd = parseCommand(commands[i], prefix + "commands[" + std::to_string(i) + "]");
+        cmd.mid = mid;
+        app.commands.push_back(std::move(cmd));
+    }
+}
+
 } // namespace
 
 AppDef loadAppFile(const std::filesystem::path& file)
 {
     const Json root = jsonutil::readFile(file);
     const std::string ctx = file.string();
-    jsonutil::checkKeys(root, {"app", "mid", "help", "commands"}, ctx);
+    jsonutil::checkKeys(root, {"app", "help", "mids", "mid", "commands"}, ctx);
 
     AppDef app;
     app.name = jsonutil::getString(root, "app", ctx);
-    app.mid = static_cast<std::uint16_t>(jsonutil::getUInt(root, "mid", ctx, 0xFFFF));
     app.help = jsonutil::optString(root, "help", ctx);
 
-    const Json& commands = jsonutil::require(root, "commands", ctx);
-    if (!commands.is_array()) {
-        throw ConfigError(ctx + ": 'commands' must be an array");
+    // Either "mids": [ { "mid", "commands" }, ... ] for an app with several
+    // MIDs, or "mid" + "commands" at the top level as shorthand for one.
+    const bool grouped = root.contains("mids");
+    const bool single = root.contains("mid") || root.contains("commands");
+    if (grouped && single) {
+        throw ConfigError(ctx + ": use either 'mids' or 'mid' + 'commands', not both");
     }
-    for (std::size_t i = 0; i < commands.size(); ++i) {
-        app.commands.push_back(parseCommand(commands[i], ctx + ": commands[" + std::to_string(i) + "]"));
+    if (!grouped) {
+        parseMidGroup(root, ctx, app);
+        return app;
+    }
+
+    const Json& groups = root.at("mids");
+    if (!groups.is_array() || groups.empty()) {
+        throw ConfigError(ctx + ": 'mids' must be a non-empty array");
+    }
+    for (std::size_t i = 0; i < groups.size(); ++i) {
+        const std::string where = ctx + ": mids[" + std::to_string(i) + "]";
+        jsonutil::checkKeys(groups[i], {"mid", "commands"}, where);
+        parseMidGroup(groups[i], where, app);
     }
     return app;
 }

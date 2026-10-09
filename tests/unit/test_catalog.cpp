@@ -27,7 +27,7 @@ TEST(Catalog, AddAndFind)
     CommandCatalog catalog;
     catalog.add(test::dsApp());
     ASSERT_NE(catalog.findApp("ds"), nullptr);
-    EXPECT_EQ(catalog.findApp("ds")->mid, 0x194B);
+    EXPECT_EQ(catalog.findApp("ds")->mids(), std::vector<std::uint16_t>{0x194B});
     ASSERT_NE(catalog.findCommand("ds", "set_app_state"), nullptr);
     EXPECT_EQ(catalog.findCommand("ds", "set_app_state")->cc, 2);
     EXPECT_EQ(catalog.findCommand("ds", "nope"), nullptr);
@@ -82,6 +82,37 @@ TEST(Catalog, RejectsDuplicateCommandNameOrCode)
     app = test::dsApp();
     app.commands[1].cc = 0;
     expectRejected(app, "command code 0 is already used");
+}
+
+TEST(Catalog, CommandCodesAreUniquePerMid)
+{
+    // DS: noop cc 0 on DS_CMD_MID and hk cc 0 on DS_SEND_HK_MID.
+    AppDef app = test::dsApp();
+    app.commands.push_back({"hk", 0, "HK request", {}, false, 0x194C});
+    CommandCatalog catalog;
+    EXPECT_NO_THROW(catalog.add(app));
+    EXPECT_EQ(catalog.findApp("ds")->mids(), (std::vector<std::uint16_t>{0x194B, 0x194C}));
+
+    app = test::dsApp();
+    app.commands.push_back({"hk", 0, "HK request", {}, false, 0x194B});
+    expectRejected(app, "command code 0 is already used on MID 0x194B");
+}
+
+TEST(Catalog, MidBelongsToOneApp)
+{
+    CommandCatalog catalog;
+    catalog.add(test::dsApp());
+    AppDef other;
+    other.name = "fm";
+    other.commands.push_back({"noop", 0, "", {}, false, 0x188C});
+    other.commands.push_back({"steal", 1, "", {}, false, 0x194B});
+    try {
+        catalog.add(other);
+        FAIL() << "expected ConfigError";
+    } catch (const ConfigError& e) {
+        EXPECT_NE(std::string(e.what()).find("MID 0x194B is already used by app 'ds'"),
+                  std::string::npos) << e.what();
+    }
 }
 
 TEST(Catalog, RejectsCommandCodeAbove127)

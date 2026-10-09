@@ -60,7 +60,7 @@ bool CommandService::execute(const std::string& app, const std::string& command,
             return fail("unknown command '" + app + " " + command + "' for target '" + targetName_ + "'", out);
         }
 
-        CommandMessage message{appDef->mid, def->cc, encoder_.encode(*def, args)};
+        CommandMessage message{def->mid, def->cc, encoder_.encode(*def, args)};
 
         if (def->critical && !armed_) {
             return fail("'" + command + "' is a critical command: type 'arm', then repeat it", out);

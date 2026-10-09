@@ -46,6 +46,10 @@ mcs_smoke(NAME dryrun_target_profile EXIT 0
     ARGS ${BASE} --target sil-dry -c "fsw ds set_app_state disable"
     EXPECT "19 4B C0 00 00 05 6A 02 00 00 00 00")
 
+mcs_smoke(NAME dryrun_ds_hk EXIT 0
+    ARGS ${BASE} -n -c "fsw ds hk"
+    EXPECT "\\[dry-run\\] fsw ds hk  \\(8 bytes, apid=0x14C seq=0\\)\n  19 4C C0 00 00 01 6B 00")
+
 mcs_smoke(NAME sequence_increments EXIT 0
     ARGS ${BASE} -n -c "fsw ds noop" -c "fsw ds noop"
     EXPECT "seq=0.*seq=1")

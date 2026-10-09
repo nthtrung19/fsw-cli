@@ -1,5 +1,7 @@
 #include "catalog/command_def.hpp"
 
+#include <algorithm>
+
 namespace mcs {
 
 std::size_t CommandDef::payloadSize() const
@@ -38,6 +40,17 @@ std::string CommandDef::usage() const
     std::string out = name;
     for (const auto& p : paramDescriptions()) {
         out += " <" + p + ">";
+    }
+    return out;
+}
+
+std::vector<std::uint16_t> AppDef::mids() const
+{
+    std::vector<std::uint16_t> out;
+    for (const auto& c : commands) {
+        if (std::find(out.begin(), out.end(), c.mid) == out.end()) {
+            out.push_back(c.mid);
+        }
     }
     return out;
 }

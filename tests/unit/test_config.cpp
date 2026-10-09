@@ -42,8 +42,14 @@ TEST(ShippedConfig, DsCatalogMatchesTheDesign)
     const CommandCatalog catalog = loadCatalog({kSourceDir + "/config/catalog/ds.json"});
     const AppDef* ds = catalog.findApp("ds");
     ASSERT_NE(ds, nullptr);
-    EXPECT_EQ(ds->mid, 0x194B);
-    ASSERT_EQ(ds->commands.size(), 18U);
+    EXPECT_EQ(ds->mids(), (std::vector<std::uint16_t>{0x194B, 0x194C}));   // ds_msgids.h
+    ASSERT_EQ(ds->commands.size(), 19U);
+    EXPECT_EQ(catalog.findCommand("ds", "noop")->mid, 0x194B);              // DS_CMD_MID
+    const CommandDef* hk = catalog.findCommand("ds", "hk");                  // DS_SEND_HK_MID
+    ASSERT_NE(hk, nullptr);
+    EXPECT_EQ(hk->mid, 0x194C);
+    EXPECT_EQ(hk->cc, 0);
+    EXPECT_EQ(hk->payloadSize(), 0U);
     EXPECT_EQ(catalog.findCommand("ds", "noop")->cc, 0);
     EXPECT_EQ(catalog.findCommand("ds", "reset")->cc, 1);
     const CommandDef* set = catalog.findCommand("ds", "set_app_state");
@@ -106,7 +112,7 @@ TEST(CatalogLoader, NumbersAsHexStringsOrIntegers)
       "commands": [ { "name": "go", "cc": "0x05",
         "fields": [ { "name": "v", "type": "i16", "min": "-0x10", "max": 16 } ] } ] })");
     const AppDef app = loadAppFile(file);
-    EXPECT_EQ(app.mid, 0x194B);
+    EXPECT_EQ(app.commands[0].mid, 0x194B);   // single-MID shorthand
     EXPECT_EQ(app.commands[0].cc, 5);
     EXPECT_EQ(app.commands[0].fields[0].min, -16);
     EXPECT_EQ(app.commands[0].fields[0].size, 2U);
@@ -140,6 +146,48 @@ TEST(CatalogLoader, RejectsTyposAndMissingKeys)
         loadAppFile(dir.write("d.json", R"({ "app": "ds", "mid": 1, "commands": [
             { "name": "x", "cc": 1, "fields": [ { "name": "s", "type": "string" } ] } ] })"));
     }), "'string' fields need a 'size'"));
+}
+
+TEST(CatalogLoader, CommandsGroupedByMid)
+{
+    test::TempDir dir;
+    const AppDef app = loadAppFile(dir.write("x.json", R"({
+      "app": "x",
+      "mids": [
+        { "mid": "0x194B", "commands": [ { "name": "a", "cc": 0 }, { "name": "b", "cc": 1 } ] },
+        { "mid": 6476, "commands": [ { "name": "c", "cc": 0 } ] } ] })"));
+    ASSERT_EQ(app.commands.size(), 3U);
+    EXPECT_EQ(app.commands[0].mid, 0x194B);
+    EXPECT_EQ(app.commands[1].mid, 0x194B);
+    EXPECT_EQ(app.commands[2].mid, 0x194C);
+    EXPECT_EQ(app.mids(), (std::vector<std::uint16_t>{0x194B, 0x194C}));
+}
+
+TEST(CatalogLoader, MidGroupErrors)
+{
+    test::TempDir dir;
+    EXPECT_TRUE(contains(configErrorOf([&] {
+        loadAppFile(dir.write("a.json", R"({ "app": "x", "mid": 1, "commands": [ { "name": "a", "cc": 0 } ],
+            "mids": [ { "mid": 2, "commands": [ { "name": "b", "cc": 0 } ] } ] })"));
+    }), "use either 'mids' or 'mid' + 'commands', not both"));
+    EXPECT_TRUE(contains(configErrorOf([&] {
+        loadAppFile(dir.write("b.json", R"({ "app": "x" })"));
+    }), "missing required key 'mid'"));
+    EXPECT_TRUE(contains(configErrorOf([&] {
+        loadAppFile(dir.write("c.json", R"({ "app": "x", "mids": [] })"));
+    }), "'mids' must be a non-empty array"));
+    EXPECT_TRUE(contains(configErrorOf([&] {
+        loadAppFile(dir.write("d.json", R"({ "app": "x", "mids": [ { "mid": 1, "commands": [] } ] })"));
+    }), "d.json: mids[0]: 'commands' must be a non-empty array"));
+    EXPECT_TRUE(contains(configErrorOf([&] {
+        loadAppFile(dir.write("e.json", R"({ "app": "x", "mids": [ { "mid": 70000, "commands": [ { "name": "a", "cc": 0 } ] } ] })"));
+    }), "e.json: mids[0]: 'mid': expected an integer in [0, 65535]"));
+    EXPECT_TRUE(contains(configErrorOf([&] {
+        loadAppFile(dir.write("f.json", R"({ "app": "x", "mids": [ { "mid": 1, "comands": [] } ] })"));
+    }), "mids[0]: unknown key 'comands'"));
+    EXPECT_TRUE(contains(configErrorOf([&] {
+        loadAppFile(dir.write("g.json", R"({ "app": "x", "mids": [ { "mid": 1, "commands": [ { "name": "a" } ] } ] })"));
+    }), "g.json: mids[0] commands[0] 'a': missing required key 'cc'"));
 }
 
 TEST(CatalogLoader, SyntaxErrorsIncludeLine)

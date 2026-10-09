@@ -1,0 +1,30 @@
+diff --git a/include/cli/cli.h b/include/cli/cli.h
+index 437e838..247bc93 100644
+--- a/include/cli/cli.h
++++ b/include/cli/cli.h
+@@ -619,7 +619,9 @@ namespace cli
+                 for (const auto& c: cs)
+                     result.push_back(prefix + ' ' + c); // concat submenu with command
+             }
+-            if (parent != nullptr)
++            // mcs patch: parent completions only serve ".." navigation; offering them
++            // for any remainder lists the parent's own name ("fsw ds fsw").
++            if (parent != nullptr && rest.rfind(ParentShortcut(), 0) == 0)
+             {
+                 auto cs = parent->GetCompletionWithParent(rest);
+                 for (const auto& c: cs)
+diff --git a/include/cli/detail/commandprocessor.h b/include/cli/detail/commandprocessor.h
+index ea8f6a0..482787b 100644
+--- a/include/cli/detail/commandprocessor.h
++++ b/include/cli/detail/commandprocessor.h
+@@ -141,7 +141,9 @@ private:
+                 }
+                 session.OutStream() << '\n';
+                 std::string items;
+-                std::for_each( completions.begin(), completions.end(), [&items](auto& cmd){ items += '\t' + cmd; } );
++                // mcs patch: list only the word being completed ("noop", not
++                // "fsw ds noop"); completions stay full lines for SetLine above.
++                std::for_each( completions.begin(), completions.end(), [&items](auto& cmd){ items += '\t' + cmd.substr(cmd.find_last_of(' ') + 1); } );
+                 session.OutStream() << items << '\n';
+                 session.Prompt();
+                 terminal.ResetCursor();

@@ -7,6 +7,12 @@
 // Numbers may be written as JSON integers or as "0x.." strings.
 // Fields are listed in payload order, after the 8-byte command header.
 //
+// Commands are grouped by the MID they are sent on ("mids"); each group is one
+// processing routine in the FSW. Command codes are unique per MID, command
+// names per app. An app with one MID may use "mid" + "commands" instead.
+//   ds_msgids.h  DS_CMD_MID 0x194B      ground commands, dispatched by command code
+//                DS_SEND_HK_MID 0x194C  housekeeping request (length 8, code ignored)
+//
 // Values taken from the FSW configuration (update if the mission changes them):
 //   ds_appdefs.h       DS_UNUSED 0, DS_DISABLED 0, DS_ENABLED 1, DS_BY_COUNT 1, DS_BY_TIME 2
 //   ds_platform_cfg.h  DS_DEST_FILE_CNT 16           -> file_table_index max 15
@@ -21,196 +27,210 @@
 // characters, table loaded, message ID present in / absent from the filter table.
 {
   "app": "ds",
-  "mid": "0x194B",
   "help": "Data Storage application",
-  "commands": [
+  "mids": [
     {
-      "name": "noop",
-      "cc": 0,
-      "critical": true,
-      "help": "No-op: increments the command counter and reports the DS version"
-    },
-    {
-      "name": "reset",
-      "cc": 1,
-      "help": "Reset housekeeping counters"
-    },
-    {
-      "name": "set_app_state",
-      "cc": 2,
-      "help": "Enable or disable DS (no packets are stored while disabled)",
-      "fields": [
-        { "name": "state", "type": "u16", "enum": { "disable": 0, "enable": 1 },
-          "help": "EnableState" },
-        { "type": "padding", "size": 2 }
+      "mid": "0x194B",
+      "commands": [
+        {
+          "name": "noop",
+          "cc": 0,
+          "critical": false,
+          "help": "No-op: increments the command counter and reports the DS version"
+        },
+        {
+          "name": "reset",
+          "cc": 1,
+          "help": "Reset housekeeping counters"
+        },
+        {
+          "name": "set_app_state",
+          "cc": 2,
+          "help": "Enable or disable DS (no packets are stored while disabled)",
+          "fields": [
+            { "name": "state", "type": "u16", "enum": { "disable": 0, "enable": 1 },
+              "help": "EnableState" },
+            { "type": "padding", "size": 2 }
+          ]
+        },
+        {
+          "name": "set_filter_file",
+          "cc": 3,
+          "help": "Set the destination file of a packet filter table entry",
+          "fields": [
+            { "name": "message_id", "type": "u16", "min": 1,
+              "help": "MessageID of an existing filter table entry" },
+            { "name": "filter_parms_index", "type": "u16", "max": 3,
+              "help": "FilterParmsIndex" },
+            { "name": "file_table_index", "type": "u16", "max": 15,
+              "help": "FileTableIndex" },
+            { "type": "padding", "size": 2 }
+          ]
+        },
+        {
+          "name": "set_filter_type",
+          "cc": 4,
+          "help": "Set the filter type (packet count or time) of a packet filter table entry",
+          "fields": [
+            { "name": "message_id", "type": "u16", "min": 1,
+              "help": "MessageID of an existing filter table entry" },
+            { "name": "filter_parms_index", "type": "u16", "max": 3,
+              "help": "FilterParmsIndex" },
+            { "name": "filter_type", "type": "u16", "enum": { "count": 1, "time": 2 },
+              "help": "FilterType" },
+            { "type": "padding", "size": 2 }
+          ]
+        },
+        {
+          "name": "set_filter_parms",
+          "cc": 5,
+          "help": "Set the algorithm parameters of a packet filter table entry (N must not exceed X)",
+          "fields": [
+            { "name": "message_id", "type": "u16", "min": 1,
+              "help": "MessageID of an existing filter table entry" },
+            { "name": "filter_parms_index", "type": "u16", "max": 3,
+              "help": "FilterParmsIndex" },
+            { "name": "n", "type": "u16", "help": "Algorithm_N: pass this many" },
+            { "name": "x", "type": "u16", "help": "Algorithm_X: out of this many" },
+            { "name": "o", "type": "u16", "help": "Algorithm_O: at this offset" },
+            { "type": "padding", "size": 2 }
+          ]
+        },
+        {
+          "name": "set_dest_type",
+          "cc": 6,
+          "help": "Set the filename type (count or time) of a destination file table entry",
+          "fields": [
+            { "name": "file_table_index", "type": "u16", "max": 15,
+              "help": "FileTableIndex" },
+            { "name": "filename_type", "type": "u16", "enum": { "count": 1, "time": 2 },
+              "help": "FileNameType" }
+          ]
+        },
+        {
+          "name": "set_dest_state",
+          "cc": 7,
+          "help": "Enable or disable a destination file table entry",
+          "fields": [
+            { "name": "file_table_index", "type": "u16", "max": 15,
+              "help": "FileTableIndex" },
+            { "name": "state", "type": "u16", "enum": { "disable": 0, "enable": 1 },
+              "help": "EnableState" }
+          ]
+        },
+        {
+          "name": "set_dest_path",
+          "cc": 8,
+          "help": "Set the pathname of a destination file table entry",
+          "fields": [
+            { "name": "file_table_index", "type": "u16", "max": 15,
+              "help": "FileTableIndex" },
+            { "type": "padding", "size": 2 },
+            { "name": "pathname", "type": "string", "size": 64,
+              "help": "Pathname (required)" }
+          ]
+        },
+        {
+          "name": "set_dest_base",
+          "cc": 9,
+          "help": "Set the base filename of a destination file table entry",
+          "fields": [
+            { "name": "file_table_index", "type": "u16", "max": 15,
+              "help": "FileTableIndex" },
+            { "type": "padding", "size": 2 },
+            { "name": "basename", "type": "string", "size": 64,
+              "help": "Basename (optional in DS)" }
+          ]
+        },
+        {
+          "name": "set_dest_ext",
+          "cc": 10,
+          "help": "Set the filename extension of a destination file table entry",
+          "fields": [
+            { "name": "file_table_index", "type": "u16", "max": 15,
+              "help": "FileTableIndex" },
+            { "type": "padding", "size": 2 },
+            { "name": "extension", "type": "string", "size": 8,
+              "help": "Extension (optional in DS)" }
+          ]
+        },
+        {
+          "name": "set_dest_size",
+          "cc": 11,
+          "help": "Set the max file size (bytes) of a destination file table entry",
+          "fields": [
+            { "name": "file_table_index", "type": "u16", "max": 15,
+              "help": "FileTableIndex" },
+            { "type": "padding", "size": 2 },
+            { "name": "max_file_size", "type": "u32", "min": 1024,
+              "help": "MaxFileSize in bytes" }
+          ]
+        },
+        {
+          "name": "set_dest_age",
+          "cc": 12,
+          "help": "Set the max file age (seconds) of a destination file table entry",
+          "fields": [
+            { "name": "file_table_index", "type": "u16", "max": 15,
+              "help": "FileTableIndex" },
+            { "type": "padding", "size": 2 },
+            { "name": "max_file_age", "type": "u32", "min": 60,
+              "help": "MaxFileAge in seconds" }
+          ]
+        },
+        {
+          "name": "set_dest_count",
+          "cc": 13,
+          "help": "Set the filename sequence count of a destination file table entry",
+          "fields": [
+            { "name": "file_table_index", "type": "u16", "max": 15,
+              "help": "FileTableIndex" },
+            { "type": "padding", "size": 2 },
+            { "name": "sequence_count", "type": "u32", "max": 99999999,
+              "help": "SequenceCount" }
+          ]
+        },
+        {
+          "name": "close_file",
+          "cc": 14,
+          "help": "Close a destination file",
+          "fields": [
+            { "name": "file_table_index", "type": "u16", "max": 15,
+              "help": "FileTableIndex" },
+            { "type": "padding", "size": 2 }
+          ]
+        },
+        {
+          "name": "get_file_info",
+          "cc": 15,
+          "help": "Send the DS file info telemetry packet"
+        },
+        {
+          "name": "add_mid",
+          "cc": 16,
+          "help": "Add a message ID to an unused packet filter table entry",
+          "fields": [
+            { "name": "message_id", "type": "u16", "min": 1,
+              "help": "MessageID to add" },
+            { "type": "padding", "size": 2 }
+          ]
+        },
+        {
+          "name": "close_all",
+          "cc": 17,
+          "help": "Close all open destination files"
+        }
       ]
     },
     {
-      "name": "set_filter_file",
-      "cc": 3,
-      "help": "Set the destination file of a packet filter table entry",
-      "fields": [
-        { "name": "message_id", "type": "u16", "min": 1,
-          "help": "MessageID of an existing filter table entry" },
-        { "name": "filter_parms_index", "type": "u16", "max": 3,
-          "help": "FilterParmsIndex" },
-        { "name": "file_table_index", "type": "u16", "max": 15,
-          "help": "FileTableIndex" },
-        { "type": "padding", "size": 2 }
+      "mid": "0x194C",
+      "commands": [
+        {
+          "name": "hk",
+          "cc": 0,
+          "help": "Request a housekeeping packet (normally sent by the scheduler)"
+        }
       ]
-    },
-    {
-      "name": "set_filter_type",
-      "cc": 4,
-      "help": "Set the filter type (packet count or time) of a packet filter table entry",
-      "fields": [
-        { "name": "message_id", "type": "u16", "min": 1,
-          "help": "MessageID of an existing filter table entry" },
-        { "name": "filter_parms_index", "type": "u16", "max": 3,
-          "help": "FilterParmsIndex" },
-        { "name": "filter_type", "type": "u16", "enum": { "count": 1, "time": 2 },
-          "help": "FilterType" },
-        { "type": "padding", "size": 2 }
-      ]
-    },
-    {
-      "name": "set_filter_parms",
-      "cc": 5,
-      "help": "Set the algorithm parameters of a packet filter table entry (N must not exceed X)",
-      "fields": [
-        { "name": "message_id", "type": "u16", "min": 1,
-          "help": "MessageID of an existing filter table entry" },
-        { "name": "filter_parms_index", "type": "u16", "max": 3,
-          "help": "FilterParmsIndex" },
-        { "name": "n", "type": "u16", "help": "Algorithm_N: pass this many" },
-        { "name": "x", "type": "u16", "help": "Algorithm_X: out of this many" },
-        { "name": "o", "type": "u16", "help": "Algorithm_O: at this offset" },
-        { "type": "padding", "size": 2 }
-      ]
-    },
-    {
-      "name": "set_dest_type",
-      "cc": 6,
-      "help": "Set the filename type (count or time) of a destination file table entry",
-      "fields": [
-        { "name": "file_table_index", "type": "u16", "max": 15,
-          "help": "FileTableIndex" },
-        { "name": "filename_type", "type": "u16", "enum": { "count": 1, "time": 2 },
-          "help": "FileNameType" }
-      ]
-    },
-    {
-      "name": "set_dest_state",
-      "cc": 7,
-      "help": "Enable or disable a destination file table entry",
-      "fields": [
-        { "name": "file_table_index", "type": "u16", "max": 15,
-          "help": "FileTableIndex" },
-        { "name": "state", "type": "u16", "enum": { "disable": 0, "enable": 1 },
-          "help": "EnableState" }
-      ]
-    },
-    {
-      "name": "set_dest_path",
-      "cc": 8,
-      "help": "Set the pathname of a destination file table entry",
-      "fields": [
-        { "name": "file_table_index", "type": "u16", "max": 15,
-          "help": "FileTableIndex" },
-        { "type": "padding", "size": 2 },
-        { "name": "pathname", "type": "string", "size": 64,
-          "help": "Pathname (required)" }
-      ]
-    },
-    {
-      "name": "set_dest_base",
-      "cc": 9,
-      "help": "Set the base filename of a destination file table entry",
-      "fields": [
-        { "name": "file_table_index", "type": "u16", "max": 15,
-          "help": "FileTableIndex" },
-        { "type": "padding", "size": 2 },
-        { "name": "basename", "type": "string", "size": 64,
-          "help": "Basename (optional in DS)" }
-      ]
-    },
-    {
-      "name": "set_dest_ext",
-      "cc": 10,
-      "help": "Set the filename extension of a destination file table entry",
-      "fields": [
-        { "name": "file_table_index", "type": "u16", "max": 15,
-          "help": "FileTableIndex" },
-        { "type": "padding", "size": 2 },
-        { "name": "extension", "type": "string", "size": 8,
-          "help": "Extension (optional in DS)" }
-      ]
-    },
-    {
-      "name": "set_dest_size",
-      "cc": 11,
-      "help": "Set the max file size (bytes) of a destination file table entry",
-      "fields": [
-        { "name": "file_table_index", "type": "u16", "max": 15,
-          "help": "FileTableIndex" },
-        { "type": "padding", "size": 2 },
-        { "name": "max_file_size", "type": "u32", "min": 1024,
-          "help": "MaxFileSize in bytes" }
-      ]
-    },
-    {
-      "name": "set_dest_age",
-      "cc": 12,
-      "help": "Set the max file age (seconds) of a destination file table entry",
-      "fields": [
-        { "name": "file_table_index", "type": "u16", "max": 15,
-          "help": "FileTableIndex" },
-        { "type": "padding", "size": 2 },
-        { "name": "max_file_age", "type": "u32", "min": 60,
-          "help": "MaxFileAge in seconds" }
-      ]
-    },
-    {
-      "name": "set_dest_count",
-      "cc": 13,
-      "help": "Set the filename sequence count of a destination file table entry",
-      "fields": [
-        { "name": "file_table_index", "type": "u16", "max": 15,
-          "help": "FileTableIndex" },
-        { "type": "padding", "size": 2 },
-        { "name": "sequence_count", "type": "u32", "max": 99999999,
-          "help": "SequenceCount" }
-      ]
-    },
-    {
-      "name": "close_file",
-      "cc": 14,
-      "help": "Close a destination file",
-      "fields": [
-        { "name": "file_table_index", "type": "u16", "max": 15,
-          "help": "FileTableIndex" },
-        { "type": "padding", "size": 2 }
-      ]
-    },
-    {
-      "name": "get_file_info",
-      "cc": 15,
-      "help": "Send the DS file info telemetry packet"
-    },
-    {
-      "name": "add_mid",
-      "cc": 16,
-      "help": "Add a message ID to an unused packet filter table entry",
-      "fields": [
-        { "name": "message_id", "type": "u16", "min": 1,
-          "help": "MessageID to add" },
-        { "type": "padding", "size": 2 }
-      ]
-    },
-    {
-      "name": "close_all",
-      "cc": 17,
-      "help": "Close all open destination files"
     }
   ]
 }

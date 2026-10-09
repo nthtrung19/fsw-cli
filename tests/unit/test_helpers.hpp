@@ -20,15 +20,14 @@ inline AppDef dsApp()
 {
     AppDef app;
     app.name = "ds";
-    app.mid = 0x194B;
     app.help = "Data Storage application";
-    app.commands.push_back({"noop", 0, "No-op", {}, false});
-    app.commands.push_back({"reset", 1, "Reset counters", {}, false});
+    app.commands.push_back({"noop", 0, "No-op", {}, false, 0x194B});
+    app.commands.push_back({"reset", 1, "Reset counters", {}, false, 0x194B});
     app.commands.push_back({"set_app_state", 2, "Enable/disable",
                             {FieldDef::enumeration("state", FieldType::U16,
                                                    {{"disable", 0}, {"enable", 1}}),
                              FieldDef::padding(2)},
-                            false});
+                            false, 0x194B});
     return app;
 }
 
