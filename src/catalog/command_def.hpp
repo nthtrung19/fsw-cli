@@ -19,7 +19,8 @@ struct CommandDef {
     std::uint16_t mid = 0;          // command message ID it is sent on (CCSDS stream ID)
 
     std::size_t payloadSize() const;
-    std::size_t argCount() const;   // number of user-visible fields
+    std::size_t argCount() const;           // number of user-visible fields
+    std::size_t requiredArgCount() const;   // user-visible fields without a default
 
     // e.g. {"state: disable|enable"}
     std::vector<std::string> paramDescriptions() const;

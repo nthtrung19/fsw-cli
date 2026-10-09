@@ -43,6 +43,9 @@ void validateField(const FieldDef& f, const std::string& where)
         if (!f.name.empty()) {
             throw ConfigError(at + ": padding fields must not have a name");
         }
+        if (f.defaultValue) {
+            throw ConfigError(at + ": padding fields must not have a default");
+        }
     } else if (!isIdentifier(f.name)) {
         throw ConfigError(at + ": field name must match [a-z][a-z0-9_]*");
     }
@@ -127,10 +130,20 @@ void CommandCatalog::add(AppDef app)
         }
 
         std::set<std::string> fieldNames;
+        bool defaultSeen = false;
         for (const auto& f : cmd.fields) {
             validateField(f, where);
             if (f.userVisible() && !fieldNames.insert(f.name).second) {
                 throw ConfigError(where + ": field '" + f.name + "' defined more than once");
+            }
+            // Arguments are positional, so only trailing ones can be left out.
+            if (f.userVisible()) {
+                if (f.defaultValue) {
+                    defaultSeen = true;
+                } else if (defaultSeen) {
+                    throw ConfigError(where + ": field '" + f.name
+                                      + "' needs a default: it follows a field that has one");
+                }
             }
         }
     }

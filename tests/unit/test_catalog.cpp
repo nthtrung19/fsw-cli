@@ -157,3 +157,26 @@ TEST(Catalog, RejectsInconsistentFields)
     app.commands[0].fields.push_back(s);
     expectRejected(app, "only allowed on integer fields");
 }
+
+TEST(Catalog, DefaultsMustBeTrailingAndNotOnPadding)
+{
+    AppDef app = test::dsApp();
+    app.commands[2].fields[1].defaultValue = "0";   // the padding field
+    expectRejected(app, "padding fields must not have a default");
+
+    app = test::dsApp();
+    FieldDef a = FieldDef::number("a", FieldType::U8);
+    a.defaultValue = "1";
+    app.commands[0].fields = {a, FieldDef::number("b", FieldType::U8)};
+    expectRejected(app, "field 'b' needs a default");
+
+    app = test::dsApp();
+    FieldDef b = FieldDef::number("b", FieldType::U8);
+    b.defaultValue = "2";
+    app.commands[0].fields = {FieldDef::number("a", FieldType::U8), FieldDef::padding(1), b};
+    CommandCatalog catalog;
+    EXPECT_NO_THROW(catalog.add(app));
+    EXPECT_EQ(app.commands[0].argCount(), 2U);
+    EXPECT_EQ(app.commands[0].requiredArgCount(), 1U);
+    EXPECT_EQ(app.commands[0].usage(), "noop <a: u8> <b: u8 = 2>");
+}

@@ -60,6 +60,32 @@ TEST(PayloadEncoder, ArgumentCountIsChecked)
               std::string::npos);
 }
 
+TEST(PayloadEncoder, OmittedTrailingArgumentsUseDefaults)
+{
+    const PayloadEncoder enc(Endian::Little);
+    FieldDef ip = FieldDef::string("ip", 4);
+    ip.defaultValue = "abc";
+    FieldDef port = FieldDef::number("port", FieldType::U16);
+    port.defaultValue = "5011";
+    const CommandDef cmd = commandWith({ip, port});
+
+    EXPECT_EQ(enc.encode(cmd, {}), (Bytes{'a', 'b', 'c', 0, 0x93, 0x13}));
+    EXPECT_EQ(enc.encode(cmd, {"xy"}), (Bytes{'x', 'y', 0, 0, 0x93, 0x13}));
+    EXPECT_EQ(enc.encode(cmd, {"xy", "1"}), (Bytes{'x', 'y', 0, 0, 0x01, 0x00}));
+    EXPECT_EQ(errorOf(enc, cmd, {"a", "1", "2"}),
+              "cmd: expected 0 to 2 arguments, got 3\n  usage: cmd <ip: string[4] = abc> <port: u16 = 5011>");
+}
+
+TEST(PayloadEncoder, CheckDefaultsRejectsInvalidDefault)
+{
+    const PayloadEncoder enc(Endian::Little);
+    FieldDef port = FieldDef::number("port", FieldType::U16);
+    port.defaultValue = "70000";
+    EXPECT_THROW(enc.checkDefaults(commandWith({port})), ParseError);
+    port.defaultValue = "5011";
+    EXPECT_NO_THROW(enc.checkDefaults(commandWith({port})));
+}
+
 TEST(PayloadEncoder, EnumFieldRejectsUnknownNameAndOutOfRange)
 {
     const PayloadEncoder enc(Endian::Little);

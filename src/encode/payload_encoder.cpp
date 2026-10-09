@@ -160,15 +160,37 @@ void encodeFloat(ByteWriter& w, const CommandDef& cmd, const FieldDef& f, const 
     }
 }
 
+void encodeField(ByteWriter& w, const CommandDef& cmd, const FieldDef& f, const std::string& arg)
+{
+    if (isUnsignedInt(f.type)) {
+        encodeUnsigned(w, cmd, f, arg);
+    } else if (isSignedInt(f.type)) {
+        encodeSigned(w, cmd, f, arg);
+    } else if (isFloat(f.type)) {
+        encodeFloat(w, cmd, f, arg);
+    } else {   // String
+        if (arg.size() >= f.size) {
+            invalid(cmd, f, arg, "too long (at most " + std::to_string(f.size - 1) + " characters)");
+        }
+        w.fixedString(arg, f.size);
+    }
+}
+
+std::string argumentsText(std::size_t n) { return n == 1 ? " argument" : " arguments"; }
+
 } // namespace
 
 Bytes PayloadEncoder::encode(const CommandDef& command, const std::vector<std::string>& args) const
 {
-    const std::size_t expected = command.argCount();
-    if (args.size() != expected) {
-        throw ParseError(command.name + ": expected " + std::to_string(expected) + " argument"
-                         + (expected == 1 ? "" : "s") + ", got " + std::to_string(args.size())
-                         + "\n  usage: " + command.usage());
+    const std::size_t required = command.requiredArgCount();
+    const std::size_t total = command.argCount();
+    if (args.size() < required || args.size() > total) {
+        const std::string expected = required == total
+                                         ? std::to_string(total) + argumentsText(total)
+                                         : std::to_string(required) + " to " + std::to_string(total)
+                                               + argumentsText(total);
+        throw ParseError(command.name + ": expected " + expected + ", got "
+                         + std::to_string(args.size()) + "\n  usage: " + command.usage());
     }
 
     ByteWriter w(endian_);
@@ -178,23 +200,23 @@ Bytes PayloadEncoder::encode(const CommandDef& command, const std::vector<std::s
             w.zeros(field.size);
             continue;
         }
-        const std::string& arg = args[next++];
-
-        if (isUnsignedInt(field.type)) {
-            encodeUnsigned(w, command, field, arg);
-        } else if (isSignedInt(field.type)) {
-            encodeSigned(w, command, field, arg);
-        } else if (isFloat(field.type)) {
-            encodeFloat(w, command, field, arg);
-        } else {   // String
-            if (arg.size() >= field.size) {
-                invalid(command, field, arg,
-                        "too long (at most " + std::to_string(field.size - 1) + " characters)");
-            }
-            w.fixedString(arg, field.size);
-        }
+        // Past the given arguments only defaulted fields remain (checked above
+        // and by the catalog, which requires defaults to be trailing).
+        const std::string& arg = next < args.size() ? args[next] : *field.defaultValue;
+        ++next;
+        encodeField(w, command, field, arg);
     }
     return w.take();
+}
+
+void PayloadEncoder::checkDefaults(const CommandDef& command) const
+{
+    for (const auto& field : command.fields) {
+        if (field.defaultValue) {
+            ByteWriter scratch(endian_);
+            encodeField(scratch, command, field, *field.defaultValue);
+        }
+    }
 }
 
 } // namespace mcs

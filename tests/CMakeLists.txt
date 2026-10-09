@@ -23,6 +23,7 @@ add_executable(mcs_unit_tests
     unit/test_hex.cpp
     unit/test_options.cpp
     unit/test_catalog.cpp
+    unit/test_arg_completion.cpp
     unit/test_payload_encoder.cpp
     unit/test_ccsds_v1.cpp
     unit/test_registry_pipeline.cpp

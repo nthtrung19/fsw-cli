@@ -83,6 +83,39 @@ TEST(ShippedConfig, DsCatalogMatchesDsMsgH)
     }
 }
 
+TEST(ShippedConfig, CiCatalogMatchesCiHeaders)
+{
+    const CommandCatalog catalog = loadCatalog({kSourceDir + "/config/catalog/ci.json"});
+    const AppDef* ci = catalog.findApp("ci");
+    ASSERT_NE(ci, nullptr);
+    EXPECT_EQ(ci->mids(), (std::vector<std::uint16_t>{0x1934, 0x1935}));   // ci_msgids.h
+    ASSERT_EQ(ci->commands.size(), 4U);
+
+    struct Expected {
+        const char* name;
+        std::uint16_t mid;
+        int cc;
+        std::size_t payload;   // sizeof(command struct) - 8
+    };
+    const Expected expected[] = {
+        {"noop", 0x1934, 0, 0},        // CI_NoArgCmd_t
+        {"reset", 0x1934, 1, 0},       // CI_NoArgCmd_t
+        {"enable_to", 0x1934, 2, 18},  // CI_EnableTOCmd_t: cDestIp[16] + usDestPort
+        {"hk", 0x1935, 0, 0},          // CI_SEND_HK_MID
+    };
+    for (const auto& e : expected) {
+        const CommandDef* def = catalog.findCommand("ci", e.name);
+        ASSERT_NE(def, nullptr) << e.name;
+        EXPECT_EQ(def->mid, e.mid) << e.name;
+        EXPECT_EQ(def->cc, e.cc) << e.name;
+        EXPECT_EQ(def->payloadSize(), e.payload) << e.name;
+    }
+    const CommandDef* enable = catalog.findCommand("ci", "enable_to");
+    EXPECT_EQ(enable->requiredArgCount(), 0U);
+    EXPECT_EQ(enable->usage(),
+              "enable_to <dest_ip: string[16] = 127.0.0.1> <dest_port: u16 = 5011>");
+}
+
 TEST(ShippedConfig, TargetsFileLoadsAndBuilds)
 {
     const TargetsFile targets = loadTargetsFile(kSourceDir + "/config/targets.json");
@@ -93,7 +126,7 @@ TEST(ShippedConfig, TargetsFileLoadsAndBuilds)
     EXPECT_EQ(sil.format.type, "ccsds_v1");
     EXPECT_EQ(sil.transport.type, "udp");
     EXPECT_EQ(sil.transport.options.at("port"), "1234");   // JSON number -> option text
-    ASSERT_EQ(sil.catalogFiles.size(), 1U);
+    ASSERT_EQ(sil.catalogFiles.size(), 2U);
     EXPECT_TRUE(std::filesystem::exists(sil.catalogFiles[0]));
 
     for (const auto& t : targets.targets) {
@@ -188,6 +221,34 @@ TEST(CatalogLoader, MidGroupErrors)
     EXPECT_TRUE(contains(configErrorOf([&] {
         loadAppFile(dir.write("g.json", R"({ "app": "x", "mids": [ { "mid": 1, "commands": [ { "name": "a" } ] } ] })"));
     }), "g.json: mids[0] commands[0] 'a': missing required key 'cc'"));
+}
+
+TEST(CatalogLoader, DefaultsAreKeptAsArgumentText)
+{
+    test::TempDir dir;
+    const AppDef app = loadAppFile(dir.write("x.json", R"({
+      "app": "x", "mid": 6475,
+      "commands": [ { "name": "go", "cc": 1, "fields": [
+        { "name": "ip", "type": "string", "size": 16, "default": "127.0.0.1" },
+        { "name": "port", "type": "u16", "default": 5011 } ] } ] })"));
+    EXPECT_EQ(app.commands[0].fields[0].defaultValue, "127.0.0.1");
+    EXPECT_EQ(app.commands[0].fields[1].defaultValue, "5011");
+
+    EXPECT_TRUE(contains(configErrorOf([&] {
+        loadAppFile(dir.write("b.json", R"({ "app": "x", "mid": 1, "commands": [
+            { "name": "go", "cc": 1, "fields": [ { "name": "p", "type": "u16", "default": true } ] } ] })"));
+    }), "'default' must be a string or a number"));
+}
+
+TEST(CatalogLoader, InvalidDefaultIsAConfigErrorNamingTheFile)
+{
+    test::TempDir dir;
+    const auto file = dir.write("bad.json", R"({ "app": "x", "mid": "0x1934", "commands": [
+        { "name": "go", "cc": 1, "fields": [ { "name": "port", "type": "u16", "default": 70000 } ] } ] })");
+    const std::string error = configErrorOf([&] { loadCatalog({file}); });
+    EXPECT_TRUE(contains(error, "bad.json")) << error;
+    EXPECT_TRUE(contains(error, "app 'x' default: go: invalid value '70000'")) << error;
+    EXPECT_TRUE(contains(error, "out of range for u16")) << error;
 }
 
 TEST(CatalogLoader, SyntaxErrorsIncludeLine)

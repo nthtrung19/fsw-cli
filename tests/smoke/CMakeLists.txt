@@ -46,6 +46,18 @@ mcs_smoke(NAME dryrun_target_profile EXIT 0
     ARGS ${BASE} --target sil-dry -c "fsw ds set_app_state disable"
     EXPECT "19 4B C0 00 00 05 6A 02 00 00 00 00")
 
+mcs_smoke(NAME dryrun_ci_noop EXIT 0
+    ARGS ${BASE} -n -c "fsw ci noop"
+    EXPECT "\\[dry-run\\] fsw ci noop  \\(8 bytes, apid=0x134 seq=0\\)\n  19 34 C0 00 00 01 13 00")
+
+mcs_smoke(NAME ci_enable_to_defaults EXIT 0
+    ARGS ${BASE} -n -c "fsw ci enable_to"
+    EXPECT "\\(26 bytes, apid=0x134 seq=0\\)\n  19 34 C0 00 00 13 A8 02 31 32 37 2E 30 2E 30 2E 31 00 00 00 00 00 00 00 93 13")
+
+mcs_smoke(NAME dryrun_ci_hk EXIT 0
+    ARGS ${BASE} -n -c "fsw ci hk"
+    EXPECT "\\[dry-run\\] fsw ci hk  \\(8 bytes, apid=0x135 seq=0\\)\n  19 35 C0 00 00 01 12 00")
+
 mcs_smoke(NAME dryrun_ds_hk EXIT 0
     ARGS ${BASE} -n -c "fsw ds hk"
     EXPECT "\\[dry-run\\] fsw ds hk  \\(8 bytes, apid=0x14C seq=0\\)\n  19 4C C0 00 00 01 6B 00")
@@ -62,6 +74,10 @@ mcs_smoke(NAME missing_argument EXIT 1
 mcs_smoke(NAME invalid_enum EXIT 1
     ARGS ${BASE} -n -c "fsw ds set_app_state maybe"
     EXPECT "invalid value 'maybe'" REJECT "dry-run")
+
+mcs_smoke(NAME ci_ip_too_long EXIT 1
+    ARGS ${BASE} -n -c "fsw ci enable_to 1234567890123456 5011"
+    EXPECT "too long" REJECT "dry-run")
 
 mcs_smoke(NAME unknown_command EXIT 1
     ARGS ${BASE} -n -c "fsw ds nope"

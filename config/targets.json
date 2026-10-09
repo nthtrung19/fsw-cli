@@ -20,7 +20,7 @@
     "sil": {
       "description": "cFS on this PC, ci_lab on UDP 1234",
       "endian": "little",
-      "catalog": ["catalog/ds.json"],
+      "catalog": ["catalog/ds.json", "catalog/ci.json"],
       "format":    { "type": "ccsds_v1" },
       "layers":    [],
       "transport": { "type": "udp", "host": "127.0.0.1", "port": 1234 }
@@ -29,7 +29,7 @@
     "sil-dry": {
       "description": "Same as sil, but nothing is sent",
       "endian": "little",
-      "catalog": ["catalog/ds.json"],
+      "catalog": ["catalog/ds.json", "catalog/ci.json"],
       "format":    { "type": "ccsds_v1" },
       "transport": { "type": "dryrun" }
     }
@@ -38,7 +38,7 @@
     // "lab-csp": {
     //   "description": "Lab board, CSP over UDP",
     //   "endian": "little",
-    //   "catalog": ["catalog/ds.json"],
+    //   "catalog": ["catalog/ds.json", "catalog/ci.json"],
     //   "format":    { "type": "ccsds_v1" },
     //   "layers":    [ { "type": "csp", "src": 10, "dst": 1, "dport": 10, "crc32": true } ],
     //   "transport": { "type": "udp", "host": "192.168.1.50", "port": 9600 }

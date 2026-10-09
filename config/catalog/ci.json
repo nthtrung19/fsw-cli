@@ -1,0 +1,62 @@
+// CI (Command Ingest) ground commands. Source: ci_msgids.h, ci_msgdefs.h, ci_app.c.
+//
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   enum     { "name": value, ... }  names accepted as arguments, shown in help
+//   min/max  inclusive range for integer fields
+//   default  value used when the argument is omitted (only trailing arguments may be omitted)
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 8-byte command header.
+// Commands are grouped by the MID they are sent on ("mids").
+//
+//   ci_msgids.h  CI_APP_CMD_MID 0x1934   CI_ProcessNewAppCmds, dispatched by command code
+//                CI_SEND_HK_MID 0x1935   CI_ReportHousekeeping (length and code not checked)
+//
+// enable_to: CI_EnableTOCmd_t has the layout of TO_EnableOutputCmd_t
+// (char cDestIp[TO_MAX_IP_STRING_SIZE = 16]; uint16 usDestPort) with ENABLE_CRYPTO_LIB
+// off. With crypto on, append { "name": "key_id", "type": "u16" } (and a default for it).
+//
+// Not listed: CI_HANDSHAKE_SIGNAL_CC 3, CI_RESET_INCOMING_MESS_COUNTER_CC 5,
+// CI_DELETE_HANDSHAKE_WDG_CC 55 (handshake/crypto commands).
+{
+  "app": "ci",
+  "help": "Command Ingest application",
+  "mids": [
+    {
+      "mid": "0x1934",
+      "commands": [
+        {
+          "name": "noop",
+          "cc": 0,
+          "help": "No-op: increments the command counter and reports the CI version"
+        },
+        {
+          "name": "reset",
+          "cc": 1,
+          "help": "Reset the command and command error counters"
+        },
+        {
+          "name": "enable_to",
+          "cc": 2,
+          "help": "Enable telemetry output (forwarded to TO) to a destination IP and port",
+          "fields": [
+            { "name": "dest_ip", "type": "string", "size": 16, "default": "127.0.0.1",
+              "help": "cDestIp" },
+            { "name": "dest_port", "type": "u16", "default": 5011,
+              "help": "usDestPort" }
+          ]
+        }
+      ]
+    },
+    {
+      "mid": "0x1935",
+      "commands": [
+        {
+          "name": "hk",
+          "cc": 0,
+          "help": "Request a housekeeping packet (normally sent by the scheduler)"
+        }
+      ]
+    }
+  ]
+}

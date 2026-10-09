@@ -64,6 +64,14 @@ struct DS_DestSizeCmd_t {
 };
 static_assert(sizeof(DS_DestSizeCmd_t) == 16, "unexpected padding");
 
+// CI_EnableTOCmd_t: layout of TO_EnableOutputCmd_t, ENABLE_CRYPTO_LIB off.
+struct CI_EnableTOCmd_t {
+    uint8 CmdHeader[8];
+    char cDestIp[16];   // TO_MAX_IP_STRING_SIZE
+    uint16 usDestPort;
+};
+static_assert(sizeof(CI_EnableTOCmd_t) == 26, "unexpected padding");
+
 // cFE's macros (unmodified NASA code) do implicit narrowing; silence those
 // warnings for the code that expands them, and only there.
 #pragma GCC diagnostic push
@@ -103,13 +111,20 @@ protected:
         if (first != 1) {
             GTEST_SKIP() << "oracle needs a little-endian host (the target is little-endian)";
         }
-        catalog_ = loadCatalog({std::string(mcs_SOURCE_DIR) + "/config/catalog/ds.json"});
+        catalog_ = loadCatalog({std::string(mcs_SOURCE_DIR) + "/config/catalog/ds.json",
+                                std::string(mcs_SOURCE_DIR) + "/config/catalog/ci.json"});
     }
 
     // Full mcs path: catalog -> encoder -> CCSDS v1 format.
     Bytes ours(const std::string& cmd, const std::vector<std::string>& args, int repeat = 1)
     {
-        const CommandDef* def = catalog_.findCommand("ds", cmd);
+        return oursIn("ds", cmd, args, repeat);
+    }
+
+    Bytes oursIn(const std::string& app, const std::string& cmd,
+                 const std::vector<std::string>& args, int repeat = 1)
+    {
+        const CommandDef* def = catalog_.findCommand(app, cmd);
         EXPECT_NE(def, nullptr);
         BuiltPacket built;
         for (int i = 0; i < repeat; ++i) {
@@ -216,6 +231,36 @@ TEST_F(Oracle, SetDestSizeMatchesCfe)
     cmd.FileTableIndex = 7;
     cmd.MaxFileSize = 0x00123456;
     EXPECT_EQ(ours("set_dest_size", {"7", "0x123456"}), cfeBuild(0x194B, 11, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, CiNoopMatchesCfe)
+{
+    std::uint8_t header[8] = {};
+    EXPECT_EQ(oursIn("ci", "noop", {}), cfeBuild(0x1934, 0, 0, header, sizeof header));
+}
+
+TEST_F(Oracle, CiEnableToMatchesCfe)
+{
+    CI_EnableTOCmd_t cmd{};
+    std::strcpy(cmd.cDestIp, "10.0.0.5");
+    cmd.usDestPort = 6000;
+    EXPECT_EQ(oursIn("ci", "enable_to", {"10.0.0.5", "6000"}),
+              cfeBuild(0x1934, 2, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, CiEnableToDefaultsMatchCfe)
+{
+    CI_EnableTOCmd_t cmd{};
+    std::strcpy(cmd.cDestIp, "127.0.0.1");
+    cmd.usDestPort = 5011;
+    EXPECT_EQ(oursIn("ci", "enable_to", {}), cfeBuild(0x1934, 2, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, CiHkMatchesCfe)
+{
+    // CI_SEND_HK_MID: header only.
+    std::uint8_t header[8] = {};
+    EXPECT_EQ(oursIn("ci", "hk", {}), cfeBuild(0x1935, 0, 0, header, sizeof header));
 }
 
 } // namespace

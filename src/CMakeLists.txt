@@ -16,6 +16,7 @@ add_library(mcs_core STATIC
     catalog/field_def.cpp
     catalog/command_def.cpp
     catalog/catalog.cpp
+    catalog/arg_completion.cpp
 
     encode/payload_encoder.cpp
 

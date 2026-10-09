@@ -32,6 +32,10 @@ std::unique_ptr<cli::Menu> buildFswMenu(CommandService& service)
                 [&service, appName = app.name, cmdName = cmd.name](
                     std::ostream& out, const std::vector<std::string>& args) {
                     service.execute(appName, cmdName, args, out);
+                },
+                // The catalog outlives the menu, so the definition can be held by pointer.
+                [def = &cmd](std::size_t index, const std::string& partial) {
+                    return completeArgument(*def, index, partial);
                 }));
         }
         fsw->Insert(std::move(appMenu));
@@ -69,6 +73,22 @@ void insertSessionCommands(cli::Menu& root, CommandService& service, std::size_t
                 return;
             }
             out << "verbose is " << (service.verbose() ? "on" : "off") << '\n';
+        },
+        [](std::size_t index, const std::string& partial) {
+            ArgCompletion c;
+            if (index > 0) {
+                c.hint = "(no more arguments: press Enter)";
+                return c;
+            }
+            for (const char* v : {"on", "off"}) {
+                if (std::string(v).rfind(toLower(partial), 0) == 0) {
+                    c.values.emplace_back(v, std::string("hexdump ") + v);
+                }
+            }
+            if (c.values.empty()) {
+                c.hint = "<on|off>   or nothing to show the current setting";
+            }
+            return c;
         }));
 
     root.Insert(std::make_unique<FswCommand>(

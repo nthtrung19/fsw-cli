@@ -4,6 +4,7 @@
 //   size     required for string and padding (bytes on the wire)
 //   enum     { "name": value, ... }  names accepted as arguments, shown in help
 //   min/max  inclusive range for integer fields
+//   default  value used when the argument is omitted (only trailing arguments may be omitted)
 // Numbers may be written as JSON integers or as "0x.." strings.
 // Fields are listed in payload order, after the 8-byte command header.
 //

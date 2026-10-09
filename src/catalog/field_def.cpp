@@ -74,17 +74,20 @@ std::string FieldDef::describe() const
         for (const auto& e : enumValues) {
             names.push_back(e.name);
         }
-        return out + join(names, "|");
+        out += join(names, "|");
+    } else if (type == FieldType::String) {
+        out += "string[" + std::to_string(size) + "]";
+    } else {
+        out += toString(type);
+        if (min || max) {
+            out += ' ';
+            out += min ? std::to_string(*min) : "";
+            out += "..";
+            out += max ? std::to_string(*max) : "";
+        }
     }
-    if (type == FieldType::String) {
-        return out + "string[" + std::to_string(size) + "]";
-    }
-    out += toString(type);
-    if (min || max) {
-        out += ' ';
-        out += min ? std::to_string(*min) : "";
-        out += "..";
-        out += max ? std::to_string(*max) : "";
+    if (defaultValue) {
+        out += " = " + *defaultValue;
     }
     return out;
 }

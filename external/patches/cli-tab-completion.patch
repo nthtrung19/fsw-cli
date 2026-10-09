@@ -1,8 +1,55 @@
 diff --git a/include/cli/cli.h b/include/cli/cli.h
-index 437e838..247bc93 100644
+index 437e838..e703549 100644
 --- a/include/cli/cli.h
 +++ b/include/cli/cli.h
-@@ -619,7 +619,9 @@ namespace cli
+@@ -246,6 +246,13 @@ namespace cli
+ 
+     // ********************************************************************
+ 
++    // mcs patch: separates a completion line from the description of the
++    // command it completes (see Command::GetCompletionRecursive).
++    constexpr char CompletionHelpSeparator = '\x1f';
++    // mcs patch: "<line><CompletionHintMarker><text>" is a hint (e.g. what an
++    // argument expects): listed, but never inserted into the command line.
++    constexpr char CompletionHintMarker = '\x1e';
++
+     class Command
+     {
+     public:
+@@ -262,14 +269,22 @@ namespace cli
+         virtual void Disable() { enabled = false; }
+         virtual bool Exec(const std::vector<std::string>& cmdLine, CliSession& session) = 0;
+         virtual void Help(std::ostream& out) const = 0;
++        // mcs patch: one-line description shown next to the command in the
++        // tab-completion list.
++        virtual std::string Description() const { return {}; }
+         // Returns the collection of completions relatives to this command.
+         // For simple commands, provides a base implementation that use the name of the command
+         // for aggregate commands (i.e., Menu), the function is redefined to give the menu command
+         // and the subcommand recursively
++        // mcs patch: each completion may end with CompletionHelpSeparator + description.
+         virtual std::vector<std::string> GetCompletionRecursive(const std::string& line) const
+         {
+             if (!enabled) return {};
+-            if (name.rfind(line, 0) == 0) return {name}; // name starts_with line
++            if (name.rfind(line, 0) == 0) // name starts_with line
++            {
++                const auto desc = Description();
++                return {desc.empty() ? name : name + CompletionHelpSeparator + desc};
++            }
+             return {};
+         }
+     protected:
+@@ -462,6 +477,8 @@ namespace cli
+             cmds(std::make_shared<Cmds>())
+         {}
+ 
++        std::string Description() const override { return description; } // mcs patch
++
+         template <typename R, typename ... Args>
+         CmdHandler Insert(const std::string& cmdName, R (*f)(std::ostream&, Args...), const std::string& help, const std::vector<std::string>& parDesc={});
+         
+@@ -619,7 +636,9 @@ namespace cli
                  for (const auto& c: cs)
                      result.push_back(prefix + ' ' + c); // concat submenu with command
              }
@@ -13,18 +60,92 @@ index 437e838..247bc93 100644
              {
                  auto cs = parent->GetCompletionWithParent(rest);
                  for (const auto& c: cs)
+@@ -774,6 +793,8 @@ namespace cli
+         {
+         }
+ 
++        std::string Description() const override { return description; } // mcs patch
++
+         bool Exec(const std::vector< std::string >& cmdLine, CliSession& session) override
+         {
+             if (!IsEnabled()) return false;
+@@ -832,6 +853,8 @@ namespace cli
+         {
+         }
+ 
++        std::string Description() const override { return description; } // mcs patch
++
+         bool Exec(const std::vector< std::string >& cmdLine, CliSession& session) override
+         {
+             if (!IsEnabled()) return false;
 diff --git a/include/cli/detail/commandprocessor.h b/include/cli/detail/commandprocessor.h
-index ea8f6a0..482787b 100644
+index ea8f6a0..e3f8bad 100644
 --- a/include/cli/detail/commandprocessor.h
 +++ b/include/cli/detail/commandprocessor.h
-@@ -141,7 +141,9 @@ private:
+@@ -123,10 +123,38 @@ private:
+             case Symbol::tab:
+             {
+                 auto line = terminal.GetLine();
+-                auto completions = session.GetCompletions(line);
++                // mcs patch: each completion is "<line>[<CompletionHelpSeparator><description>]";
++                // complete with the lines, list the last words with their descriptions.
++                // "<line><CompletionHintMarker><text>" is a hint: shown only when there
++                // is nothing to complete, and never inserted into the line.
++                std::vector<std::string> completions;
++                std::vector<std::string> descriptions;
++                std::vector<std::string> hints;
++                for (const auto& c : session.GetCompletions(line))
++                {
++                    const auto hint = c.find(CompletionHintMarker);
++                    if (hint != std::string::npos)
++                    {
++                        hints.push_back(c.substr(hint + 1));
++                        continue;
++                    }
++                    const auto sep = c.find(CompletionHelpSeparator);
++                    completions.push_back(c.substr(0, sep));
++                    descriptions.push_back(sep == std::string::npos ? std::string() : c.substr(sep + 1));
++                }
+ 
+                 if (completions.empty())
++                {
++                    if (hints.empty())
++                        break;
++                    session.OutStream() << '\n';
++                    for (const auto& h : hints)
++                        session.OutStream() << "  " << h << '\n';
++                    session.Prompt();
++                    terminal.ResetCursor();
++                    terminal.SetLine( line );
+                     break;
++                }
+                 if (completions.size() == 1)
+                 {
+                     terminal.SetLine(completions[0]+' ');
+@@ -140,9 +168,24 @@ private:
+                     break;
                  }
                  session.OutStream() << '\n';
++                // mcs patch: one per line, only the word being completed ("noop",
++                // not "fsw ds noop"), followed by its description in an aligned column.
++                std::vector<std::string> words;
++                std::size_t width = 0;
++                for (const auto& c : completions)
++                {
++                    words.push_back(c.substr(c.find_last_of(' ') + 1));
++                    width = std::max(width, words.back().size());
++                }
                  std::string items;
 -                std::for_each( completions.begin(), completions.end(), [&items](auto& cmd){ items += '\t' + cmd; } );
-+                // mcs patch: list only the word being completed ("noop", not
-+                // "fsw ds noop"); completions stay full lines for SetLine above.
-+                std::for_each( completions.begin(), completions.end(), [&items](auto& cmd){ items += '\t' + cmd.substr(cmd.find_last_of(' ') + 1); } );
-                 session.OutStream() << items << '\n';
+-                session.OutStream() << items << '\n';
++                for (std::size_t i = 0; i < words.size(); ++i)
++                {
++                    items += "  " + words[i];
++                    if (!descriptions[i].empty())
++                        items += std::string(width - words[i].size() + 3, ' ') + descriptions[i];
++                    items += '\n';
++                }
++                session.OutStream() << items;
                  session.Prompt();
                  terminal.ResetCursor();
+                 terminal.SetLine( line );

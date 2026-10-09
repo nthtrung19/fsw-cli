@@ -33,7 +33,7 @@ absolute paths).
 Third-party code lives in `external/` as git submodules pinned to release tags,
 so the build needs no network once the repository is checked out. The only local
 change is `external/patches/cli-tab-completion.patch` (tab completion lists just
-the word being completed), which CMake applies to `external/cli` when
+the word being completed, one per line, with its description), which CMake applies to `external/cli` when
 configuring:
 
 | Library | Version | Used by |
@@ -55,6 +55,11 @@ configuring:
 ```
 
 Exit codes: `0` ok, `1` a command failed, `2` bad options, `3` configuration error.
+
+In an interactive session TAB completes command names (listed with their
+descriptions) and enum arguments (`fsw ds set_app_state <TAB>` → `disable`,
+`enable`); for other arguments it shows what is expected, e.g.
+`<file_table_index: u16 ..15>   FileTableIndex  (argument 1 of 2)`.
 
 ### Commands in a session
 
@@ -89,7 +94,9 @@ single MID may write `"mid"` + `"commands"` instead). `fsw ds noop` and
 command names per app, and a MID belongs to one app. Supported field
 types: `u8..u64`, `i8..i64`, `f32`, `f64`, `string` (with `size`), `padding`
 (with `size`); integer fields may have `enum`, `min`, `max`. Enum fields accept
-only their listed values, by name or number.
+only their listed values, by name or number. Any non-padding field may have a
+`default` (string or number), used when its argument is omitted; only trailing
+arguments can be omitted, and defaults are validated at start-up.
 
 ## Extending
 

@@ -2,6 +2,7 @@
 
 #include "config/json_util.hpp"
 #include "core/errors.hpp"
+#include "encode/payload_encoder.hpp"
 
 #include <limits>
 
@@ -13,7 +14,7 @@ namespace {
 
 FieldDef parseField(const Json& j, const std::string& ctx)
 {
-    jsonutil::checkKeys(j, {"name", "type", "size", "enum", "min", "max", "help"}, ctx);
+    jsonutil::checkKeys(j, {"name", "type", "size", "enum", "min", "max", "help", "default"}, ctx);
 
     const std::string typeText = jsonutil::getString(j, "type", ctx);
     const auto type = parseFieldType(typeText);
@@ -45,6 +46,17 @@ FieldDef parseField(const Json& j, const std::string& ctx)
     }
     f.min = jsonutil::optInt(j, "min", ctx);
     f.max = jsonutil::optInt(j, "max", ctx);
+
+    // Kept as argument text: it is encoded exactly as if the user had typed it.
+    if (const auto it = j.find("default"); it != j.end()) {
+        if (it->is_string()) {
+            f.defaultValue = it->get<std::string>();
+        } else if (it->is_number()) {
+            f.defaultValue = it->dump();
+        } else {
+            throw ConfigError(ctx + ": 'default' must be a string or a number, got " + it->type_name());
+        }
+    }
     return f;
 }
 
@@ -129,6 +141,17 @@ CommandCatalog loadCatalog(const std::vector<std::filesystem::path>& files)
     for (const auto& file : files) {
         try {
             catalog.add(loadAppFile(file));
+            // Defaults are encoded like typed arguments; reject bad ones at start-up.
+            // Byte order does not affect validation.
+            const PayloadEncoder checker(Endian::Little);
+            const AppDef& app = catalog.apps().back();
+            for (const auto& cmd : app.commands) {
+                try {
+                    checker.checkDefaults(cmd);
+                } catch (const ParseError& e) {
+                    throw ConfigError("app '" + app.name + "' default: " + e.what());
+                }
+            }
         } catch (const ConfigError& e) {
             const std::string msg = e.what();
             // loadAppFile errors already start with the file name; catalog.add ones don't.

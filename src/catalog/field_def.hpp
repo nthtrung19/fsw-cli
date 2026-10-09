@@ -37,11 +37,12 @@ struct FieldDef {
     std::optional<std::int64_t> min;       // integer fields only, inclusive
     std::optional<std::int64_t> max;
     std::string help;
+    std::optional<std::string> defaultValue;   // argument text used when it is omitted
 
     bool userVisible() const { return type != FieldType::Padding; }
 
     // Text shown in help, e.g. "state: disable|enable", "count: u32 1..100",
-    // "path: string[64]".
+    // "path: string[64]", "port: u16 = 5011".
     std::string describe() const;
 
     // Convenience constructors (mostly for code and tests).

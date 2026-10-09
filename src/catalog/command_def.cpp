@@ -24,6 +24,17 @@ std::size_t CommandDef::argCount() const
     return count;
 }
 
+std::size_t CommandDef::requiredArgCount() const
+{
+    std::size_t count = 0;
+    for (const auto& f : fields) {
+        if (f.userVisible() && !f.defaultValue) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 std::vector<std::string> CommandDef::paramDescriptions() const
 {
     std::vector<std::string> out;

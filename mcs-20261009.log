@@ -3,3 +3,5 @@
 2026-10-09T14:56:50.419+07:00 target=sil cmd="fsw ds hk" apid=0x14C seq=0 bytes=8 wire=19 4C C0 00 00 01 6B 00
 2026-10-09T15:02:21.428+07:00 target=sil cmd="raw 19 4B C0 00 00 01 6C 00" raw bytes=8 wire=19 4B C0 00 00 01 6C 00
 2026-10-09T15:02:44.418+07:00 target=sil cmd="raw 19 4B C0 00 00 01 6C 00" raw bytes=8 wire=19 4B C0 00 00 01 6C 00
+2026-10-09T17:24:55.489+07:00 target=sil cmd="fsw ds set_app_state 0" apid=0x14B seq=0 bytes=12 wire=19 4B C0 00 00 05 6A 02 00 00 00 00
+2026-10-09T17:33:29.141+07:00 target=sil cmd="fsw ds set_dest_ext 2 2" apid=0x14B seq=0 bytes=20 wire=19 4B C0 00 00 0D 5A 0A 02 00 00 00 32 00 00 00 00 00 00 00

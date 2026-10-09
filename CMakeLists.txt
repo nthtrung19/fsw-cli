@@ -48,8 +48,7 @@ function(mcs_apply_patch dep patch)
     set(_dir "${CMAKE_CURRENT_SOURCE_DIR}/external/${dep}")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_patch}")
     if(NOT GIT_FOUND)
-        message(WARNING "git not found: ${patch} not applied to external/${dep}")
-        return()
+        message(FATAL_ERROR "git is needed to apply external/patches/${patch} to external/${dep}")
     endif()
     execute_process(COMMAND "${GIT_EXECUTABLE}" apply --reverse --check "${_patch}"
                     WORKING_DIRECTORY "${_dir}" RESULT_VARIABLE _applied
@@ -69,7 +68,8 @@ endfunction()
 find_package(Git QUIET)
 
 # daniele77/cli v2.2.0 (header-only). No Asio: the built-in LoopScheduler is enough.
-# Patched: tab completion lists only the word being completed.
+# Patched: tab completion lists only the word being completed, one per line, with
+# its description (Command::Description(), used by src/ui/fsw_command.hpp).
 mcs_apply_patch(cli cli-tab-completion.patch)
 add_subdirectory(external/cli EXCLUDE_FROM_ALL)
 mcs_as_system_headers(cli)
