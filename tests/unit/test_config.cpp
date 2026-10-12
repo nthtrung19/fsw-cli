@@ -1,6 +1,7 @@
 #include "config/catalog_loader.hpp"
 #include "config/config_paths.hpp"
 #include "config/pipeline_factory.hpp"
+#include "config/tlm_catalog_loader.hpp"
 #include "config/target_config.hpp"
 #include "core/errors.hpp"
 #include "core/hex.hpp"
@@ -132,7 +133,16 @@ TEST(ShippedConfig, TargetsFileLoadsAndBuilds)
     for (const auto& t : targets.targets) {
         EXPECT_NO_THROW(loadCatalog(t.catalogFiles)) << t.name;
         EXPECT_NO_THROW(buildPipeline(t, builtinPlugins(), /*forceDryRun=*/false)) << t.name;
+        if (t.telemetry) {
+            EXPECT_NO_THROW(loadTelemetryCatalog(t.telemetry->catalogFiles)) << t.name;
+        }
     }
+
+    ASSERT_TRUE(sil.telemetry);
+    EXPECT_EQ(sil.telemetry->receiver.type, "udp");
+    EXPECT_EQ(sil.telemetry->receiver.options.at("port"), "5011");
+    ASSERT_FALSE(sil.telemetry->catalogFiles.empty());
+    EXPECT_TRUE(std::filesystem::exists(sil.telemetry->catalogFiles[0]));
 }
 
 // ---- catalog loader errors --------------------------------------------------------------
@@ -329,6 +339,48 @@ TEST(TargetsFile, Errors)
     EXPECT_TRUE(contains(configErrorOf([&] {
         loadTargetsFile(dir.write("5.json", target(R"("format": {"type":"ccsds_v1"}, "transport": {"port": 1})")));
     }), "transport: missing required key 'type'"));
+}
+
+TEST(TargetsFile, TelemetryBlock)
+{
+    test::TempDir dir;
+    const auto target = [](const std::string& tlm) {
+        return R"({ "targets": { "t": { "endian": "little", "catalog": ["x.json"],
+            "format": { "type": "ccsds_v1" }, "transport": { "type": "dryrun" }, "telemetry": )"
+               + tlm + " } } }";
+    };
+
+    const TargetsFile ok = loadTargetsFile(dir.write("conf/ok.json",
+        target(R"({ "receiver": { "type": "udp", "port": 6000 }, "catalog": ["tlm/a.json"] })")));
+    ASSERT_TRUE(ok.targets[0].telemetry);
+    EXPECT_EQ(ok.targets[0].telemetry->receiver.options.at("port"), "6000");
+    EXPECT_EQ(ok.targets[0].telemetry->catalogFiles[0],
+              (std::filesystem::absolute(dir.path()) / "conf/tlm/a.json").lexically_normal());
+
+    const TargetsFile noCatalog = loadTargetsFile(dir.write("nc.json",
+        target(R"({ "receiver": { "type": "udp" } })")));
+    EXPECT_TRUE(noCatalog.targets[0].telemetry->catalogFiles.empty());
+
+    EXPECT_TRUE(contains(configErrorOf([&] {
+        loadTargetsFile(dir.write("e1.json", target(R"({ "catalog": [] })")));
+    }), "telemetry: missing required key 'receiver'"));
+
+    EXPECT_TRUE(contains(configErrorOf([&] {
+        loadTargetsFile(dir.write("e2.json", target(R"({ "receiver": { "type": "udp" }, "catalgo": [] })")));
+    }), "unknown key 'catalgo'"));
+
+    // Bad receiver options are reported when the receiver is built.
+    const TargetsFile badPort = loadTargetsFile(dir.write("e3.json",
+        target(R"({ "receiver": { "type": "udp", "port": 0 } })")));
+    EXPECT_TRUE(contains(configErrorOf([&] {
+        buildReceiver(badPort.targets[0], builtinPlugins(), std::nullopt);
+    }), "target 't': telemetry: "));
+
+    EXPECT_TRUE(contains(configErrorOf([&] {
+        TargetConfig none = ok.targets[0];
+        none.telemetry.reset();
+        buildReceiver(none, builtinPlugins(), std::nullopt);
+    }), "has no telemetry block"));
 }
 
 TEST(TargetsFile, SelectTarget)

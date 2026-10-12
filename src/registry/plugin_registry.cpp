@@ -57,6 +57,11 @@ void PluginRegistry::addTransport(const std::string& type, TransportFactory fact
     addUnique(transports_, "transport", type, std::move(factory));
 }
 
+void PluginRegistry::addReceiver(const std::string& type, ReceiverFactory factory)
+{
+    addUnique(receivers_, "receiver", type, std::move(factory));
+}
+
 std::unique_ptr<IPacketFormat> PluginRegistry::createFormat(const std::string& type, Endian endian,
                                                             const Options& opts) const
 {
@@ -75,8 +80,15 @@ std::unique_ptr<ITransport> PluginRegistry::createTransport(const std::string& t
     return lookup(transports_, "transport", type)(opts);
 }
 
+std::unique_ptr<IReceiver> PluginRegistry::createReceiver(const std::string& type,
+                                                          const Options& opts) const
+{
+    return lookup(receivers_, "receiver", type)(opts);
+}
+
 std::vector<std::string> PluginRegistry::formatNames() const { return keysOf(formats_); }
 std::vector<std::string> PluginRegistry::layerNames() const { return keysOf(layers_); }
 std::vector<std::string> PluginRegistry::transportNames() const { return keysOf(transports_); }
+std::vector<std::string> PluginRegistry::receiverNames() const { return keysOf(receivers_); }
 
 } // namespace mcs

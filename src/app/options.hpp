@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -17,6 +18,8 @@ struct Options {
     std::vector<std::string> commands;       // -c CMD (repeatable, in order)
     std::optional<std::string> script;       // -f FILE
     bool listTargets = false;                // --list-targets
+    bool plain = false;                      // --plain: line-mode session, no telemetry
+    std::optional<std::uint16_t> tlmPort;    // --tlm-port N
     bool showHelp = false;                   // -h / --help
     bool showVersion = false;                // --version
 };

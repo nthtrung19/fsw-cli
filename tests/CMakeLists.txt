@@ -29,7 +29,10 @@ add_executable(mcs_unit_tests
     unit/test_registry_pipeline.cpp
     unit/test_config.cpp
     unit/test_packet_log.cpp
-    unit/test_command_service.cpp)
+    unit/test_command_service.cpp
+    unit/test_telemetry.cpp
+    unit/test_completion.cpp
+    ${PROJECT_SOURCE_DIR}/src/ui/completion.cpp)   # pure logic, no UI library
 target_include_directories(mcs_unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(mcs_unit_tests PRIVATE mcs_core GTest::gtest_main)
 target_compile_definitions(mcs_unit_tests PRIVATE ${mcs_TEST_DEFINES})
@@ -49,6 +52,7 @@ gtest_discover_tests(mcs_oracle_tests TEST_PREFIX "oracle." DISCOVERY_TIMEOUT 30
 
 # ---- integration ------------------------------------------------------------
 add_executable(mcs_integration_tests integration/test_udp_loopback.cpp)
+target_include_directories(mcs_integration_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(mcs_integration_tests PRIVATE mcs_core GTest::gtest_main)
 target_compile_definitions(mcs_integration_tests PRIVATE ${mcs_TEST_DEFINES})
 gtest_discover_tests(mcs_integration_tests TEST_PREFIX "integration." DISCOVERY_TIMEOUT 30)

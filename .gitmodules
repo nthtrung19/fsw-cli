@@ -11,3 +11,7 @@
 	path = external/googletest
 	url = https://github.com/google/googletest
 	shallow = true
+[submodule "external/ftxui"]
+	path = external/ftxui
+	url = https://github.com/ArthurSonzogni/FTXUI
+	shallow = true

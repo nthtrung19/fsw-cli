@@ -1,7 +1,7 @@
 // The one place where plug-in implementations are tied to their names.
 //
 // To add a plug-in:
-//   1. implement IPacketFormat, IFramingLayer or ITransport;
+//   1. implement IPacketFormat, IFramingLayer, ITransport or IReceiver;
 //   2. add one registration below, validating its options;
 //   3. refer to it by name in config/targets.json.
 // Nothing else in the code base changes.
@@ -10,6 +10,7 @@
 
 #include "protocol/ccsds_v1_format.hpp"
 #include "transport/dry_run_transport.hpp"
+#include "transport/udp_receiver.hpp"
 #include "transport/udp_transport.hpp"
 
 #include <memory>
@@ -45,6 +46,17 @@ PluginRegistry builtinPlugins()
     registry.addTransport("dryrun", [](const Options& opts) {
         requireKnownKeys(opts, {}, "transport 'dryrun'");
         return std::make_unique<DryRunTransport>();
+    });
+
+    // ---- telemetry receivers -------------------------------------------------
+    // udp: options  host (default 0.0.0.0 = all interfaces), port (default 5011,
+    //      TO_DEFAULT_DEST_PORT)
+    registry.addReceiver("udp", [](const Options& opts) {
+        const std::string owner = "receiver 'udp'";
+        requireKnownKeys(opts, {"host", "port"}, owner);
+        const auto port = optUInt(opts, "port", 1, 65535, 5011, owner);
+        return std::make_unique<UdpReceiver>(optString(opts, "host", "0.0.0.0"),
+                                             static_cast<std::uint16_t>(port));
     });
 
     return registry;

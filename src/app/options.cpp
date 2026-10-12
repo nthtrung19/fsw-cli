@@ -1,5 +1,7 @@
 #include "app/options.hpp"
 
+#include "core/text.hpp"
+
 #include <stdexcept>
 
 namespace mcs::app {
@@ -43,6 +45,15 @@ Options parseOptions(int argc, char* argv[])
             opts.script = value();
         } else if (arg == "--list-targets") {
             opts.listTargets = true;
+        } else if (arg == "--plain") {
+            opts.plain = true;
+        } else if (arg == "--tlm-port") {
+            const std::string text = value();
+            const auto port = parseUnsigned(text);
+            if (!port || *port < 1 || *port > 65535) {
+                throw std::invalid_argument("--tlm-port needs a port number 1..65535, got '" + text + "'");
+            }
+            opts.tlmPort = static_cast<std::uint16_t>(*port);
         } else {
             throw std::invalid_argument("unknown option: " + arg);
         }
@@ -59,7 +70,8 @@ std::string usageText(const std::string& programName)
     return "Usage: " + programName + " [options]\n"
            "\n"
            "Sends commands to cFS flight software. Without -c or -f, starts an\n"
-           "interactive session.\n"
+           "interactive session: full screen, with live telemetry on top when the\n"
+           "target has a \"telemetry\" block (line mode when not on a terminal).\n"
            "\n"
            "Target selection:\n"
            "      --config FILE     Targets file (default: $mcs_CONFIG, ./config/targets.json,\n"
@@ -72,6 +84,10 @@ std::string usageText(const std::string& programName)
            "  -v, --verbose         Print a hexdump of every sent packet\n"
            "      --log-dir DIR     Directory of the daily packet log (default: .)\n"
            "      --no-log          Do not write the packet log\n"
+           "\n"
+           "Interactive session:\n"
+           "      --plain           Line-mode prompt instead of the full-screen session\n"
+           "      --tlm-port N      Receive telemetry on UDP port N (overrides targets.json)\n"
            "\n"
            "Batch mode:\n"
            "  -c, --command CMD     Run one command and exit (repeatable, run in order)\n"

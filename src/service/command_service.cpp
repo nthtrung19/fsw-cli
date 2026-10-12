@@ -116,6 +116,10 @@ void CommandService::report(const std::string& commandLine, const Pipeline::Resu
         }
     }
 
+    if (tap_) {
+        tap_(result.packet, commandLine);
+    }
+
     if (log_ != nullptr) {
         LogEntry entry{targetName_, commandLine, result.note, result.wire, dryRun};
         if (const auto warning = log_->record(entry)) {

@@ -6,6 +6,7 @@
 #include "pipeline/pipeline.hpp"
 
 #include <cstddef>
+#include <functional>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -33,6 +34,11 @@ public:
     void arm() { armed_ = true; }
     bool armed() const { return armed_; }
 
+    // Called after every successful send with the packet (before layers) and
+    // the command line, e.g. to show sent packets in a packet monitor.
+    using PacketTap = std::function<void(const Bytes& packet, const std::string& commandLine)>;
+    void setPacketTap(PacketTap tap) { tap_ = std::move(tap); }
+
     void setVerbose(bool on) { verbose_ = on; }
     bool verbose() const { return verbose_; }
 
@@ -52,6 +58,7 @@ private:
     Pipeline& pipeline_;
     PacketLog* log_;
     std::string targetName_;
+    PacketTap tap_;
     bool verbose_ = false;
     bool armed_ = false;
     std::size_t failures_ = 0;

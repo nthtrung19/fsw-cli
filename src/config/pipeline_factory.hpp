@@ -4,7 +4,9 @@
 #include "pipeline/pipeline.hpp"
 #include "registry/plugin_registry.hpp"
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 
 namespace mcs {
 
@@ -13,5 +15,11 @@ namespace mcs {
 // Throws ConfigError (prefixed with the target name) or TransportError.
 std::unique_ptr<Pipeline> buildPipeline(const TargetConfig& target, const PluginRegistry& registry,
                                         bool forceDryRun);
+
+// Creates the receiver of the target's telemetry block; `portOverride`
+// replaces its "port" option. Throws ConfigError if the target has no
+// telemetry block or the options are bad, TransportError if it cannot bind.
+std::unique_ptr<IReceiver> buildReceiver(const TargetConfig& target, const PluginRegistry& registry,
+                                         std::optional<std::uint16_t> portOverride);
 
 } // namespace mcs

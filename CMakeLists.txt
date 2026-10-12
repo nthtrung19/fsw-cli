@@ -27,7 +27,7 @@ target_compile_options(mcs_warnings INTERFACE
 # ----------------------------------------------------------------------------
 # Third-party code: git submodules in external/, pinned to release tags.
 # ----------------------------------------------------------------------------
-foreach(_dep cli json googletest)
+foreach(_dep cli json googletest ftxui)
     if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/${_dep}/CMakeLists.txt")
         message(FATAL_ERROR
             "external/${_dep} is missing. Run: git submodule update --init --recursive")
@@ -78,6 +78,17 @@ mcs_as_system_headers(cli)
 set(JSON_BuildTests OFF CACHE INTERNAL "")
 set(JSON_Install    OFF CACHE INTERNAL "")
 add_subdirectory(external/json EXCLUDE_FROM_ALL)
+
+# FTXUI v7.0.3 (C++17). The full-screen interactive session (src/ui/tui_*).
+set(FTXUI_BUILD_DOCS     OFF CACHE INTERNAL "")
+set(FTXUI_BUILD_EXAMPLES OFF CACHE INTERNAL "")
+set(FTXUI_BUILD_TESTS    OFF CACHE INTERNAL "")
+set(FTXUI_ENABLE_INSTALL OFF CACHE INTERNAL "")
+set(FTXUI_QUIET          ON  CACHE INTERNAL "")
+add_subdirectory(external/ftxui EXCLUDE_FROM_ALL)
+foreach(_ftxui screen dom component)
+    mcs_as_system_headers(${_ftxui})
+endforeach()
 
 # ----------------------------------------------------------------------------
 # Our code

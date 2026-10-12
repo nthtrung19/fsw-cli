@@ -6,6 +6,7 @@
 #include "protocol/framing_layer.hpp"
 #include "transport/transport.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <filesystem>
 #include <fstream>
@@ -68,6 +69,42 @@ public:
 private:
     std::uint8_t tag_;
 };
+
+// A cFE 6.7 telemetry packet: CCSDS primary header (big-endian, secondary
+// header flag set), 6-byte big-endian time, then `payload`.
+inline Bytes tlmPacket(std::uint16_t mid, std::uint16_t sequence, const Bytes& payload,
+                       std::uint32_t seconds = 0, std::uint16_t subseconds = 0)
+{
+    const std::size_t length = 12 + payload.size();
+    const auto lengthField = static_cast<std::uint16_t>(length - 7);
+    const auto seqField = static_cast<std::uint16_t>(0xC000 | (sequence & 0x3FFF));
+    Bytes p{static_cast<std::uint8_t>(mid >> 8),        static_cast<std::uint8_t>(mid),
+            static_cast<std::uint8_t>(seqField >> 8),   static_cast<std::uint8_t>(seqField),
+            static_cast<std::uint8_t>(lengthField >> 8), static_cast<std::uint8_t>(lengthField),
+            static_cast<std::uint8_t>(seconds >> 24),   static_cast<std::uint8_t>(seconds >> 16),
+            static_cast<std::uint8_t>(seconds >> 8),    static_cast<std::uint8_t>(seconds),
+            static_cast<std::uint8_t>(subseconds >> 8), static_cast<std::uint8_t>(subseconds)};
+    p.insert(p.end(), payload.begin(), payload.end());
+    return p;
+}
+
+// EVS long event payload (little-endian target), as in config/telemetry/evs.json.
+inline Bytes evsLongEventPayload(const std::string& app, std::uint16_t id, std::uint16_t type,
+                                 const std::string& message)
+{
+    Bytes p(20, 0);
+    std::copy(app.begin(), app.end(), p.begin());
+    p.push_back(static_cast<std::uint8_t>(id));
+    p.push_back(static_cast<std::uint8_t>(id >> 8));
+    p.push_back(static_cast<std::uint8_t>(type));
+    p.push_back(static_cast<std::uint8_t>(type >> 8));
+    p.insert(p.end(), {0x42, 0, 0, 0, 0x01, 0, 0, 0});   // spacecraft 0x42, processor 1
+    Bytes text(122, 0);
+    std::copy(message.begin(), message.end(), text.begin());
+    p.insert(p.end(), text.begin(), text.end());
+    p.insert(p.end(), {0, 0});
+    return p;
+}
 
 // A temporary directory removed at scope exit.
 class TempDir {

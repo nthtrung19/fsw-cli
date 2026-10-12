@@ -27,9 +27,10 @@ and sends it to the configured target.
 | UDP transport, dry-run transport | TCP, serial, KISS |
 | Target profiles from a config file | Switching target at runtime |
 | Command catalog from data files | EDS (XML) catalog import |
-| Interactive, one-shot (`-c`) and script (`-f`) modes | Telemetry receive/decode |
+| Interactive, one-shot (`-c`) and script (`-f`) modes | Telemetry inspector, RX log, replay |
 | Argument validation, help, tab-completion of commands | GUI, remote (telnet) sessions |
 | Packet log (audit trail), hexdump, verbose mode | Command verification via telemetry |
+| Full-screen session: telemetry receive/decode (dashboard, EVS events, packet monitor, statistics) | |
 
 ### 1.2 Requirements
 
@@ -297,8 +298,38 @@ public:
   packet, resolves hostnames, reports send errors clearly.
 - **`DryRunTransport`**: sends nothing; the service prints the hexdump.
 
-A future `receive()` for telemetry will be a separate interface
-(`IReceiver`) so senders stay simple.
+Telemetry is received through a separate interface so senders stay simple:
+
+```cpp
+class IReceiver {
+public:
+    virtual std::optional<Bytes> receive(std::chrono::milliseconds timeout) = 0;   // nullopt: timeout
+    virtual std::string describe() const = 0;                                      // "udp://0.0.0.0:5011"
+};
+```
+
+- **`UdpReceiver`**: binds a UDP port (default 5011, TO's default destination);
+  `poll()` with a timeout so the receiver thread can stop promptly.
+
+### 4.5a `telemetry/` — receive and decode (full-screen session)
+
+```
+UdpReceiver -> TelemetryService (thread) -> TlmStore::ingest -> parse -> decode -> latest values,
+                                                                                    events, monitor, stats
+CommandService --packet tap--> TlmStore::recordTx (sent packets in the monitor)
+UI thread (FTXUI) --snapshot()/monitorTail()--> render
+```
+
+- Two threads: the UI thread runs commands and renders; the receiver thread
+  waits up to 100 ms per packet, fills `TlmStore` (mutex) and asks for a
+  redraw. The 100 ms timeout also drives the animation.
+- `TelemetryCatalog` (`config/telemetry/<app>.json`): one packet definition
+  per MID; fields in payload order after the 12-byte cFE 6.7 telemetry header,
+  in the target byte order. `"event": true` packets go to the event log.
+- Checks per packet: CCSDS length field, sequence continuity per MID (gap),
+  payload size vs. definition, unknown MID. All are counted and shown; none
+  stops decoding.
+- Memory is bounded: latest values per MID, 500 events, 10 000 monitor records.
 
 ### 4.6 `registry/` — names to factories
 
@@ -561,8 +592,8 @@ Example: CSP over UDP later is just a new class plus this target entry:
 
 ## 9. Future work (designed for, not built)
 
-CCSDS v2 format · CSP layer · TCP/serial transports · telemetry receiver and
-HK decoding (command verification) · runtime `target use` · EDS import ·
+CCSDS v2 format · CSP layer · TCP/serial transports · telemetry inspector,
+RX log, replay and command verification · runtime `target use` · EDS import ·
 `critical` confirmation for dangerous commands in other apps · remaining DS
 filter commands once `ds_msg.h` is provided.
 

@@ -27,4 +27,23 @@ std::unique_ptr<Pipeline> buildPipeline(const TargetConfig& target, const Plugin
     }
 }
 
+std::unique_ptr<IReceiver> buildReceiver(const TargetConfig& target, const PluginRegistry& registry,
+                                         std::optional<std::uint16_t> portOverride)
+{
+    if (!target.telemetry) {
+        throw ConfigError("target '" + target.name + "' has no telemetry block");
+    }
+    Options options = target.telemetry->receiver.options;
+    if (portOverride) {
+        options["port"] = std::to_string(*portOverride);
+    }
+    try {
+        return registry.createReceiver(target.telemetry->receiver.type, options);
+    } catch (const ConfigError& e) {
+        throw ConfigError("target '" + target.name + "': telemetry: " + e.what());
+    } catch (const TransportError& e) {
+        throw TransportError("target '" + target.name + "': telemetry: " + e.what());
+    }
+}
+
 } // namespace mcs

@@ -1,0 +1,14 @@
+2026-10-12T10:58:19.469+07:00 target=sil cmd="fsw ci enable_to" apid=0x134 seq=0 bytes=26 wire=19 34 C0 00 00 13 A8 02 31 32 37 2E 30 2E 30 2E 31 00 00 00 00 00 00 00 93 13
+2026-10-12T10:58:49.883+07:00 target=sil cmd="fsw ci enable_to" apid=0x134 seq=1 bytes=26 wire=19 34 C0 01 00 13 A9 02 31 32 37 2E 30 2E 30 2E 31 00 00 00 00 00 00 00 93 13
+2026-10-12T10:59:38.736+07:00 target=sil cmd="fsw ci enable_to" apid=0x134 seq=2 bytes=26 wire=19 34 C0 02 00 13 AA 02 31 32 37 2E 30 2E 30 2E 31 00 00 00 00 00 00 00 93 13
+2026-10-12T11:23:04.154+07:00 target=sil cmd="fsw ci enable_to" apid=0x134 seq=0 bytes=26 wire=19 34 C0 00 00 13 A8 02 31 32 37 2E 30 2E 30 2E 31 00 00 00 00 00 00 00 93 13
+2026-10-12T11:23:26.081+07:00 target=sil cmd="fsw ci enable_to 127.0.0.1" apid=0x134 seq=1 bytes=26 wire=19 34 C0 01 00 13 A9 02 31 32 37 2E 30 2E 30 2E 31 00 00 00 00 00 00 00 93 13
+2026-10-12T11:23:32.435+07:00 target=sil cmd="fsw ci enable_to 127.0.0.1 1234" apid=0x134 seq=2 bytes=26 wire=19 34 C0 02 00 13 FC 02 31 32 37 2E 30 2E 30 2E 31 00 00 00 00 00 00 00 D2 04
+2026-10-12T11:23:35.571+07:00 target=sil cmd="fsw ci enable_to 127.0.0.1 122" apid=0x134 seq=3 bytes=26 wire=19 34 C0 03 00 13 51 02 31 32 37 2E 30 2E 30 2E 31 00 00 00 00 00 00 00 7A 00
+2026-10-12T16:14:00.658+07:00 target=sil cmd="fsw ds set_app_state 1" apid=0x14B seq=0 bytes=12 wire=19 4B C0 00 00 05 6B 02 01 00 00 00
+2026-10-12T16:33:57.623+07:00 target=sil cmd="fsw ci enable_to" apid=0x134 seq=0 bytes=26 wire=19 34 C0 00 00 13 A8 02 31 32 37 2E 30 2E 30 2E 31 00 00 00 00 00 00 00 93 13
+2026-10-12T16:35:16.136+07:00 target=sil cmd="fsw ci enable_to" apid=0x134 seq=0 bytes=26 wire=19 34 C0 00 00 13 A8 02 31 32 37 2E 30 2E 30 2E 31 00 00 00 00 00 00 00 93 13
+2026-10-12T16:36:10.169+07:00 target=sil cmd="fsw ci enable_to" apid=0x134 seq=0 bytes=26 wire=19 34 C0 00 00 13 A8 02 31 32 37 2E 30 2E 30 2E 31 00 00 00 00 00 00 00 93 13
+2026-10-12T16:48:47.537+07:00 target=sil cmd="fsw ci enable_to" apid=0x134 seq=0 bytes=26 wire=19 34 C0 00 00 13 A8 02 31 32 37 2E 30 2E 30 2E 31 00 00 00 00 00 00 00 93 13
+2026-10-12T16:56:56.327+07:00 target=sil cmd="fsw fm hk" apid=0x15D seq=0 bytes=8 wire=19 5D C0 00 00 01 7A 00
+2026-10-12T16:57:30.151+07:00 target=sil cmd="fsw ci enable_to" apid=0x134 seq=0 bytes=26 wire=19 34 C0 00 00 13 A8 02 31 32 37 2E 30 2E 30 2E 31 00 00 00 00 00 00 00 93 13

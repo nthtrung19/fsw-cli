@@ -9,7 +9,11 @@
 #include "core/hex.hpp"
 #include "protocol/ccsds_v1_format.hpp"
 #include "registry/plugin_registry.hpp"
+#include "config/tlm_catalog_loader.hpp"
 #include "service/command_service.hpp"
+#include "telemetry/telemetry_service.hpp"
+#include "transport/udp_receiver.hpp"
+#include "unit/test_helpers.hpp"
 
 #include <gtest/gtest.h>
 
@@ -18,7 +22,9 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <atomic>
 #include <sstream>
+#include <thread>
 
 using namespace mcs;
 
@@ -119,4 +125,59 @@ TEST(UdpLoopback, LocalhostNameResolves)
     // "localhost" may resolve to ::1 first on some systems; only check it does not throw
     // and that sending works without error.
     EXPECT_NO_THROW(transport->send({0x01}));
+}
+
+// ---- telemetry: UdpReceiver + TelemetryService --------------------------------
+
+TEST(UdpTelemetry, ReceiverThreadDecodesEvents)
+{
+    const TelemetryCatalog catalog =
+        loadTelemetryCatalog({std::string(mcs_SOURCE_DIR) + "/config/telemetry/evs.json"});
+    TlmStore store(catalog, Endian::Little);
+
+    auto receiver = std::make_unique<UdpReceiver>("127.0.0.1", 0);
+    const std::uint16_t port = receiver->port();
+    ASSERT_NE(port, 0);
+    EXPECT_EQ(receiver->describe(), "udp://127.0.0.1:" + std::to_string(port));
+
+    TelemetryService service(std::move(receiver), store);
+    std::atomic<int> updates{0};
+    service.start([&updates](bool arrived) {
+        if (arrived) {
+            ++updates;
+        }
+    });
+
+    auto sender = builtinPlugins().createTransport(
+        "udp", {{"host", "127.0.0.1"}, {"port", std::to_string(port)}});
+    sender->send(test::tlmPacket(0x0808, 0, test::evsLongEventPayload("DS", 12, 2, "No-op")));
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (updates == 0 && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    service.stop();
+
+    const TlmSnapshot s = store.snapshot();
+    ASSERT_EQ(s.events.size(), 1U);
+    EXPECT_EQ(s.events[0].app, "DS");
+    EXPECT_EQ(s.events[0].message, "No-op");
+    EXPECT_TRUE(service.lastError().empty());
+}
+
+TEST(UdpTelemetry, RegistryReceiverAndStopIsPrompt)
+{
+    TargetConfig t = udpTarget(1);
+    t.telemetry = TelemetryConfig{{"udp", {{"host", "127.0.0.1"}}}, {}};
+    const std::uint16_t freePort = UdpReceiver("127.0.0.1", 0).port();   // released again here
+    auto receiver = buildReceiver(t, builtinPlugins(), freePort);
+    EXPECT_EQ(receiver->describe(), "udp://127.0.0.1:" + std::to_string(freePort));
+
+    const TelemetryCatalog catalog;
+    TlmStore store(catalog, Endian::Little);
+    TelemetryService service(std::move(receiver), store);
+    service.start(nullptr);
+    const auto begin = std::chrono::steady_clock::now();
+    service.stop();
+    EXPECT_LT(std::chrono::steady_clock::now() - begin, std::chrono::milliseconds(500));
 }

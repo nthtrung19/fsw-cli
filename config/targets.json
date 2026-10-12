@@ -6,11 +6,16 @@
 //   format     packet format plug-in   { "type": "ccsds_v1", ...options }
 //   layers     optional wrapping layers, applied in order (e.g. CSP, later)
 //   transport  transport plug-in        { "type": "udp", "host": ..., "port": ... }
+//   telemetry  optional: where telemetry arrives and how to decode it (interactive session)
+//              { "receiver": { "type": "udp", "port": ... }, "catalog": [ telemetry files ] }
 //
 // Built-in plug-ins and their options:
 //   format    ccsds_v1   checksum: true|false (default true)
 //   transport udp        host (default "127.0.0.1"), port (required)
 //   transport dryrun     (no options) - print packets, send nothing
+//   receiver  udp        host (default "0.0.0.0"), port (default 5011)
+//
+// Start the telemetry stream with e.g. "fsw to enable_output 127.0.0.1 5011".
 //
 // Select a target with --target NAME; list them with --list-targets.
 {
@@ -23,7 +28,11 @@
       "catalog": ["catalog/ds.json", "catalog/ci.json", "catalog/fm.json", "catalog/cf.json", "catalog/cs.json", "catalog/gpsr.json", "catalog/pl.json", "catalog/sch.json", "catalog/lc.json", "catalog/pbm.json", "catalog/hs.json", "catalog/to.json"],
       "format":    { "type": "ccsds_v1" },
       "layers":    [],
-      "transport": { "type": "udp", "host": "127.0.0.1", "port": 1234 }
+      "transport": { "type": "udp", "host": "127.0.0.1", "port": 1234 },
+      "telemetry": {
+        "receiver": { "type": "udp", "port": 5011 },
+        "catalog":  ["telemetry/evs.json"]
+      }
     },
 
     "sil-dry": {
@@ -31,7 +40,11 @@
       "endian": "little",
       "catalog": ["catalog/ds.json", "catalog/ci.json", "catalog/fm.json", "catalog/cf.json", "catalog/cs.json", "catalog/gpsr.json", "catalog/pl.json", "catalog/sch.json", "catalog/lc.json", "catalog/pbm.json", "catalog/hs.json", "catalog/to.json"],
       "format":    { "type": "ccsds_v1" },
-      "transport": { "type": "dryrun" }
+      "transport": { "type": "dryrun" },
+      "telemetry": {
+        "receiver": { "type": "udp", "port": 5011 },
+        "catalog":  ["telemetry/evs.json"]
+      }
     }
 
     // Example for later, once a "csp" layer plug-in exists:

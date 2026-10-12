@@ -1,17 +1,21 @@
 // mcs: command-line tool for commanding cFS flight software.
 //
 // Start-up: options -> targets file -> target -> catalog -> pipeline -> service -> menu.
-// Everything except the menu and the session lives in mcs_core.
+// The full-screen session also loads the target's telemetry catalog and opens
+// its receiver. Everything except the menu and the sessions lives in mcs_core.
 
 #include "app/options.hpp"
 #include "config/catalog_loader.hpp"
 #include "config/config_paths.hpp"
 #include "config/pipeline_factory.hpp"
 #include "config/target_config.hpp"
+#include "config/tlm_catalog_loader.hpp"
 #include "core/errors.hpp"
 #include "registry/plugin_registry.hpp"
 #include "service/command_service.hpp"
+#include "telemetry/telemetry_service.hpp"
 #include "ui/menu_builder.hpp"
+#include "ui/tui_session.hpp"
 
 #include <cli/cli.h>
 #include <cli/clifilesession.h>
@@ -22,6 +26,7 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <unistd.h>
 
 using namespace mcs;
 
@@ -93,7 +98,7 @@ int runBatch(cli::Cli& cli, CommandService& service, const std::size_t& sessionE
     return ok ? app::kExitOk : app::kExitCommandFailed;
 }
 
-int runInteractive(cli::Cli& cli, const CommandService& service)
+void setInteractiveHandlers(cli::Cli& cli)
 {
     cli.WrongCommandHandler([](std::ostream& out, const std::string& cmd) {
         out << "Unknown command: " << cmd << " (type 'help')\n";
@@ -101,11 +106,23 @@ int runInteractive(cli::Cli& cli, const CommandService& service)
     cli.StdExceptionHandler([](std::ostream& out, const std::string& cmd, const std::exception& e) {
         out << "error: " << cmd << ": " << e.what() << '\n';
     });
+}
 
-    std::cout << kProgram << ' ' << mcs_VERSION << "  target '" << service.targetName()
-              << "': " << service.pipeline().describe() << '\n'
-              << service.catalog().commandCount() << " command(s) in "
-              << service.catalog().apps().size() << " app(s). Type 'help', or e.g. 'fsw ds noop'.\n";
+std::vector<std::string> bannerLines(const CommandService& service)
+{
+    return {kProgram + ' ' + mcs_VERSION + "  target '" + service.targetName()
+                + "': " + service.pipeline().describe(),
+            std::to_string(service.catalog().commandCount()) + " command(s) in "
+                + std::to_string(service.catalog().apps().size())
+                + " app(s). Type 'help', or e.g. 'fsw ds noop'."};
+}
+
+int runInteractive(cli::Cli& cli, const CommandService& service)
+{
+    setInteractiveHandlers(cli);
+    for (const auto& line : bannerLines(service)) {
+        std::cout << line << '\n';
+    }
 
     cli::LoopScheduler scheduler;
     cli::CliLocalTerminalSession session(cli, scheduler, std::cout);
@@ -137,11 +154,19 @@ int main(int argc, char* argv[])
         return app::kExitOk;
     }
 
+    const bool batch = !opts.commands.empty() || opts.script.has_value();
+    const bool fullScreen = !batch && !opts.plain && ::isatty(STDIN_FILENO) && ::isatty(STDOUT_FILENO);
+
     // ---- configuration: everything here is a setup error (exit 3) -----------
     TargetsFile targets;
     std::unique_ptr<CommandCatalog> catalog;
     std::unique_ptr<Pipeline> pipeline;
     const TargetConfig* target = nullptr;
+    // Telemetry: full-screen session only. A receiver that cannot be opened
+    // (port in use, ...) is shown in the session, not a setup error.
+    std::unique_ptr<TelemetryCatalog> tlmCatalog;
+    std::unique_ptr<IReceiver> tlmReceiver;
+    std::string tlmReceiverError;
     try {
         targets = loadTargetsFile(findTargetsFile(opts.configFile));
         if (opts.listTargets) {
@@ -151,6 +176,15 @@ int main(int argc, char* argv[])
         target = &selectTarget(targets, opts.target);
         catalog = std::make_unique<CommandCatalog>(loadCatalog(target->catalogFiles));
         pipeline = buildPipeline(*target, builtinPlugins(), opts.dryRun);
+        if (fullScreen && target->telemetry) {
+            tlmCatalog = std::make_unique<TelemetryCatalog>(
+                loadTelemetryCatalog(target->telemetry->catalogFiles));
+            try {
+                tlmReceiver = buildReceiver(*target, builtinPlugins(), opts.tlmPort);
+            } catch (const TransportError& e) {
+                tlmReceiverError = e.what();
+            }
+        }
     } catch (const mcsError& e) {
         std::cerr << kProgram << ": " << e.what() << '\n';
         return app::kExitConfigError;
@@ -169,14 +203,34 @@ int main(int argc, char* argv[])
                                target->name);
         service.setVerbose(opts.verbose);
 
+        ui::TlmContext tlm;
+        std::unique_ptr<TlmStore> tlmStore;
+        std::unique_ptr<TelemetryService> tlmService;
+        if (tlmCatalog) {
+            tlmStore = std::make_unique<TlmStore>(*tlmCatalog, target->endian);
+            tlm.store = tlmStore.get();
+            tlm.receiverError = tlmReceiverError;
+            if (tlmReceiver) {
+                tlmService = std::make_unique<TelemetryService>(std::move(tlmReceiver), *tlmStore);
+                tlm.service = tlmService.get();
+            }
+            service.setPacketTap([store = tlmStore.get()](const Bytes& packet, const std::string& line) {
+                store->recordTx(packet, line);
+            });
+        }
+
         std::size_t sessionErrors = 0;
-        cli::Cli cli(ui::buildRootMenu(service, sessionErrors));
+        cli::Cli cli(ui::buildRootMenu(service, sessionErrors, fullScreen ? &tlm : nullptr));
 
         if (!opts.commands.empty()) {
             return runBatch(cli, service, sessionErrors, opts.commands);
         }
         if (opts.script) {
             return runBatch(cli, service, sessionErrors, readScript(*opts.script));
+        }
+        if (fullScreen) {
+            setInteractiveHandlers(cli);
+            return ui::runTui(cli, service, tlm, bannerLines(service));
         }
         return runInteractive(cli, service);
     } catch (const std::exception& e) {

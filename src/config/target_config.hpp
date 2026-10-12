@@ -17,6 +17,13 @@ struct PluginSpec {
     Options options;
 };
 
+// Optional "telemetry" block of a target: where telemetry arrives and how to
+// decode it.
+struct TelemetryConfig {
+    PluginSpec receiver;
+    std::vector<std::filesystem::path> catalogFiles;   // may be empty: all MIDs unknown
+};
+
 // One target profile from targets.json.
 struct TargetConfig {
     std::string name;
@@ -26,6 +33,7 @@ struct TargetConfig {
     PluginSpec format;
     std::vector<PluginSpec> layers;
     PluginSpec transport;
+    std::optional<TelemetryConfig> telemetry;
 };
 
 struct TargetsFile {

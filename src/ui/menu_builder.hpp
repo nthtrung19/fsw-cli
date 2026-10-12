@@ -3,6 +3,7 @@
 // ui/ (with app/) is the ONLY module allowed to include <cli/...>.
 
 #include "service/command_service.hpp"
+#include "ui/tlm_context.hpp"
 
 #include <cstddef>
 #include <memory>
@@ -20,10 +21,18 @@ namespace mcs::ui {
 //   ├── target                 show the active target
 //   ├── verbose [on|off]       hexdump every sent packet
 //   ├── raw <hex bytes...>     send pre-built packet bytes
-//   └── arm                    allow the next critical command
+//   ├── arm                    allow the next critical command
+//   └── tlm                    telemetry display (only with a TlmContext that has a store)
+//       ├── view dash|monitor|stats
+//       ├── filter <app>|all   dashboard panels
+//       ├── monitor <app>|<mid>|all
+//       ├── pause [on|off]
+//       ├── clear
+//       └── status
 //
 // `sessionErrors` is incremented when a session command (verbose, ...) is
 // used wrongly; FSW command failures are counted by the service.
-std::unique_ptr<cli::Menu> buildRootMenu(CommandService& service, std::size_t& sessionErrors);
+std::unique_ptr<cli::Menu> buildRootMenu(CommandService& service, std::size_t& sessionErrors,
+                                         TlmContext* tlm = nullptr);
 
 } // namespace mcs::ui

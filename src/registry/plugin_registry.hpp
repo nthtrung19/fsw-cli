@@ -4,6 +4,7 @@
 #include "core/options.hpp"
 #include "protocol/framing_layer.hpp"
 #include "protocol/packet_format.hpp"
+#include "transport/receiver.hpp"
 #include "transport/transport.hpp"
 
 #include <functional>
@@ -23,11 +24,13 @@ public:
     using FormatFactory    = std::function<std::unique_ptr<IPacketFormat>(Endian, const Options&)>;
     using LayerFactory     = std::function<std::unique_ptr<IFramingLayer>(Endian, const Options&)>;
     using TransportFactory = std::function<std::unique_ptr<ITransport>(const Options&)>;
+    using ReceiverFactory  = std::function<std::unique_ptr<IReceiver>(const Options&)>;
 
     // Throws ConfigError if the name is already registered.
     void addFormat(const std::string& type, FormatFactory factory);
     void addLayer(const std::string& type, LayerFactory factory);
     void addTransport(const std::string& type, TransportFactory factory);
+    void addReceiver(const std::string& type, ReceiverFactory factory);
 
     // Throw ConfigError("unknown format 'x' (known: a, b)") for unknown names;
     // factories throw ConfigError for bad options.
@@ -36,18 +39,21 @@ public:
     std::unique_ptr<IFramingLayer> createLayer(const std::string& type, Endian endian,
                                                const Options& opts) const;
     std::unique_ptr<ITransport> createTransport(const std::string& type, const Options& opts) const;
+    std::unique_ptr<IReceiver> createReceiver(const std::string& type, const Options& opts) const;
 
     std::vector<std::string> formatNames() const;
     std::vector<std::string> layerNames() const;
     std::vector<std::string> transportNames() const;
+    std::vector<std::string> receiverNames() const;
 
 private:
     std::map<std::string, FormatFactory> formats_;
     std::map<std::string, LayerFactory> layers_;
     std::map<std::string, TransportFactory> transports_;
+    std::map<std::string, ReceiverFactory> receivers_;
 };
 
-// Registry with every plug-in shipped in mcs (ccsds_v1, udp, dryrun).
+// Registry with every plug-in shipped in mcs (ccsds_v1, udp, dryrun; receiver udp).
 PluginRegistry builtinPlugins();
 
 } // namespace mcs
