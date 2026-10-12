@@ -1,0 +1,339 @@
+// CF (CCSDS File Delivery Protocol) ground commands.
+// Source: cf_app.c, cf_cmds.c, cf_playback.c, cf_msg.h, cf_defs.h, cf_platform_cfg.h.
+//
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   enum     { "name": value, ... }  names accepted as arguments, shown in help
+//   min/max  inclusive range for integer fields
+//   default  value used when the argument is omitted (only trailing arguments may be omitted)
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 8-byte command header.
+// CF checks the exact packet length (CF_VerifyCmdLength), so every layout
+// must match sizeof() of its cf_msg.h structure.
+//
+// Commands are grouped by the MID they are sent on ("mids").
+//   cf_msgids.h  CF_CMD_MID 0x1923              CF_AppPipe, dispatched by command code
+//                CF_SEND_HK_MID 0x1924          CF_HousekeepingCmd (length 8)
+//                CF_WAKE_UP_REQ_CMD_MID 0x1925  not listed (sent by the scheduler)
+//
+// Values taken from the FSW configuration (update if the mission changes them):
+//   cf_platform_cfg.h  CF_MAX_PLAYBACK_CHANNELS 2       -> chan/channel max 1
+//                      CF_MAX_POLLING_DIRS_PER_CHAN 8   -> dir 0..7 (255 = all for en/dis polling)
+//                      CF_DEFAULT_QUEUE_INFO_FILENAME "/cf/cf_queue_info.dat"
+//   cf_defs.h          CF_MAX_CFG_VALUE_CHARS 16, CF_MAX_CFG_PARAM_CHARS 32
+//                      CF_CLASS_1 1, CF_CLASS_2 2; CF_DELETE_FILE 0, CF_KEEP_FILE 1
+//                      CF_ALL 0, CF_UPLINK 1, CF_PLAYBACK 2 (CF_INCOMING 1, CF_OUTGOING 2)
+//                      CF_PENDINGQ 0, CF_ACTIVEQ 1, CF_HISTORYQ 2
+//                      CF_GIVE_SEMAPHORE 0, CF_TAKE_SEMAPHORE 1; CF_DISABLED 0, CF_ENABLED 1
+//                      OS_MAX_PATH_LEN 64
+//
+// Notes:
+//   enable/disable_dequeue check the length of CF_EnDisPollCmd_t (12), which has the
+//   same size as CF_EnDisDequeueCmd_t: chan + 3 spare bytes.
+//   priority is never range-checked by the FSW.
+//   preserve: playback_file does not check it and playback_dir accepts <= 2, but only
+//   0 (delete) and 1 (keep) are defined, so only those are listed.
+//
+// Not listed: CF_CYCLES_PER_WAKEUP 27 (struct in cf_msg.h, but CF_AppPipe does not
+// dispatch it).
+// Checks the FSW still makes itself: entity ID format (dotted decimal, e.g. 0.24),
+// path format (leading '/', no spaces, trailing '/' for source directories), channel
+// in use, queue space, file open/active, MIB parameter names and values.
+{
+  "app": "cf",
+  "help": "CFDP file transfer application",
+  "mids": [
+    {
+      "mid": "0x1923",
+      "commands": [
+        {
+          "name": "noop",
+          "cc": 0,
+          "help": "No-op: increments the command counter and reports the CF version"
+        },
+        {
+          "name": "reset",
+          "cc": 1,
+          "help": "Reset counters: all, command, fault, uplink or downlink",
+          "fields": [
+            { "name": "value", "type": "u8",
+              "enum": { "all": 0, "cmd": 1, "fault": 2, "up": 3, "down": 4 }, "default": "all",
+              "help": "Which counters to reset" },
+            { "type": "padding", "size": 3 }
+          ]
+        },
+        {
+          "name": "playback_file",
+          "cc": 2,
+          "help": "Queue one file for downlink on a playback channel",
+          "fields": [
+            { "name": "class", "type": "u8", "enum": { "class1": 1, "class2": 2 },
+              "help": "class1 = unreliable, class2 = reliable" },
+            { "name": "channel", "type": "u8", "max": 1, "help": "Playback channel" },
+            { "name": "priority", "type": "u8", "help": "Pending queue priority" },
+            { "name": "preserve", "type": "u8", "enum": { "delete": 0, "keep": 1 },
+              "help": "Delete or keep the source file after a successful transfer" },
+            { "name": "peer_entity_id", "type": "string", "size": 16,
+              "help": "Destination entity ID, dotted decimal (e.g. 0.24)" },
+            { "name": "src_filename", "type": "string", "size": 64, "help": "Source file" },
+            { "name": "dst_filename", "type": "string", "size": 64, "help": "Destination file" }
+          ]
+        },
+        {
+          "name": "playback_dir",
+          "cc": 3,
+          "help": "Queue all closed files of a directory for downlink",
+          "fields": [
+            { "name": "class", "type": "u8", "enum": { "class1": 1, "class2": 2 },
+              "help": "class1 = unreliable, class2 = reliable" },
+            { "name": "chan", "type": "u8", "max": 1, "help": "Playback channel" },
+            { "name": "priority", "type": "u8", "help": "Pending queue priority" },
+            { "name": "preserve", "type": "u8", "enum": { "delete": 0, "keep": 1 },
+              "help": "Delete or keep the source files after a successful transfer" },
+            { "name": "peer_entity_id", "type": "string", "size": 16,
+              "help": "Destination entity ID, dotted decimal (e.g. 0.24)" },
+            { "name": "src_path", "type": "string", "size": 64,
+              "help": "Source directory (must end with '/')" },
+            { "name": "dst_path", "type": "string", "size": 64, "help": "Destination directory" }
+          ]
+        },
+        {
+          "name": "freeze",
+          "cc": 4,
+          "help": "Freeze all CFDP transactions"
+        },
+        {
+          "name": "thaw",
+          "cc": 5,
+          "help": "Thaw (resume) frozen CFDP transactions"
+        },
+        {
+          "name": "suspend",
+          "cc": 6,
+          "help": "Suspend a transaction",
+          "fields": [
+            { "name": "trans", "type": "string", "size": 64,
+              "help": "Transaction ID (e.g. 0.24_5) or active file path" }
+          ]
+        },
+        {
+          "name": "resume",
+          "cc": 7,
+          "help": "Resume a suspended transaction",
+          "fields": [
+            { "name": "trans", "type": "string", "size": 64,
+              "help": "Transaction ID (e.g. 0.24_5) or active file path" }
+          ]
+        },
+        {
+          "name": "cancel",
+          "cc": 8,
+          "help": "Cancel a transaction (with CFDP closure)",
+          "fields": [
+            { "name": "trans", "type": "string", "size": 64,
+              "help": "Transaction ID (e.g. 0.24_5) or active file path" }
+          ]
+        },
+        {
+          "name": "abandon",
+          "cc": 9,
+          "help": "Abandon a transaction (no CFDP closure)",
+          "fields": [
+            { "name": "trans", "type": "string", "size": 64,
+              "help": "Transaction ID (e.g. 0.24_5) or active file path" }
+          ]
+        },
+        {
+          "name": "set_mib",
+          "cc": 10,
+          "help": "Set a CFDP engine (MIB) parameter",
+          "fields": [
+            { "name": "param", "type": "string", "size": 32,
+              "help": "e.g. ACK_LIMIT ACK_TIMEOUT INACTIVITY_TIMEOUT NAK_LIMIT NAK_TIMEOUT SAVE_INCOMPLETE_FILES OUTGOING_FILE_CHUNK_SIZE MY_ID" },
+            { "name": "value", "type": "string", "size": 16, "help": "New value" }
+          ]
+        },
+        {
+          "name": "get_mib",
+          "cc": 11,
+          "help": "Report a CFDP engine (MIB) parameter in an event",
+          "fields": [
+            { "name": "param", "type": "string", "size": 32, "help": "Parameter name" }
+          ]
+        },
+        {
+          "name": "send_trans_diag",
+          "cc": 12,
+          "help": "Send the transaction diagnostic telemetry packet",
+          "fields": [
+            { "name": "trans", "type": "string", "size": 64,
+              "help": "Transaction ID (e.g. 0.24_5) or file path" }
+          ]
+        },
+        {
+          "name": "set_poll_param",
+          "cc": 13,
+          "help": "Set the parameters of a polling directory",
+          "fields": [
+            { "name": "chan", "type": "u8", "max": 1, "help": "Playback channel" },
+            { "name": "dir", "type": "u8", "max": 7, "help": "Polling directory index" },
+            { "name": "class", "type": "u8", "enum": { "class1": 1, "class2": 2 },
+              "help": "class1 = unreliable, class2 = reliable" },
+            { "name": "priority", "type": "u8", "help": "Pending queue priority" },
+            { "name": "preserve", "type": "u8", "enum": { "delete": 0, "keep": 1 },
+              "help": "Delete or keep the source files after a successful transfer" },
+            { "type": "padding", "size": 3 },
+            { "name": "peer_entity_id", "type": "string", "size": 16,
+              "help": "Destination entity ID, dotted decimal (e.g. 0.24)" },
+            { "name": "src_path", "type": "string", "size": 64,
+              "help": "Source directory (must end with '/')" },
+            { "name": "dst_path", "type": "string", "size": 64, "help": "Destination directory" }
+          ]
+        },
+        {
+          "name": "send_cfg_params",
+          "cc": 14,
+          "help": "Send the configuration parameters telemetry packet"
+        },
+        {
+          "name": "write_queue_info",
+          "cc": 15,
+          "help": "Write the contents of a queue to a file (up: active or history only)",
+          "fields": [
+            { "name": "type", "type": "u8", "enum": { "up": 1, "down": 2 },
+              "help": "Uplink or playback (downlink) queues" },
+            { "name": "chan", "type": "u8", "max": 1, "help": "Playback channel (ignored for up)" },
+            { "name": "queue", "type": "u8", "enum": { "pending": 0, "active": 1, "history": 2 },
+              "help": "Queue" },
+            { "type": "padding", "size": 1 },
+            { "name": "filename", "type": "string", "size": 64, "default": "",
+              "help": "Output file (empty = /cf/cf_queue_info.dat)" }
+          ]
+        },
+        {
+          "name": "enable_dequeue",
+          "cc": 16,
+          "help": "Enable dequeuing (sending) on a playback channel",
+          "fields": [
+            { "name": "chan", "type": "u8", "max": 1, "help": "Playback channel" },
+            { "type": "padding", "size": 3 }
+          ]
+        },
+        {
+          "name": "disable_dequeue",
+          "cc": 17,
+          "help": "Disable dequeuing (sending) on a playback channel",
+          "fields": [
+            { "name": "chan", "type": "u8", "max": 1, "help": "Playback channel" },
+            { "type": "padding", "size": 3 }
+          ]
+        },
+        {
+          "name": "enable_dir_polling",
+          "cc": 18,
+          "help": "Enable one polling directory, or all in-use ones",
+          "fields": [
+            { "name": "chan", "type": "u8", "max": 1, "help": "Playback channel" },
+            { "name": "dir", "type": "u8",
+              "enum": { "dir0": 0, "dir1": 1, "dir2": 2, "dir3": 3, "dir4": 4, "dir5": 5, "dir6": 6, "dir7": 7, "all": 255 },
+              "help": "Polling directory index 0-7 (or dir0-dir7), or all (255)" },
+            { "type": "padding", "size": 2 }
+          ]
+        },
+        {
+          "name": "disable_dir_polling",
+          "cc": 19,
+          "help": "Disable one polling directory, or all in-use ones",
+          "fields": [
+            { "name": "chan", "type": "u8", "max": 1, "help": "Playback channel" },
+            { "name": "dir", "type": "u8",
+              "enum": { "dir0": 0, "dir1": 1, "dir2": 2, "dir3": 3, "dir4": 4, "dir5": 5, "dir6": 6, "dir7": 7, "all": 255 },
+              "help": "Polling directory index 0-7 (or dir0-dir7), or all (255)" },
+            { "type": "padding", "size": 2 }
+          ]
+        },
+        {
+          "name": "delete_queue_node",
+          "cc": 20,
+          "help": "Remove a transaction node from its queue",
+          "fields": [
+            { "name": "trans", "type": "string", "size": 64,
+              "help": "Transaction ID (e.g. 0.24_5) or file path" }
+          ]
+        },
+        {
+          "name": "purge_queue",
+          "cc": 21,
+          "help": "Remove all nodes from a queue (active queues cannot be purged; up: history only)",
+          "fields": [
+            { "name": "type", "type": "u8", "enum": { "up": 1, "down": 2 },
+              "help": "Uplink or playback (downlink) queues" },
+            { "name": "chan", "type": "u8", "max": 1, "help": "Playback channel (ignored for up)" },
+            { "name": "queue", "type": "u8", "enum": { "pending": 0, "active": 1, "history": 2 },
+              "help": "Queue" },
+            { "type": "padding", "size": 1 }
+          ]
+        },
+        {
+          "name": "write_active_trans",
+          "cc": 22,
+          "help": "Write the active transactions to a file",
+          "fields": [
+            { "name": "type", "type": "u8", "enum": { "all": 0, "up": 1, "down": 2 },
+              "help": "Which transactions" },
+            { "type": "padding", "size": 1 },
+            { "name": "filename", "type": "string", "size": 64, "default": "",
+              "help": "Output file (empty = /cf/cf_queue_info.dat)" }
+          ]
+        },
+        {
+          "name": "kickstart",
+          "cc": 23,
+          "help": "Restart pending queue processing on a stuck playback channel",
+          "fields": [
+            { "name": "chan", "type": "u8", "max": 1, "help": "Playback channel" },
+            { "type": "padding", "size": 3 }
+          ]
+        },
+        {
+          "name": "quickstatus",
+          "cc": 24,
+          "help": "Report the status of a transaction in an event",
+          "fields": [
+            { "name": "trans", "type": "string", "size": 64,
+              "help": "Transaction ID (e.g. 0.24_5) or file path" }
+          ]
+        },
+        {
+          "name": "givetake",
+          "cc": 25,
+          "help": "Give or take the handshake semaphore of a throttled channel",
+          "fields": [
+            { "name": "chan", "type": "u8", "max": 1, "help": "Playback channel" },
+            { "name": "action", "type": "u8", "enum": { "give": 0, "take": 1 },
+              "help": "GiveOrTakeSemaphore" }
+          ]
+        },
+        {
+          "name": "enadis_auto_suspend",
+          "cc": 26,
+          "help": "Enable or disable auto suspend of outgoing transactions",
+          "fields": [
+            { "name": "state", "type": "u32", "enum": { "disable": 0, "enable": 1 },
+              "help": "EnableDisable" }
+          ]
+        }
+      ]
+    },
+    {
+      "mid": "0x1924",
+      "commands": [
+        {
+          "name": "hk",
+          "cc": 0,
+          "help": "Request a housekeeping packet (normally sent by the scheduler)"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+// HS (Health and Safety) ground commands.
+// Source: hs_app.c/.h, hs_cmds.c/.h, hs_msg.h, hs_msgdefs.h, hs_msgids.h, hs_platform_cfg.h,
+// hs_monitors.c, hs_tbl.h, hs_tbldefs.h.
+//
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   enum     { "name": value, ... }  names accepted as arguments, shown in help
+//   min/max  inclusive range for integer fields
+//   default  value used when the argument is omitted (only trailing arguments may be omitted)
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 8-byte command header (CFE_SB_CMD_HDR_SIZE).
+// HS checks the exact packet length (HS_VerifyMsgLength).
+//
+// Commands are grouped by the MID they are sent on ("mids").
+//   hs_msgids.h  HS_CMD_MID 0x196E      HS_AppPipe, dispatched by command code
+//                HS_SEND_HK_MID 0x196F  HS_HousekeepingReq (length 8, code not read)
+//                HS_WAKEUP_MID 0x1960   not listed (any message runs one HS cycle; sent by SCH)
+//
+// HS reads its command pipe once per cycle (after a wakeup message, or after
+// HS_WAKEUP_TIMEOUT 1200 ms), so commands are executed up to ~1.2 s after they arrive.
+//
+// Values taken from the FSW configuration (update if the mission changes them):
+//   hs_platform_cfg.h  HS_MAX_RESTART_ACTIONS 3 (default max resets; set_max_resets is not range-checked)
+{
+  "app": "hs",
+  "help": "Health and Safety application",
+  "mids": [
+    {
+      "mid": "0x196E",
+      "commands": [
+        {
+          "name": "noop",
+          "cc": 0,
+          "help": "No-op: increments the command counter and reports the HS version"
+        },
+        {
+          "name": "reset",
+          "cc": 1,
+          "help": "Reset the command, command error, events monitored and message action counters"
+        },
+        {
+          "name": "enable_appmon",
+          "cc": 2,
+          "help": "Enable the application monitor (refreshes the check-in countdowns)"
+        },
+        {
+          "name": "disable_appmon",
+          "cc": 3,
+          "help": "Disable the application monitor"
+        },
+        {
+          "name": "enable_eventmon",
+          "cc": 4,
+          "help": "Enable the event monitor (subscribes to event messages)"
+        },
+        {
+          "name": "disable_eventmon",
+          "cc": 5,
+          "help": "Disable the event monitor (unsubscribes from event messages)"
+        },
+        {
+          "name": "enable_aliveness",
+          "cc": 6,
+          "help": "Enable the aliveness indicator (\".\" printed every 5 HS cycles)"
+        },
+        {
+          "name": "disable_aliveness",
+          "cc": 7,
+          "help": "Disable the aliveness indicator"
+        },
+        {
+          "name": "reset_resets_performed",
+          "cc": 8,
+          "help": "Reset the count of processor resets performed by HS to 0"
+        },
+        {
+          "name": "set_max_resets",
+          "cc": 9,
+          "help": "Set the max number of processor resets HS may perform",
+          "fields": [
+            { "name": "max_resets", "type": "u16", "help": "MaxResets (default 3)" }
+          ]
+        },
+        {
+          "name": "enable_cpuhog",
+          "cc": 10,
+          "help": "Enable the CPU hogging indicator event"
+        },
+        {
+          "name": "disable_cpuhog",
+          "cc": 11,
+          "help": "Disable the CPU hogging indicator event"
+        }
+      ]
+    },
+    {
+      "mid": "0x196F",
+      "commands": [
+        {
+          "name": "hk",
+          "cc": 0,
+          "help": "Request a housekeeping packet (normally sent by the scheduler)"
+        }
+      ]
+    }
+  ]
+}

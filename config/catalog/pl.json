@@ -1,0 +1,133 @@
+// PL (payload camera) commands.
+// Source: pl_app.c, pl_cmds.c/.h, pl_child.c/.h, pl_manage.c/.h, pl_links.h,
+// pl_app_msgids.h, hw_lib.h (TABLE_LOOKUP_* only).
+//
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   enum     { "name": value, ... }  names accepted as arguments, shown in help
+//   min/max  inclusive range for integer fields
+//   default  value used when the argument is omitted (only trailing arguments may be omitted)
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 8-byte command header (CFE_SB_CMD_HDR_SIZE).
+// PL checks the exact packet length (PL_VerifyCmdLength).
+//
+// Commands are grouped by the MID they are sent on ("mids").
+//   pl_app_msgids.h  PL_CMD_MID 0x19F1      PL_GetCommands (noop, reset)
+//                    PL_SEND_HK_MID 0x19F2  PL_HousekeepingCmd (length 8, code not read)
+//                    PL_EQT_API_MID 0x19F4  PL_GetEqtCmd -> child task PL_Child_EqtCommands
+//   On 0x19F4 the child task reads the command code from the received message;
+//   every command is rejected while the PL mode is PL_NO_POWER, and most require
+//   the PL to be READY (not busy with capture/compress/read-out).
+//
+// Values taken from the FSW:
+//   pl_cmds.h  PL_DELETE_SINGLE_SESSION 0, PL_DELETE_ALL_SESSION 1
+//   hw_lib.h   TABLE_LOOKUP_TYPE_SESSION_ID 0, TABLE_LOOKUP_TYPE_USER_ID 1,
+//              TABLE_LOOKUP_TYPE_NEXT 2 (DELETE_ALL 0xDEAD is used internally only)
+//
+// Not listed: PL_COMPRESS_CC 6 and PL_ABORT_READ_OUT_CC 9 (no case in the dispatch
+// switch), PL_WAKEUP_MID 0x19F3 (subscribed but not handled by PL_AppPipe),
+// PL_CHILD_CMD_MID 0x19F5 / PL_CHILD_TO_MAINTASK_MID 0x19F6 (internal),
+// PL_AOCS_CMD_MID (AOCS app commands).
+// com_mode/comp_ratio are passed to the payload library unchecked (no named values known).
+{
+  "app": "pl",
+  "help": "Payload camera application",
+  "mids": [
+    {
+      "mid": "0x19F1",
+      "commands": [
+        {
+          "name": "noop",
+          "cc": 0,
+          "help": "No-op: increments the command counter and reports the PL version"
+        },
+        {
+          "name": "reset",
+          "cc": 1,
+          "help": "Reset the command, error and spot capture counters"
+        }
+      ]
+    },
+    {
+      "mid": "0x19F2",
+      "commands": [
+        {
+          "name": "hk",
+          "cc": 0,
+          "help": "Request a housekeeping packet (normally sent by the scheduler)"
+        }
+      ]
+    },
+    {
+      "mid": "0x19F4",
+      "commands": [
+        {
+          "name": "capture_image",
+          "cc": 2,
+          "help": "Start capturing (PL must be in SPOT mode after prepare); mode_capture and leng_target are not used by the FSW",
+          "fields": [
+            { "name": "mode_capture", "type": "u8", "help": "ModeCapture (unused)" },
+            { "type": "padding", "size": 1 },
+            { "name": "leng_target", "type": "u16", "help": "LengTarget (unused)" }
+          ]
+        },
+        {
+          "name": "read_out_session",
+          "cc": 3,
+          "help": "Read out a stored session over TMTC (PL must be READY)",
+          "fields": [
+            { "name": "session_id", "type": "u32", "max": 65535,
+              "help": "SessionID (used as uint16 by the FSW)" }
+          ]
+        },
+        {
+          "name": "prepare",
+          "cc": 7,
+          "help": "Open a spot capture session (PL must be READY)",
+          "fields": [
+            { "name": "frames", "type": "u16", "help": "Number of frames" },
+            { "name": "user_id", "type": "u16", "help": "User ID stored with the session" },
+            { "name": "int_time", "type": "u32",
+              "help": "Integration time in us (burst period = int_time + 10000)" }
+          ]
+        },
+        {
+          "name": "storage_session_info",
+          "cc": 8,
+          "help": "Scan the image table and send the session table packet (PL must be READY)"
+        },
+        {
+          "name": "delete_session",
+          "cc": 10,
+          "help": "Delete one session, or all; type_id and ss_id are ignored when type_delete=all (PL must be READY)",
+          "fields": [
+            { "name": "type_delete", "type": "u16", "enum": { "single": 0, "all": 1 },
+              "help": "typeDelete" },
+            { "name": "type_id", "type": "u16",
+              "enum": { "session_id": 0, "user_id": 1, "next": 2 },
+              "help": "Lookup type for ss_id" },
+            { "name": "ss_id", "type": "u16", "help": "Session or user ID to delete" }
+          ]
+        },
+        {
+          "name": "scan_image_table",
+          "cc": 11,
+          "help": "Same as storage_session_info (same FSW handler)"
+        },
+        {
+          "name": "compress_jpg2000",
+          "cc": 12,
+          "help": "Compress a stored session (PL must be READY)",
+          "fields": [
+            { "name": "session_id", "type": "u16", "help": "Session to compress" },
+            { "name": "user_id", "type": "u16", "help": "User ID for the compressed session" },
+            { "name": "start", "type": "u16", "help": "Start" },
+            { "name": "end", "type": "u16", "help": "End" },
+            { "name": "com_mode", "type": "u8", "help": "ComMode (payload library value)" },
+            { "name": "comp_ratio", "type": "u8", "help": "CompRatio (payload library value)" }
+          ]
+        }
+      ]
+    }
+  ]
+}

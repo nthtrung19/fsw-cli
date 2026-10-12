@@ -1,0 +1,277 @@
+// PBM (platform bus manager) commands.
+// Source: pbm_app.c, pbm_dispatch.c, pbm_cmds.c, pbm_equipment.c, pbm_passthrough.c/.h,
+// pbm_sched.c, pbm_app_msg.h, pbm_app_msgdefs.h, pbm_app_msgids.h, base_model.h (hw_lib),
+// pcdu_model.h, cfe_evs_extern_typedefs.h.
+//
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   enum     { "name": value, ... }  names accepted as arguments, shown in help
+//   min/max  inclusive range for integer fields
+//   default  value used when the argument is omitted (only trailing arguments may be omitted)
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 8-byte command header (CFE_SB_CMD_HDR_SIZE).
+// PBM checks the exact packet length (PBM_VerifyCmdLength), except for the dbg_ commands.
+//
+// Commands are grouped by the MID they are sent on ("mids").
+//   pbm_app_msgids.h  PBM_APP_GND_CMD_MID 0x18E0                 PBM_ProcessGroundCommand
+//                     PBM_APP_SCHED_CMD_MID 0x18E1               PBM_ProcessSchedCommand
+//                     PBM_APP_CHANGE_PASSTHROUGH_CMD_MID 0x18E2  PBM_PASS_UpdatePassthroughMode
+//                                                                (command code not read)
+//
+// Values taken from the FSW:
+//   pbm_passthrough.h  PBM_PassthroughControlEnum_t: hibernation 0, detumble 1, spot 2, nadir 3,
+//                      coarse_sun 4, xband 5, sband 6, thruster 7, strip 8, fine_sun 9,
+//                      PBM_PASS_ALL 0xFFFF (any value >= 10 also sets all)
+//   base_model.h       HardwareIdentifier_t: STR_0 0, GYR_0 1, MTM_0 2, GPS_0 3, FSS_0..3 4..7, ...
+//                      (PBM_StubEquipment only supports MTM_0, STR_0, GPS_0, FSS_0..3)
+//   pcdu_model.h       PCDU_SwitchNum_t: SWITCH_1..SWITCH_10 = 0..9 (SWITCH_NUM 10)
+//                      PCDU_SwitchState_t: off 0, on 1 (tripped 2 is a reported state, not listed)
+//   cfe_evs_extern_typedefs.h  CFE_EVS_EventType: debug 1, information 2, error 3, critical 4,
+//                      warning 5 (undefined 0 not listed)
+//   OS_MAX_API_NAME 20, OS_MAX_PATH_LEN 64
+//
+// dbg_ commands (cc 94, 110-125) are undeclared debug cases in PBM_ProcessGroundCommand:
+// no length check, output goes to the FSW console (printf), not to events.
+//
+// Not listed: PBM_APP_UART/I2C/UDP_CMD_MID 0x18E5-0x18E7 (passthrough payloads hold
+// uint8[256] raw buffers), PBM_CHILD_*_CMD_MID 0x18E8-0x18EA (internal),
+// 0x1911 (AOCS_CMD_MID, only tracks the current AOCS mode).
+{
+  "app": "pbm",
+  "help": "Platform bus manager application",
+  "mids": [
+    {
+      "mid": "0x18E0",
+      "commands": [
+        {
+          "name": "noop",
+          "cc": 0,
+          "help": "No-op: increments CmdAcceptedCnt (event \"NOOP command\")"
+        },
+        {
+          "name": "reset",
+          "cc": 1,
+          "help": "Reset CmdAcceptedCnt and CmdRejectedCnt"
+        },
+        {
+          "name": "change_pass_mode",
+          "cc": 2,
+          "help": "Set the AOCS mode in which passthrough (UART/I2C/UDP) commands are allowed",
+          "fields": [
+            { "name": "mode", "type": "u16",
+              "enum": { "hibernation": 0, "detumble": 1, "spot": 2, "nadir": 3, "coarse_sun": 4,
+                        "xband": 5, "sband": 6, "thruster": 7, "strip": 8, "fine_sun": 9,
+                        "all": 65535 },
+              "help": "Mode (all = allowed in every mode)" }
+          ]
+        },
+        {
+          "name": "init_diag",
+          "cc": 3,
+          "help": "Start the initial hibernation diagnose sequence"
+        },
+        {
+          "name": "calc_early_att",
+          "cc": 4,
+          "help": "Calculate the early attitude (telemetry MID 0x08E6)"
+        },
+        {
+          "name": "set_wheel_speed",
+          "cc": 5,
+          "help": "Set the speed of the 4 reaction wheels",
+          "fields": [
+            { "name": "speed0", "type": "f32", "help": "speed[0] (RWL_0)" },
+            { "name": "speed1", "type": "f32", "help": "speed[1] (RWL_1)" },
+            { "name": "speed2", "type": "f32", "help": "speed[2] (RWL_2)" },
+            { "name": "speed3", "type": "f32", "help": "speed[3] (RWL_3)" }
+          ]
+        },
+        {
+          "name": "nfss_aec_correction",
+          "cc": 6,
+          "help": "NFSS AEC correction; nfss_mask is not used by the FSW",
+          "fields": [
+            { "name": "nfss_mask", "type": "u8", "help": "nfss_mask (unused)" }
+          ]
+        },
+        {
+          "name": "turn_on_all_switch",
+          "cc": 7,
+          "help": "Turn on all PCDU switches, then send EPS telemetry (MID 0x08E5)"
+        },
+        {
+          "name": "trigger_switch",
+          "cc": 8,
+          "help": "Turn one PCDU switch on or off, then send EPS telemetry (MID 0x08E5)",
+          "fields": [
+            { "name": "switch_num", "type": "u8",
+              "enum": { "switch_1": 0, "switch_2": 1, "switch_3": 2, "switch_4": 3, "switch_5": 4,
+                        "switch_6": 5, "switch_7": 6, "switch_8": 7, "switch_9": 8, "switch_10": 9 },
+              "help": "1: 3 MTQ+1 SS, 2: IMU+MTM, 3-4: 2 RWL each, 5: PL, 6-8: SS, 9: -, 10: HUB" },
+            { "name": "mode", "type": "u8", "enum": { "off": 0, "on": 1 },
+              "help": "New switch state" }
+          ]
+        },
+        {
+          "name": "set_magnetic_torquer",
+          "cc": 9,
+          "help": "Set the magnetic torquer dipole",
+          "fields": [
+            { "name": "dipole_x", "type": "f64", "help": "dipole[0]" },
+            { "name": "dipole_y", "type": "f64", "help": "dipole[1]" },
+            { "name": "dipole_z", "type": "f64", "help": "dipole[2]" }
+          ]
+        },
+        {
+          "name": "get_magnetic_pack",
+          "cc": 10,
+          "help": "Read the magnetic package (telemetry MID 0x08E7)"
+        },
+        {
+          "name": "setup_stub",
+          "cc": 11,
+          "help": "Set the stub flag of one equipment",
+          "fields": [
+            { "name": "id", "type": "u8",
+              "enum": { "str_0": 0, "mtm_0": 2, "gps_0": 3,
+                        "fss_0": 4, "fss_1": 5, "fss_2": 6, "fss_3": 7 },
+              "help": "HardwareIdentifier_t" }
+          ]
+        },
+        {
+          "name": "send_stub_event",
+          "cc": 12,
+          "help": "Send an event on behalf of another app",
+          "fields": [
+            { "name": "event", "type": "u16", "help": "Event ID" },
+            { "name": "type", "type": "u16",
+              "enum": { "debug": 1, "information": 2, "error": 3, "critical": 4, "warning": 5 },
+              "help": "Event type" },
+            { "name": "app_name", "type": "string", "size": 20,
+              "help": "App name, e.g. CI_LAB_APP (max 19 chars)" }
+          ]
+        },
+        {
+          "name": "create_file",
+          "cc": 13,
+          "help": "Create a file (OS_creat, read/write)",
+          "fields": [
+            { "name": "path", "type": "string", "size": 64, "help": "Path (max 63 chars)" }
+          ]
+        },
+        {
+          "name": "hang",
+          "cc": 14,
+          "help": "Hang test: 5 s countdown events, then the PBM task blocks (OS_TaskDelay 100000000 ms)"
+        },
+        {
+          "name": "what_time_is_it",
+          "cc": 15,
+          "help": "Report the current FSW time"
+        },
+        {
+          "name": "get_sun_vector",
+          "cc": 16,
+          "help": "Read the sun vectors"
+        },
+        {
+          "name": "dbg_rwl_read_all",
+          "cc": 94,
+          "help": "Debug: read the speed of RWL_0..3 once"
+        },
+        {
+          "name": "dbg_step_time_int_0",
+          "cc": 110,
+          "help": "Debug: time_int_0 += 10 ms (wraps from >200 to 10), used by the rwl loops"
+        },
+        {
+          "name": "dbg_step_time_int_1",
+          "cc": 111,
+          "help": "Debug: time_int_1 += 10 ms (wraps from >200 to 10), used by dbg_rwl_read_set_loop"
+        },
+        {
+          "name": "dbg_step_loop_num",
+          "cc": 112,
+          "help": "Debug: loop_num += 100 (wraps from >1000 to 100), used by the rwl loops"
+        },
+        {
+          "name": "dbg_rwl_set_loop",
+          "cc": 113,
+          "help": "Debug: set RWL_0..3 speed loop_num times, time_int_0 apart (blocks PBM)"
+        },
+        {
+          "name": "dbg_rwl_read_loop",
+          "cc": 114,
+          "help": "Debug: read RWL_0..3 speed loop_num times, time_int_0 apart (blocks PBM)"
+        },
+        {
+          "name": "dbg_rwl_read_set_loop",
+          "cc": 115,
+          "help": "Debug: read then set RWL_0..3 speed loop_num times (blocks PBM)"
+        },
+        {
+          "name": "dbg_pcdu_read_temp",
+          "cc": 120,
+          "help": "Debug: read the PCDU CPU temperature"
+        },
+        {
+          "name": "dbg_pcdu_read_switch_state",
+          "cc": 121,
+          "help": "Debug: read the state of the 10 PCDU switches"
+        },
+        {
+          "name": "dbg_pcdu_read_switch_voltage",
+          "cc": 122,
+          "help": "Debug: read the voltage of the 10 PCDU switches"
+        },
+        {
+          "name": "dbg_pcdu_read_discharge",
+          "cc": 123,
+          "help": "Debug: read the PCDU battery discharge current"
+        },
+        {
+          "name": "dbg_pcdu_all_on",
+          "cc": 124,
+          "help": "Debug: set all 10 PCDU switches ON"
+        },
+        {
+          "name": "dbg_pcdu_all_off",
+          "cc": 125,
+          "help": "Debug: set all 10 PCDU switches OFF"
+        }
+      ]
+    },
+    {
+      "mid": "0x18E1",
+      "commands": [
+        {
+          "name": "app_hk",
+          "cc": 0,
+          "help": "Request the PBM housekeeping packet (MID 0x08E0); normally sent by the scheduler"
+        },
+        {
+          "name": "print_passthrough",
+          "cc": 1,
+          "help": "Print the passthrough control state"
+        }
+      ]
+    },
+    {
+      "mid": "0x18E2",
+      "commands": [
+        {
+          "name": "pass_mode",
+          "cc": 0,
+          "help": "Same as change_pass_mode, sent on PBM_APP_CHANGE_PASSTHROUGH_CMD_MID (cc not read)",
+          "fields": [
+            { "name": "mode", "type": "u16",
+              "enum": { "hibernation": 0, "detumble": 1, "spot": 2, "nadir": 3, "coarse_sun": 4,
+                        "xband": 5, "sband": 6, "thruster": 7, "strip": 8, "fine_sun": 9,
+                        "all": 65535 },
+              "help": "Mode (all = allowed in every mode)" }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,249 @@
+// FM (File Manager) ground commands. Source: fm_msgdefs.h, fm_msg.h, fm_cmds.c, fm_app.c.
+//
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   enum     { "name": value, ... }  names accepted as arguments, shown in help
+//   min/max  inclusive range for integer fields
+//   default  value used when the argument is omitted (only trailing arguments may be omitted)
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 8-byte command header.
+// FM checks the exact packet length (FM_IsValidCmdPktLength), so every layout
+// must match sizeof() of its fm_msg.h structure.
+//
+// Commands are grouped by the MID they are sent on ("mids").
+//   fm_msgids.h  FM_CMD_MID 0x195C      FM_ProcessCmd, dispatched by command code
+//                FM_SEND_HK_MID 0x195D  FM_ReportHK (length 8)
+//
+// Values taken from the FSW configuration (update if the mission changes them):
+//   fm_platform_cfg.h  FM_TABLE_ENTRY_COUNT 8           -> set_table_state index max 7
+//                      FM_DIR_LIST_FILE_DEFNAME "/cf/fm_dirlist.out"
+//                      OS_MAX_PATH_LEN 64               -> every path is string[64]
+//   fm_defs.h          FM_TABLE_ENTRY_DISABLED 0, FM_TABLE_ENTRY_ENABLED 1
+//                      FM_IGNORE_CRC 0
+//                      FM_KEEP_ORIGINAL_FILE 0, FM_DELETE_ORIGINAL_FILE 1
+//   cfe_es.h (ASSUMED, stock cFE, not checked against this mission)
+//                      CFE_ES_CRC_8 1, CFE_ES_CRC_16 2, CFE_ES_CRC_32 3
+//
+// Not listed: FM_DELETE_INT_CC 18 (internal delete sent by other apps),
+// FM_DAILY_TASK_MID (sent by SCH; MID not provided).
+// Checks the FSW still makes itself: file/directory existence, open files,
+// child task queue space, table loaded, entry not unused.
+{
+  "app": "fm",
+  "help": "File Manager application",
+  "mids": [
+    {
+      "mid": "0x195C",
+      "commands": [
+        {
+          "name": "noop",
+          "cc": 0,
+          "help": "No-op: increments the command counter and reports the FM version"
+        },
+        {
+          "name": "reset",
+          "cc": 1,
+          "help": "Reset the command and child task counters"
+        },
+        {
+          "name": "copy",
+          "cc": 2,
+          "help": "Copy a file (target must not exist unless overwrite=yes)",
+          "fields": [
+            { "name": "overwrite", "type": "u16", "enum": { "no": 0, "yes": 1 },
+              "help": "Overwrite an existing closed target" },
+            { "name": "source", "type": "string", "size": 64, "help": "Source filename" },
+            { "name": "target", "type": "string", "size": 64, "help": "Target filename" }
+          ]
+        },
+        {
+          "name": "move",
+          "cc": 3,
+          "help": "Move a file on the same file system (target must not exist unless overwrite=yes)",
+          "fields": [
+            { "name": "overwrite", "type": "u16", "enum": { "no": 0, "yes": 1 },
+              "help": "Overwrite an existing closed target" },
+            { "name": "source", "type": "string", "size": 64, "help": "Source filename" },
+            { "name": "target", "type": "string", "size": 64, "help": "Target filename" }
+          ]
+        },
+        {
+          "name": "rename",
+          "cc": 4,
+          "help": "Rename a file on the same file system (target must not exist)",
+          "fields": [
+            { "name": "source", "type": "string", "size": 64, "help": "Source filename" },
+            { "name": "target", "type": "string", "size": 64, "help": "Target filename" }
+          ]
+        },
+        {
+          "name": "delete",
+          "cc": 5,
+          "critical": true,
+          "help": "Delete a closed file (cannot be undone)",
+          "fields": [
+            { "name": "filename", "type": "string", "size": 64, "help": "File to delete" }
+          ]
+        },
+        {
+          "name": "delete_all",
+          "cc": 7,
+          "critical": true,
+          "help": "Delete all closed files in a directory (sub-directories are kept)",
+          "fields": [
+            { "name": "directory", "type": "string", "size": 64, "help": "Directory name" }
+          ]
+        },
+        {
+          "name": "decompress",
+          "cc": 8,
+          "help": "Decompress a file into a new target file",
+          "fields": [
+            { "name": "source", "type": "string", "size": 64, "help": "Compressed source filename" },
+            { "name": "target", "type": "string", "size": 64, "help": "Target filename (must not exist)" }
+          ]
+        },
+        {
+          "name": "concat",
+          "cc": 9,
+          "help": "Concatenate two files into a new target file",
+          "fields": [
+            { "name": "source1", "type": "string", "size": 64, "help": "First source filename" },
+            { "name": "source2", "type": "string", "size": 64, "help": "Second source filename" },
+            { "name": "target", "type": "string", "size": 64, "help": "Target filename (must not exist)" }
+          ]
+        },
+        {
+          "name": "get_file_info",
+          "cc": 10,
+          "help": "Send the file info telemetry packet (status, size, time, mode, optional CRC)",
+          "fields": [
+            { "name": "filename", "type": "string", "size": 64, "help": "File or directory name" },
+            { "name": "crc", "type": "u32",
+              "enum": { "none": 0, "crc8": 1, "crc16": 2, "crc32": 3 }, "default": "none",
+              "help": "FileInfoCRC: CRC to compute" }
+          ]
+        },
+        {
+          "name": "get_open_files",
+          "cc": 11,
+          "help": "Send the open files telemetry packet"
+        },
+        {
+          "name": "create_dir",
+          "cc": 12,
+          "help": "Create a directory (must not exist)",
+          "fields": [
+            { "name": "directory", "type": "string", "size": 64, "help": "Directory name" }
+          ]
+        },
+        {
+          "name": "delete_dir",
+          "cc": 13,
+          "critical": true,
+          "help": "Delete an empty directory",
+          "fields": [
+            { "name": "directory", "type": "string", "size": 64, "help": "Directory name" }
+          ]
+        },
+        {
+          "name": "get_dir_file",
+          "cc": 14,
+          "help": "Write a directory listing to a file",
+          "fields": [
+            { "name": "directory", "type": "string", "size": 64, "help": "Directory name" },
+            { "name": "filename", "type": "string", "size": 64, "default": "",
+              "help": "Output file (empty = /cf/fm_dirlist.out)" },
+            { "name": "size_time_mode", "type": "u8", "enum": { "off": 0, "on": 1 }, "default": "off",
+              "help": "GetSizeTimeMode: also stat each file (CPU intensive)" },
+            { "type": "padding", "size": 3 }
+          ]
+        },
+        {
+          "name": "get_dir_pkt",
+          "cc": 15,
+          "help": "Send a directory listing telemetry packet (20 entries from offset)",
+          "fields": [
+            { "name": "directory", "type": "string", "size": 64, "help": "Directory name" },
+            { "name": "offset", "type": "u32", "default": 0,
+              "help": "DirListOffset: index of the first entry" },
+            { "name": "size_time_mode", "type": "u8", "enum": { "off": 0, "on": 1 }, "default": "off",
+              "help": "GetSizeTimeMode: also stat each file (CPU intensive)" },
+            { "type": "padding", "size": 3 }
+          ]
+        },
+        {
+          "name": "get_free_space",
+          "cc": 16,
+          "help": "Send the file system free space telemetry packet"
+        },
+        {
+          "name": "set_table_state",
+          "cc": 17,
+          "help": "Enable or disable a free space table entry (unused entries cannot be changed)",
+          "fields": [
+            { "name": "index", "type": "u32", "max": 7, "help": "TableEntryIndex" },
+            { "name": "state", "type": "u32", "enum": { "disable": 0, "enable": 1 },
+              "help": "TableEntryState" }
+          ]
+        },
+        {
+          "name": "set_file_perm",
+          "cc": 19,
+          "help": "Set a file's mode via OS_chmod (keep the file type bits)",
+          "fields": [
+            { "name": "filename", "type": "string", "size": 64, "help": "File name" },
+            { "name": "mode", "type": "u32",
+              "help": "Mode, e.g. 33216 = 0100700 rwx, 33152 = 0100600 rw, 33024 = 0100400 r (regular file)" }
+          ]
+        },
+        {
+          "name": "encrypt_file",
+          "cc": 20,
+          "help": "Encrypt a file (output gets suffix _encr)",
+          "fields": [
+            { "name": "filename", "type": "string", "size": 64, "help": "File name" },
+            { "name": "mode", "type": "u32",
+              "help": "Mode (likely 0 = keep original, 1 = delete original)" }
+          ]
+        },
+        {
+          "name": "decrypt_file",
+          "cc": 21,
+          "help": "Decrypt a file (output gets suffix _plain)",
+          "fields": [
+            { "name": "filename", "type": "string", "size": 64, "help": "File name" },
+            { "name": "mode", "type": "u32",
+              "help": "Mode (likely 0 = keep original, 1 = delete original)" }
+          ]
+        },
+        {
+          "name": "encode_ccsds_file",
+          "cc": 22,
+          "help": "Compress a file in CCSDS format (output gets suffix _encode)",
+          "fields": [
+            { "name": "filename", "type": "string", "size": 64, "help": "File name" }
+          ]
+        },
+        {
+          "name": "decode_ccsds_file",
+          "cc": 23,
+          "help": "Decompress a CCSDS-compressed file (output gets suffix _decode)",
+          "fields": [
+            { "name": "filename", "type": "string", "size": 64, "help": "File name" }
+          ]
+        }
+      ]
+    },
+    {
+      "mid": "0x195D",
+      "commands": [
+        {
+          "name": "hk",
+          "cc": 0,
+          "help": "Request a housekeeping packet (normally sent by the scheduler)"
+        }
+      ]
+    }
+  ]
+}

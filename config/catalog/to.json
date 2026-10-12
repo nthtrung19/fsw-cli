@@ -1,0 +1,220 @@
+// TO (Telemetry Output) ground commands.
+// Source: to_app.c/.h, to_cmds.c/.h, to_custom.c, to_utils.c, to_msgdefs.h, to_msgids.h,
+// to_tbldefs.h, to_platform_cfg.h, to_mission_cfg.h, cfe_sb.h, cfe_sb_extern_typedefs.h.
+//
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   enum     { "name": value, ... }  names accepted as arguments, shown in help
+//   min/max  inclusive range for integer fields
+//   default  value used when the argument is omitted (only trailing arguments may be omitted)
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 8-byte command header (CFE_SB_CMD_HDR_SIZE).
+// TO checks the exact packet length (TO_VerifyCmdLength).
+//
+// Commands are grouped by the MID they are sent on ("mids").
+//   to_msgids.h  TO_APP_CMD_MID 0x19A0  TO_ProcessNewAppCmds, dispatched by command code
+//                TO_SEND_HK_MID 0x19A1  TO_ReportHousekeeping (length and code not checked)
+//                TO_WAKEUP_MID 0x19A2   not listed (sent by SCH)
+//
+// TO reads its command pipe only on a wakeup message or after its wakeup timeout
+// (TO_WAKEUP_TIMEOUT 500 ms by default, see set_wakeup_timeout).
+//
+// Values taken from the FSW (update if the mission changes them):
+//   cfe_sb_extern_typedefs.h  CFE_SB_MsgId_t = uint16 (CCSDS v1)
+//   cfe_sb.h       CFE_SB_Qos_t = { uint8 Priority; uint8 Reliability; } low 0 / high 1 (currently unused)
+//                  CFE_SB_PEND_FOREVER -1 (4294967295 as uint32)
+//   to_tbldefs.h   TO_UNUSED_ENTRY 0, TO_REMOVED_ENTRY 1 -> rejected as msg_id
+//   to_app.h       TO_MAX_WAKEUP_COUNT 20000, TO_MIN_WAKEUP_TIMEOUT 500,
+//                  group data: bits 31..24 group number, bits 23..0 multi-group mask
+//                  (both zero is rejected by the group commands)
+//   to_custom.c    only route 0 (UDP) exists -> route_mask 0x0001; TO_DEFAULT_DEST_PORT 5011
+//
+// enable_output: TO_EnableOutputCmd_t with ENABLE_CRYPTO_LIB off (same layout as ci.json enable_to).
+//
+// Not listed: TO_MANAGE_TABLE_CC 16 (sent by Table Services), TO_SEND_DATA_TYPE_CC 30
+// (development test packet), TO_SET_OCF_DATA_CC 40 (not handled by TO_CustomAppCmds).
+{
+  "app": "to",
+  "help": "Telemetry Output application",
+  "mids": [
+    {
+      "mid": "0x19A0",
+      "commands": [
+        {
+          "name": "noop",
+          "cc": 0,
+          "help": "No-op: increments the command counter and reports the TO version"
+        },
+        {
+          "name": "reset",
+          "cc": 1,
+          "help": "Reset the command, command error, subscription error and table counters"
+        },
+        {
+          "name": "enable_output",
+          "cc": 2,
+          "help": "Configure route 0 (UDP) to a destination IP and port and enable telemetry output",
+          "fields": [
+            { "name": "dest_ip", "type": "string", "size": 16, "default": "127.0.0.1",
+              "help": "cDestIp" },
+            { "name": "dest_port", "type": "u16", "default": 5011,
+              "help": "usDestPort (0 = TO_DEFAULT_DEST_PORT 5011)" }
+          ]
+        },
+        {
+          "name": "disable_output",
+          "cc": 3,
+          "critical": true,
+          "help": "Disable all telemetry output (re-enable with enable_output)"
+        },
+        {
+          "name": "pause_output",
+          "cc": 4,
+          "critical": true,
+          "help": "Pause telemetry output; messages are dropped until resume_output"
+        },
+        {
+          "name": "resume_output",
+          "cc": 5,
+          "help": "Resume telemetry output after pause_output (output must be enabled)"
+        },
+        {
+          "name": "add_tbl_entry",
+          "cc": 6,
+          "help": "Add a message to the TO config table and subscribe it on the routes in route_mask",
+          "fields": [
+            { "name": "msg_id", "type": "u16", "min": 2, "help": "usMsgId (must not be in the table)" },
+            { "name": "priority", "type": "u8", "enum": { "low": 0, "high": 1 },
+              "help": "qos.Priority (currently unused)" },
+            { "name": "reliability", "type": "u8", "enum": { "low": 0, "high": 1 },
+              "help": "qos.Reliability (currently unused)" },
+            { "name": "msg_limit", "type": "u16", "help": "usMsgLimit: max messages of this MID in the pipe" },
+            { "name": "route_mask", "type": "u16", "help": "usRouteMask: bit n = route n (0x0001 = route 0, UDP)" },
+            { "name": "group_data", "type": "u32", "help": "uiGroupData: MSB = group number, low 24 bits = multi-group mask" },
+            { "name": "flag", "type": "u16", "help": "usFlag (custom defined)" },
+            { "name": "state", "type": "u16", "enum": { "disabled": 0, "enabled": 1 },
+              "help": "usState" }
+          ]
+        },
+        {
+          "name": "remove_tbl_entry",
+          "cc": 7,
+          "help": "Remove a message from the TO config table (unsubscribes it)",
+          "fields": [
+            { "name": "msg_id", "type": "u16", "min": 2, "help": "usMsgId" }
+          ]
+        },
+        {
+          "name": "enable_tbl_entry",
+          "cc": 8,
+          "help": "Enable a TO config table entry",
+          "fields": [
+            { "name": "msg_id", "type": "u16", "min": 2, "help": "usMsgId" }
+          ]
+        },
+        {
+          "name": "disable_tbl_entry",
+          "cc": 9,
+          "help": "Disable a TO config table entry",
+          "fields": [
+            { "name": "msg_id", "type": "u16", "min": 2, "help": "usMsgId" }
+          ]
+        },
+        {
+          "name": "enable_group",
+          "cc": 10,
+          "help": "Enable the table entries of a group and/or multi-group(s)",
+          "fields": [
+            { "name": "group_data", "type": "u32", "min": 1,
+              "help": "MSB = group number, low 24 bits = multi-group mask" }
+          ]
+        },
+        {
+          "name": "disable_group",
+          "cc": 11,
+          "help": "Disable the table entries of a group and/or multi-group(s)",
+          "fields": [
+            { "name": "group_data", "type": "u32", "min": 1,
+              "help": "MSB = group number, low 24 bits = multi-group mask" }
+          ]
+        },
+        {
+          "name": "enable_all",
+          "cc": 12,
+          "help": "Enable all used table entries"
+        },
+        {
+          "name": "disable_all",
+          "cc": 13,
+          "help": "Disable all used table entries"
+        },
+        {
+          "name": "set_route_by_mid",
+          "cc": 14,
+          "help": "Set the route mask of one table entry",
+          "fields": [
+            { "name": "msg_id", "type": "u16", "min": 2, "help": "usMsgId" },
+            { "name": "route_mask", "type": "u16", "help": "usRouteMask: bit n = route n (0x0001 = route 0, UDP)" }
+          ]
+        },
+        {
+          "name": "set_route_by_group",
+          "cc": 15,
+          "help": "Set the route mask of the table entries of a group and/or multi-group(s)",
+          "fields": [
+            { "name": "group_data", "type": "u32", "min": 1,
+              "help": "MSB = group number, low 24 bits = multi-group mask" },
+            { "name": "route_mask", "type": "u16", "help": "usRouteMask: bit n = route n (0x0001 = route 0, UDP)" },
+            { "type": "padding", "size": 2 }
+          ]
+        },
+        {
+          "name": "activate_routes",
+          "cc": 17,
+          "help": "Enable routes (each must be configured; enable_output configures route 0)",
+          "fields": [
+            { "name": "route_mask", "type": "u16", "help": "usRouteMask: bit n = route n (0x0001 = route 0, UDP)" }
+          ]
+        },
+        {
+          "name": "deactivate_routes",
+          "cc": 18,
+          "help": "Disable routes",
+          "fields": [
+            { "name": "route_mask", "type": "u16", "help": "usRouteMask: bit n = route n (0x0001 = route 0, UDP)" }
+          ]
+        },
+        {
+          "name": "set_route_period",
+          "cc": 19,
+          "help": "Set the wakeup period of routes (route processed every wake_period TO wakeups)",
+          "fields": [
+            { "name": "route_mask", "type": "u16",
+              "help": "usRouteMask: existing routes only (0x0001 = route 0, UDP)" },
+            { "name": "wake_period", "type": "u16", "min": 1, "max": 20000,
+              "help": "usWakePeriod: must divide 20000 (TO_MAX_WAKEUP_COUNT)" }
+          ]
+        },
+        {
+          "name": "set_wakeup_timeout",
+          "cc": 20,
+          "help": "Set the TO wakeup timeout; 4294967295 = pend forever (TO then runs, and reads commands, only on SCH wakeups)",
+          "fields": [
+            { "name": "timeout_ms", "type": "u32", "min": 500,
+              "help": "uiWakeupTimeout in ms (passed to CFE_SB_RcvMsg as int32: keep <= 2147483647, or 4294967295)" }
+          ]
+        }
+      ]
+    },
+    {
+      "mid": "0x19A1",
+      "commands": [
+        {
+          "name": "hk",
+          "cc": 0,
+          "help": "Request a housekeeping packet (normally sent by the scheduler)"
+        }
+      ]
+    }
+  ]
+}

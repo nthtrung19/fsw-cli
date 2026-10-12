@@ -1,0 +1,58 @@
+// GPSR (GPS receiver) commands.
+// Source: gpsr_app.c, gpsr_dispatch.c, gpsr_cmds.c, gpsr_sched.c, gpsr_app_msg.h,
+// gpsr_app_msgids.h.
+//
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   enum     { "name": value, ... }  names accepted as arguments, shown in help
+//   min/max  inclusive range for integer fields
+//   default  value used when the argument is omitted (only trailing arguments may be omitted)
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 8-byte command header.
+//
+// Commands are grouped by the MID they are sent on ("mids").
+//   gpsr_app_msgids.h  GPSR_APP_GND_CMD_MID 0x18A2     GPSR_ProcessGroundCommand
+//                      GPSR_APP_SCHED_CMD_MID 0x18A3   GPSR_ProcessSchedCommand
+//   gpsr_app_msg.h     GPSR_APP_NOOP_CC 0, GPSR_APP_RESET_COUNTERS_CC 1
+//                      GPSR_APPLICATION_HK_CC 0, GPSR_MISSION_HK_CC 1
+//                      GPSR_NoArgsCmd_t = CmdHeader only; GPSR_VerifyCmdLength checks
+//                      length == sizeof(GPSR_NoArgsCmd_t)
+//
+// Not listed: GPSR_APP_CUSTOM_CMD_MID 0x18A8 (not dispatched by GPSR_ProcessCmdMsg,
+// which rejects any MID other than the two above).
+{
+  "app": "gpsr",
+  "help": "GPS receiver application",
+  "mids": [
+    {
+      "mid": "0x18A2",
+      "commands": [
+        {
+          "name": "noop",
+          "cc": 0,
+          "help": "No-op: increments CmdAcceptedCnt (event \"Active NOOP command\")"
+        },
+        {
+          "name": "reset",
+          "cc": 1,
+          "help": "Reset CmdAcceptedCnt and CmdRejectedCnt (event \"Active RESET command\")"
+        }
+      ]
+    },
+    {
+      "mid": "0x18A3",
+      "commands": [
+        {
+          "name": "app_hk",
+          "cc": 0,
+          "help": "Request the GPSR housekeeping packet (MID 0x08A3); normally sent by the scheduler"
+        },
+        {
+          "name": "mission_hk",
+          "cc": 1,
+          "help": "Placeholder: accepted but not implemented in the FSW (empty case, no action)"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,106 @@
+// SCH (Scheduler) ground commands.
+// Source: sch_app.c, sch_cmds.c, sch_msg.h, sch_msgdefs.h, sch_msgids.h,
+// sch_platform_cfg.h, sch_def_schtbl.c.
+//
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   enum     { "name": value, ... }  names accepted as arguments, shown in help
+//   min/max  inclusive range for integer fields
+//   default  value used when the argument is omitted (only trailing arguments may be omitted)
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 8-byte command header (CFE_SB_CMD_HDR_SIZE).
+// SCH checks the exact packet length (SCH_VerifyCmdLength).
+//
+// Commands are grouped by the MID they are sent on ("mids").
+//   sch_msgids.h  SCH_CMD_MID 0x1995      SCH_AppPipe, dispatched by command code
+//                 SCH_SEND_HK_MID 0x1996  SCH_HousekeepingCmd (length 8)
+//   0x1997..0x199B (SCH_UNUSED_MID and the wakeup MIDs) are sent by SCH, not to it.
+//
+// SCH reads its command pipe only in the time-sync slot (the last slot of each
+// 1 s major frame), so commands are executed up to ~1 s after they arrive.
+//
+// Values taken from the FSW configuration (update if the mission changes them):
+//   sch_platform_cfg.h  SCH_TOTAL_SLOTS 10      -> slot 0..9
+//                       SCH_ENTRIES_PER_SLOT 5  -> entry 0..4
+//   sch_msgdefs.h       group_data: bits 31..24 = group number (1..255),
+//                       bits 23..0 = multi-group mask; both zero is rejected
+//   sch_def_schtbl.c    group #1 0x01000000 (low priority), group #2 0x02000000 (high priority)
+//                       multi-groups CDH 0x000001, GNC 0x000002, CFS_HK 0x000010,
+//                       CFE_HK 0x000020, GNC_HK 0x000040
+{
+  "app": "sch",
+  "help": "Scheduler application",
+  "mids": [
+    {
+      "mid": "0x1995",
+      "commands": [
+        {
+          "name": "noop",
+          "cc": 0,
+          "help": "No-op: increments the command counter and reports the SCH version"
+        },
+        {
+          "name": "reset",
+          "cc": 1,
+          "help": "Reset the command, activity, slot, table and major frame counters"
+        },
+        {
+          "name": "enable",
+          "cc": 2,
+          "help": "Enable one schedule table entry (entry must not be unused)",
+          "fields": [
+            { "name": "slot", "type": "u16", "max": 9, "help": "SlotNumber (minor frame)" },
+            { "name": "entry", "type": "u16", "max": 4, "help": "EntryNumber within the slot" }
+          ]
+        },
+        {
+          "name": "disable",
+          "cc": 3,
+          "help": "Disable one schedule table entry (entry must not be unused)",
+          "fields": [
+            { "name": "slot", "type": "u16", "max": 9, "help": "SlotNumber (minor frame)" },
+            { "name": "entry", "type": "u16", "max": 4, "help": "EntryNumber within the slot" }
+          ]
+        },
+        {
+          "name": "enable_group",
+          "cc": 4,
+          "help": "Enable all entries of a group and/or multi-group(s)",
+          "fields": [
+            { "name": "group_data", "type": "u32", "min": 1,
+              "help": "MSB = group 1-255, low 24 bits = multi-group mask, e.g. 0x02000000 = group 2" }
+          ]
+        },
+        {
+          "name": "disable_group",
+          "cc": 5,
+          "help": "Disable all entries of a group and/or multi-group(s)",
+          "fields": [
+            { "name": "group_data", "type": "u32", "min": 1,
+              "help": "MSB = group 1-255, low 24 bits = multi-group mask, e.g. 0x01000000 = group 1" }
+          ]
+        },
+        {
+          "name": "enable_sync",
+          "cc": 6,
+          "help": "Re-enable major frame synchronization (may skip minor frames when it resyncs)"
+        },
+        {
+          "name": "send_diag",
+          "cc": 7,
+          "help": "Send the diagnostic telemetry packet (entry states and message IDs, MID 0x0998)"
+        }
+      ]
+    },
+    {
+      "mid": "0x1996",
+      "commands": [
+        {
+          "name": "hk",
+          "cc": 0,
+          "help": "Request a housekeeping packet (normally sent by the scheduler itself)"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,411 @@
+// CS (Checksum) ground commands.
+// Source: cs_app.c, cs_cmds.c, cs_eeprom_cmds.c, cs_memory_cmds.c, cs_table_cmds.c,
+// cs_app_cmds.c, cs_msg.h, cs_msgdefs.h, cs_msgids.h, cs_platform_cfg.h.
+//
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   enum     { "name": value, ... }  names accepted as arguments, shown in help
+//   min/max  inclusive range for integer fields
+//   default  value used when the argument is omitted (only trailing arguments may be omitted)
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 8-byte command header (CFE_SB_CmdHdr_t).
+// CS checks the exact packet length (CS_VerifyCmdLength), so every layout
+// must match sizeof() of its cs_msg.h structure.
+//
+// Commands are grouped by the MID they are sent on ("mids").
+//   cs_msgids.h  CS_CMD_MID 0x189F               CS_AppPipe, dispatched by command code
+//                CS_SEND_HK_MID 0x18A0           CS_HousekeepingCmd (length 8)
+//                CS_BACKGROUND_CYCLE_MID 0x18A1  not listed (sent by the scheduler)
+//
+// Values taken from the FSW configuration (update if the mission changes them):
+//   cs_platform_cfg.h  CS_MAX_NUM_EEPROM_TABLE_ENTRIES 16 -> Eeprom entry_id max 15
+//                      CS_MAX_NUM_MEMORY_TABLE_ENTRIES 16 -> Memory entry_id max 15
+//                      CS_DEFAULT_BYTES_PER_CYCLE 1048576 (oneshot max_bytes_per_cycle 0)
+//   osconfig.h         OS_MAX_API_NAME 20                 -> app name string[20]
+//   cfe_mission_cfg.h  CFE_MISSION_TBL_MAX_NAME_LENGTH 16
+//   cfe_tbl.h          CFE_TBL_MAX_FULL_NAME_LEN = ((16 + 20 + 2 + 3) / 4) * 4 = 40
+//                                                         -> table name string[40]
+//
+// Checks the FSW still makes itself: entry is not empty, app/table name exists,
+// address range valid (oneshot), only one child task (recompute/oneshot) at a time.
+{
+  "app": "cs",
+  "help": "Checksum application",
+  "mids": [
+    {
+      "mid": "0x189F",
+      "commands": [
+        {
+          "name": "noop",
+          "cc": 0,
+          "help": "No-op: increments the command counter and reports the CS version"
+        },
+        {
+          "name": "reset",
+          "cc": 1,
+          "help": "Reset the command, error, miscompare and pass counters"
+        },
+        {
+          "name": "oneshot",
+          "cc": 2,
+          "help": "Start a one-shot checksum of a memory range (result in event and HK)",
+          "fields": [
+            {
+              "name": "address",
+              "type": "u32",
+              "help": "Start address"
+            },
+            {
+              "name": "size",
+              "type": "u32",
+              "help": "Number of bytes to checksum"
+            },
+            {
+              "name": "max_bytes_per_cycle",
+              "type": "u32",
+              "default": 0,
+              "help": "Bytes per cycle, 0 = CS default (1048576)"
+            }
+          ]
+        },
+        {
+          "name": "cancel_oneshot",
+          "cc": 3,
+          "help": "Cancel the one-shot checksum in progress"
+        },
+        {
+          "name": "enable_all",
+          "cc": 4,
+          "help": "Enable all background checksumming"
+        },
+        {
+          "name": "disable_all",
+          "cc": 5,
+          "help": "Disable all background checksumming"
+        },
+        {
+          "name": "enable_cfecore",
+          "cc": 6,
+          "help": "Enable checksumming of the cFE core code segment"
+        },
+        {
+          "name": "disable_cfecore",
+          "cc": 7,
+          "help": "Disable checksumming of the cFE core code segment"
+        },
+        {
+          "name": "report_baseline_cfecore",
+          "cc": 8,
+          "help": "Report the cFE core baseline checksum in an event"
+        },
+        {
+          "name": "recompute_baseline_cfecore",
+          "cc": 9,
+          "help": "Recompute the cFE core baseline checksum"
+        },
+        {
+          "name": "enable_os",
+          "cc": 10,
+          "help": "Enable checksumming of the OS code segment"
+        },
+        {
+          "name": "disable_os",
+          "cc": 11,
+          "help": "Disable checksumming of the OS code segment"
+        },
+        {
+          "name": "report_baseline_os",
+          "cc": 12,
+          "help": "Report the OS code segment baseline checksum in an event"
+        },
+        {
+          "name": "recompute_baseline_os",
+          "cc": 13,
+          "help": "Recompute the OS code segment baseline checksum"
+        },
+        {
+          "name": "enable_eeprom",
+          "cc": 14,
+          "help": "Enable checksumming of the Eeprom table"
+        },
+        {
+          "name": "disable_eeprom",
+          "cc": 15,
+          "help": "Disable checksumming of the Eeprom table"
+        },
+        {
+          "name": "report_baseline_eeprom",
+          "cc": 16,
+          "help": "Report the baseline checksum of an Eeprom entry in an event",
+          "fields": [
+            {
+              "name": "entry_id",
+              "type": "u32",
+              "max": 15,
+              "help": "Eeprom table Entry ID"
+            }
+          ]
+        },
+        {
+          "name": "recompute_baseline_eeprom",
+          "cc": 17,
+          "help": "Recompute the baseline checksum of an Eeprom entry",
+          "fields": [
+            {
+              "name": "entry_id",
+              "type": "u32",
+              "max": 15,
+              "help": "Eeprom table Entry ID"
+            }
+          ]
+        },
+        {
+          "name": "enable_entry_eeprom",
+          "cc": 18,
+          "help": "Enable checksumming of an Eeprom entry",
+          "fields": [
+            {
+              "name": "entry_id",
+              "type": "u32",
+              "max": 15,
+              "help": "Eeprom table Entry ID"
+            }
+          ]
+        },
+        {
+          "name": "disable_entry_eeprom",
+          "cc": 19,
+          "help": "Disable checksumming of an Eeprom entry",
+          "fields": [
+            {
+              "name": "entry_id",
+              "type": "u32",
+              "max": 15,
+              "help": "Eeprom table Entry ID"
+            }
+          ]
+        },
+        {
+          "name": "get_entry_id_eeprom",
+          "cc": 20,
+          "help": "Report the Eeprom Entry ID(s) containing an address",
+          "fields": [
+            {
+              "name": "address",
+              "type": "u32",
+              "help": "Address to look up in the Eeprom table"
+            }
+          ]
+        },
+        {
+          "name": "enable_memory",
+          "cc": 21,
+          "help": "Enable checksumming of the Memory table"
+        },
+        {
+          "name": "disable_memory",
+          "cc": 22,
+          "help": "Disable checksumming of the Memory table"
+        },
+        {
+          "name": "report_baseline_memory",
+          "cc": 23,
+          "help": "Report the baseline checksum of a Memory entry in an event",
+          "fields": [
+            {
+              "name": "entry_id",
+              "type": "u32",
+              "max": 15,
+              "help": "Memory table Entry ID"
+            }
+          ]
+        },
+        {
+          "name": "recompute_baseline_memory",
+          "cc": 24,
+          "help": "Recompute the baseline checksum of a Memory entry",
+          "fields": [
+            {
+              "name": "entry_id",
+              "type": "u32",
+              "max": 15,
+              "help": "Memory table Entry ID"
+            }
+          ]
+        },
+        {
+          "name": "enable_entry_memory",
+          "cc": 25,
+          "help": "Enable checksumming of a Memory entry",
+          "fields": [
+            {
+              "name": "entry_id",
+              "type": "u32",
+              "max": 15,
+              "help": "Memory table Entry ID"
+            }
+          ]
+        },
+        {
+          "name": "disable_entry_memory",
+          "cc": 26,
+          "help": "Disable checksumming of a Memory entry",
+          "fields": [
+            {
+              "name": "entry_id",
+              "type": "u32",
+              "max": 15,
+              "help": "Memory table Entry ID"
+            }
+          ]
+        },
+        {
+          "name": "get_entry_id_memory",
+          "cc": 27,
+          "help": "Report the Memory Entry ID(s) containing an address",
+          "fields": [
+            {
+              "name": "address",
+              "type": "u32",
+              "help": "Address to look up in the Memory table"
+            }
+          ]
+        },
+        {
+          "name": "enable_tables",
+          "cc": 28,
+          "help": "Enable checksumming of the Tables table"
+        },
+        {
+          "name": "disable_tables",
+          "cc": 29,
+          "help": "Disable checksumming of the Tables table"
+        },
+        {
+          "name": "report_baseline_table",
+          "cc": 30,
+          "help": "Report the baseline checksum of a table in an event",
+          "fields": [
+            {
+              "name": "table",
+              "type": "string",
+              "size": 40,
+              "help": "Table name, AppName.TblName"
+            }
+          ]
+        },
+        {
+          "name": "recompute_baseline_table",
+          "cc": 31,
+          "help": "Recompute the baseline checksum of a table",
+          "fields": [
+            {
+              "name": "table",
+              "type": "string",
+              "size": 40,
+              "help": "Table name, AppName.TblName"
+            }
+          ]
+        },
+        {
+          "name": "enable_name_table",
+          "cc": 32,
+          "help": "Enable checksumming of a table",
+          "fields": [
+            {
+              "name": "table",
+              "type": "string",
+              "size": 40,
+              "help": "Table name, AppName.TblName"
+            }
+          ]
+        },
+        {
+          "name": "disable_name_table",
+          "cc": 33,
+          "help": "Disable checksumming of a table",
+          "fields": [
+            {
+              "name": "table",
+              "type": "string",
+              "size": 40,
+              "help": "Table name, AppName.TblName"
+            }
+          ]
+        },
+        {
+          "name": "enable_apps",
+          "cc": 34,
+          "help": "Enable checksumming of the App table"
+        },
+        {
+          "name": "disable_apps",
+          "cc": 35,
+          "help": "Disable checksumming of the App table"
+        },
+        {
+          "name": "report_baseline_app",
+          "cc": 36,
+          "help": "Report the baseline checksum of an app in an event",
+          "fields": [
+            {
+              "name": "app",
+              "type": "string",
+              "size": 20,
+              "help": "Application name"
+            }
+          ]
+        },
+        {
+          "name": "recompute_baseline_app",
+          "cc": 37,
+          "help": "Recompute the baseline checksum of an app",
+          "fields": [
+            {
+              "name": "app",
+              "type": "string",
+              "size": 20,
+              "help": "Application name"
+            }
+          ]
+        },
+        {
+          "name": "enable_name_app",
+          "cc": 38,
+          "help": "Enable checksumming of an app",
+          "fields": [
+            {
+              "name": "app",
+              "type": "string",
+              "size": 20,
+              "help": "Application name"
+            }
+          ]
+        },
+        {
+          "name": "disable_name_app",
+          "cc": 39,
+          "help": "Disable checksumming of an app",
+          "fields": [
+            {
+              "name": "app",
+              "type": "string",
+              "size": 20,
+              "help": "Application name"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "mid": "0x18A0",
+      "commands": [
+        {
+          "name": "hk",
+          "cc": 0,
+          "help": "Request a housekeeping packet (normally sent by the scheduler)"
+        }
+      ]
+    }
+  ]
+}

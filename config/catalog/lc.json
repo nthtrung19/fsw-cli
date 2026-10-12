@@ -1,0 +1,107 @@
+// LC (Limit Checker) ground commands.
+// Source: lc_app.c, lc_cmds.c, lc_msg.h, lc_msgdefs.h, lc_msgids.h, lc_platform_cfg.h.
+//
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   enum     { "name": value, ... }  names accepted as arguments, shown in help
+//   min/max  inclusive range for integer fields
+//   default  value used when the argument is omitted (only trailing arguments may be omitted)
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 8-byte command header (CFE_SB_CMD_HDR_SIZE).
+// LC checks the exact packet length (LC_VerifyMsgLength).
+//
+// Commands are grouped by the MID they are sent on ("mids").
+//   lc_msgids.h  LC_CMD_MID 0x1974      LC_AppPipe, dispatched by command code
+//                LC_SEND_HK_MID 0x1975  LC_HousekeepingReq (length 8)
+//                LC_SAMPLE_AP_MID 0x1976 not listed (actionpoint sample, sent by SCH)
+//
+// Values taken from the FSW configuration (update if the mission changes them):
+//   lc_platform_cfg.h  LC_MAX_ACTIONPOINTS 176 -> AP 0..175
+//                      LC_MAX_WATCHPOINTS 376  -> WP 0..375
+//   lc_msgids.h        LC_ALL_ACTIONPOINTS = LC_ALL_WATCHPOINTS = 0xFFFF (65535)
+//   lc_msgdefs.h       LC state:  active 1, passive 2, disabled 3
+//                      AP state:  active 1, passive 2, disabled 3
+//                      (permanently off 4 is only set with set_ap_permoff)
+//
+// ap/wp fields that also accept 65535 ("all") are plain u16 here, because
+// "0..N or 65535" can't be expressed as one catalog constraint; LC range-checks them.
+{
+  "app": "lc",
+  "help": "Limit Checker application",
+  "mids": [
+    {
+      "mid": "0x1974",
+      "commands": [
+        {
+          "name": "noop",
+          "cc": 0,
+          "help": "No-op: increments the command counter and reports the LC version"
+        },
+        {
+          "name": "reset",
+          "cc": 1,
+          "help": "Reset the command, AP sample, monitored message and RTS counters"
+        },
+        {
+          "name": "set_lc_state",
+          "cc": 2,
+          "help": "Set the LC application state",
+          "fields": [
+            { "name": "state", "type": "u16",
+              "enum": { "active": 1, "passive": 2, "disabled": 3 },
+              "help": "NewLCState" },
+            { "type": "padding", "size": 2 }
+          ]
+        },
+        {
+          "name": "set_ap_state",
+          "cc": 3,
+          "help": "Set the state of one or all actionpoints (not unused or permanently off ones)",
+          "fields": [
+            { "name": "ap", "type": "u16", "help": "APNumber 0-175, or 65535 for all" },
+            { "name": "state", "type": "u16",
+              "enum": { "active": 1, "passive": 2, "disabled": 3 },
+              "help": "NewAPState" }
+          ]
+        },
+        {
+          "name": "set_ap_permoff",
+          "cc": 4,
+          "help": "Set one actionpoint permanently off (it must be disabled; only a table load undoes it)",
+          "fields": [
+            { "name": "ap", "type": "u16", "max": 175, "help": "APNumber (all is not allowed)" },
+            { "type": "padding", "size": 2 }
+          ]
+        },
+        {
+          "name": "reset_ap_stats",
+          "cc": 5,
+          "help": "Reset the statistics of one or all actionpoints",
+          "fields": [
+            { "name": "ap", "type": "u16", "help": "APNumber 0-175, or 65535 for all" },
+            { "type": "padding", "size": 2 }
+          ]
+        },
+        {
+          "name": "reset_wp_stats",
+          "cc": 6,
+          "help": "Reset the statistics of one or all watchpoints",
+          "fields": [
+            { "name": "wp", "type": "u16", "help": "WPNumber 0-375, or 65535 for all" },
+            { "type": "padding", "size": 2 }
+          ]
+        }
+      ]
+    },
+    {
+      "mid": "0x1975",
+      "commands": [
+        {
+          "name": "hk",
+          "cc": 0,
+          "help": "Request a housekeeping packet (normally sent by the scheduler)"
+        }
+      ]
+    }
+  ]
+}

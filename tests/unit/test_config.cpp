@@ -126,7 +126,7 @@ TEST(ShippedConfig, TargetsFileLoadsAndBuilds)
     EXPECT_EQ(sil.format.type, "ccsds_v1");
     EXPECT_EQ(sil.transport.type, "udp");
     EXPECT_EQ(sil.transport.options.at("port"), "1234");   // JSON number -> option text
-    ASSERT_EQ(sil.catalogFiles.size(), 2U);
+    ASSERT_EQ(sil.catalogFiles.size(), 12U);
     EXPECT_TRUE(std::filesystem::exists(sil.catalogFiles[0]));
 
     for (const auto& t : targets.targets) {
