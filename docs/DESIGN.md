@@ -326,8 +326,14 @@ UI thread (FTXUI) --snapshot()/monitorTail()--> render
 - `TelemetryCatalog` (`config/telemetry/<app>.json`): one packet definition
   per MID; fields in payload order after the 12-byte cFE 6.7 telemetry header,
   in the target byte order. `"event": true` packets go to the event log.
+  The loader expands `"count": N` / `[N, M]` arrays to `name_0 ..` and
+  `"fields": [...]` groups (nested structs) to `group_member` /
+  `group_0_member`, so the decoder only sees flat fields.
+- The secondary-header time is read in the target byte order: cFE 6.7
+  `CFE_SB_SetMsgTime` copies it with `memcpy` (little-endian on the SIL).
 - Checks per packet: CCSDS length field, sequence continuity per MID (gap),
-  payload size vs. definition, unknown MID. All are counted and shown; none
+  payload size vs. definition (at least the definition for `"variable": true`
+  packets such as CF PDUs), unknown MID. All are counted and shown; none
   stops decoding.
 - Memory is bounded: latest values per MID, 500 events, 10 000 monitor records.
 

@@ -1,0 +1,169 @@
+// AOCS (attitude and orbit control) telemetry. Source: aocs_hktlms.h, aocs_app.h,
+// aocs_app_msgids.h, aocs_childs.h, aocs_cmds.c, aocs_utils.c, aocs_lib_struct.h (lib_simulation_udp build).
+//
+// Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
+// in targets.json. Layouts are the NTPM SIL build (x86-64, 64-bit), checked
+// with offsetof against the FSW headers.
+//   packets  one entry per telemetry MID the app sends
+//   event    true for EVS event packets: shown in the event log
+//   variable true: the payload may be longer than the listed fields
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   count    N or [N, M]: an array, shown as name_0, name_1, ... (row-major)
+//   fields   instead of type: a nested struct, shown as name_member
+//            (name_0_member with count)
+//   enum     { "name": value, ... }  value shown by name
+//   units    text shown after the value
+//   hex      true: integer shown as 0x..
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 12-byte telemetry header
+// (CFE_SB_TLM_HDR_SIZE: 6-byte primary header + 6-byte time). Multi-byte
+// fields use the target byte order. Compiler-inserted holes and spare members
+// are listed as padding.
+//
+// Values taken from the FSW (update if the mission changes them):
+//   aocs_app_msgids.h AOCS_HK_CMD_TLM_MID 0x0911, AOCS_HK_DEVICES_TLM_MID 0x0912,
+//                   AOCS_HK_STATE_TLM_MID 0x0913, AOCS_HK_SUN_POINTING_TLM_MID 0x0916,
+//                   AOCS_HK_ATTIT_CONTROL_TLM_MID 0x0917, AOCS_TIME_ORBIT_TLM_MID 0x0918,
+//                   AOCS_ATTITUDE_ORBIT_TLM_MID 0x0919 (AOCS_TO_MAIN_TLM_MID 0x0915 is not routed)
+//   Device counts (HardwareNumEachType_t): STR 2, GPS 1, GYRO 1, MTM 1, SS 4, MTQ 3, RW 4.
+//   Arrays with one device ([1]) are shown without the device index.
+//   Every second AOCS sends cmd_hk, devices and state, then sun_pointing (control
+//   mode 4 or 5) or attit_control (all other modes).
+//   Quaternion component order is not stated in the code; aocs_lib treats
+//   element 3 as the scalar.
+{
+  "app": "aocs",
+  "help": "Attitude and Orbit Control",
+  "packets": [
+    {
+      "name": "cmd_hk",
+      "mid": "0x0911",
+      "help": "Command counters, every 1 s (AOCS_CmdHkPacket_t)",
+      "fields": [
+        { "name": "received_cmd_cnt", "type": "u16" },
+        { "name": "error_cmd_cnt", "type": "u16" }
+      ]
+    },
+    {
+      "name": "devices",
+      "mid": "0x0912",
+      "help": "Sensor and actuator data, every 1 s; values are 0 while a device is not AVAILABLE (AOCS_DevicesHkPacket_t)",
+      "fields": [
+        { "name": "control_mode", "type": "u16",
+          "enum": { "HIBERNATE": 0, "DETUMBLE": 1, "TARGET_SPOT_POINTING": 2, "NADIR_POINTING": 3,
+                    "COARSE_SUN_POINTING": 4, "FINE_SUN_POINTING": 5, "XBAND_POINTING": 6,
+                    "SBAND_POINTING": 7, "THRUSTER_POINTING": 8, "TARGET_STRIP_POINTING": 9 } },
+        { "name": "star_tracker_status", "type": "u8", "count": 2,
+          "enum": { "ERROR": 0, "AVAILABLE": 1, "BLIND": 2, "NO_USE": 3, "PENDING": 4 } },
+        { "name": "roll_over", "type": "i16", "help": "GPS week roll-over count" },
+        { "name": "week", "type": "i16", "help": "GPS week number" },
+        { "name": "sec_week", "type": "i32", "units": "s", "help": "GPS seconds of week, integer part" },
+        { "name": "frac_sec", "type": "f64", "units": "s", "help": "GPS seconds of week, fractional part" },
+        { "name": "rn", "type": "f64", "count": 3, "units": "m", "help": "Position, ECI [x,y,z]" },
+        { "name": "vn", "type": "f64", "count": 3, "units": "m/s", "help": "Velocity, ECI [x,y,z]" },
+        { "name": "abs_time", "type": "f64", "units": "s", "help": "GPS sensor time" },
+        { "name": "qbn", "type": "f64", "count": [2, 4], "help": "Star tracker attitude quaternion vs ECI, [tracker][4]" },
+        { "name": "wbn", "type": "f64", "count": 3, "help": "Gyro angular velocity (sensor frame); unit not stated" },
+        { "name": "bb", "type": "f64", "count": 3, "help": "Magnetometer field (sensor frame); unit not stated" },
+        { "name": "sb", "type": "f64", "count": [4, 3], "help": "Sun vector (sensor frame), [sensor][x,y,z]" },
+        { "name": "mcmd", "type": "f64", "count": 3, "help": "Magnetorquer commanded dipole; unit not stated" },
+        { "name": "tcmd", "type": "f64", "count": 4, "help": "Reaction-wheel commanded torque; unit not stated" },
+        { "name": "ww", "type": "f64", "count": 4, "units": "rad/s", "help": "Reaction-wheel speed" },
+        { "name": "norm_ww_rw", "type": "f64", "units": "rad/s", "help": "Norm of available wheel speeds" },
+        { "name": "mtm_status", "type": "u8",
+          "enum": { "ERROR": 0, "AVAILABLE": 1, "BLIND": 2, "NO_USE": 3, "PENDING": 4 } },
+        { "name": "gyro_status", "type": "u8",
+          "enum": { "ERROR": 0, "AVAILABLE": 1, "BLIND": 2, "NO_USE": 3, "PENDING": 4 } },
+        { "name": "gps_status", "type": "u8",
+          "enum": { "ERROR": 0, "AVAILABLE": 1, "BLIND": 2, "NO_USE": 3, "PENDING": 4 } },
+        { "name": "sun_sensor_status", "type": "u8", "count": 4,
+          "enum": { "ERROR": 0, "AVAILABLE": 1, "BLIND": 2, "NO_USE": 3, "PENDING": 4 } },
+        { "name": "mtq_status", "type": "u8", "count": 3,
+          "enum": { "ERROR": 0, "AVAILABLE": 1, "BLIND": 2, "NO_USE": 3, "PENDING": 4 } },
+        { "name": "rw_status", "type": "u8", "count": 4,
+          "enum": { "ERROR": 0, "AVAILABLE": 1, "BLIND": 2, "NO_USE": 3, "PENDING": 4 } },
+        { "name": "thr_status", "type": "u8",
+          "enum": { "ERROR": 0, "AVAILABLE": 1, "BLIND": 2, "NO_USE": 3, "PENDING": 4 } },
+        { "type": "padding", "size": 1 }
+      ]
+    },
+    {
+      "name": "state",
+      "mid": "0x0913",
+      "help": "Angular velocity and attitude, every 1 s (AOCS_StateHkPacket_t)",
+      "fields": [
+        { "type": "padding", "size": 4 },
+        { "name": "ang_vel", "type": "f64", "count": 4, "units": "deg/s", "help": "[0..2] x,y,z, [3] magnitude" },
+        { "name": "attitude", "type": "f64", "count": 4,
+          "help": "Current attitude quaternion; 0 in DETUMBLE and COARSE/FINE SUN POINTING" }
+      ]
+    },
+    {
+      "name": "sun_pointing",
+      "mid": "0x0916",
+      "help": "Sun pointing control, every 1 s in COARSE/FINE SUN POINTING (AOCS_SunPointingPacket_t)",
+      "fields": [
+        { "name": "result_control", "type": "u16",
+          "enum": { "ATTIT_TIMEOUT": 3, "ATTIT_SUCCESS": 4, "ATTIT_CAN_NOT_CONTROL": 5,
+                    "ATTIT_IN_PROGRESS": 6, "DETUMB_CAN_NOT_CONTROL": 7, "DETUMB_TIMEOUT": 8,
+                    "DETUMB_SUCCESS": 9, "DETUMB_ABNORMAL_INCREASE_IN_ANGVEL": 10,
+                    "DETUMB_IN_PROGRESS": 12, "DETUMB_MTQ_ERROR": 13, "DETUMB_MTM_ERROR": 14,
+                    "ATTIT_CAN_NOT_DETERMINE_TARGET_ATTITUDE": 15,
+                    "ATTIT_CAN_NOT_DETERMINE_ANGVEL": 16, "ATTIT_CAN_NOT_CAL_CURRENT_ATTITUDE": 17,
+                    "ATTIT_CAN_NOT_DETERMINE_SUNVEC": 18, "ATTIT_ACTUATOR_ERR": 19,
+                    "ATTIT_CAN_NOT_UNLOAD_RW": 20, "CONTROL_PENDING": 100 } },
+        { "type": "padding", "size": 2 },
+        { "name": "sun_vec", "type": "f64", "count": 3, "help": "Sun vector used for pointing [x,y,z]" },
+        { "name": "angle_deg", "type": "f64", "units": "deg", "help": "Sun-direction error" }
+      ]
+    },
+    {
+      "name": "attit_control",
+      "mid": "0x0917",
+      "help": "Attitude control, every 1 s in all modes except COARSE/FINE SUN POINTING (AOCS_AttitControlPacket_t)",
+      "fields": [
+        { "name": "control_mode", "type": "u16",
+          "enum": { "HIBERNATE": 0, "DETUMBLE": 1, "TARGET_SPOT_POINTING": 2, "NADIR_POINTING": 3,
+                    "COARSE_SUN_POINTING": 4, "FINE_SUN_POINTING": 5, "XBAND_POINTING": 6,
+                    "SBAND_POINTING": 7, "THRUSTER_POINTING": 8, "TARGET_STRIP_POINTING": 9 } },
+        { "name": "result_control", "type": "u16",
+          "enum": { "ATTIT_TIMEOUT": 3, "ATTIT_SUCCESS": 4, "ATTIT_CAN_NOT_CONTROL": 5,
+                    "ATTIT_IN_PROGRESS": 6, "DETUMB_CAN_NOT_CONTROL": 7, "DETUMB_TIMEOUT": 8,
+                    "DETUMB_SUCCESS": 9, "DETUMB_ABNORMAL_INCREASE_IN_ANGVEL": 10,
+                    "DETUMB_IN_PROGRESS": 12, "DETUMB_MTQ_ERROR": 13, "DETUMB_MTM_ERROR": 14,
+                    "ATTIT_CAN_NOT_DETERMINE_TARGET_ATTITUDE": 15,
+                    "ATTIT_CAN_NOT_DETERMINE_ANGVEL": 16, "ATTIT_CAN_NOT_CAL_CURRENT_ATTITUDE": 17,
+                    "ATTIT_CAN_NOT_DETERMINE_SUNVEC": 18, "ATTIT_ACTUATOR_ERR": 19,
+                    "ATTIT_CAN_NOT_UNLOAD_RW": 20, "CONTROL_PENDING": 100 } },
+        { "name": "target_ang_vel", "type": "f64", "count": 3, "help": "Target angular velocity [x,y,z]; unit not stated" },
+        { "name": "ew_degs", "type": "f64", "count": 4, "units": "deg/s", "help": "Angular-velocity error" },
+        { "name": "target_attitude", "type": "f64", "count": 4, "help": "Target attitude quaternion" },
+        { "name": "err_attitude", "type": "f64", "count": 4, "units": "deg",
+          "help": "[0..2] Euler angles of the error quaternion, [3] root of the sum of squares" },
+        { "name": "elevation", "type": "f64", "help": "Target elevation, computed only in TARGET_SPOT_POINTING; unit not stated" }
+      ]
+    },
+    {
+      "name": "time_orbit",
+      "mid": "0x0918",
+      "help": "Thruster burn times, once when the thruster is deactivated (AOCS_TimeOrbitPacket_t)",
+      "fields": [
+        { "type": "padding", "size": 4 },
+        { "name": "time_prop_init", "type": "f64", "units": "s", "help": "GPS second at propulsion init" },
+        { "name": "time_active_prop", "type": "f64", "units": "s", "help": "GPS second at thruster activation" },
+        { "name": "time_deactive_prop", "type": "f64", "units": "s", "help": "GPS second at thruster deactivation" }
+      ]
+    },
+    {
+      "name": "attitude_orbit",
+      "mid": "0x0919",
+      "help": "Attitude during a thruster burn, every 10 control cycles (AOCS_AttitudeOrbitPacket_t)",
+      "fields": [
+        { "type": "padding", "size": 4 },
+        { "name": "control_period", "type": "f64", "count": 10, "units": "s", "help": "Control-cycle period per sample" },
+        { "name": "quaternion", "type": "f64", "count": [10, 4], "help": "Attitude quaternion per sample, [sample][4]" }
+      ]
+    }
+  ]
+}

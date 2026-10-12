@@ -1,0 +1,122 @@
+// SB (Software Bus) telemetry. Source: cFE 6.7.0 cfe_sb_msg.h, cfe_sb.h, ntpm_msgids.h,
+// ntpm_mission_cfg.h, ntpm_platform_cfg.h.
+//
+// Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
+// in targets.json. Layouts are the NTPM SIL build (x86-64, 64-bit), checked
+// with offsetof against the FSW headers.
+//   packets  one entry per telemetry MID the app sends
+//   event    true for EVS event packets: shown in the event log
+//   variable true: the payload may be longer than the listed fields
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   count    N or [N, M]: an array, shown as name_0, name_1, ... (row-major)
+//   fields   instead of type: a nested struct, shown as name_member
+//            (name_0_member with count)
+//   enum     { "name": value, ... }  value shown by name
+//   units    text shown after the value
+//   hex      true: integer shown as 0x..
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 12-byte telemetry header
+// (CFE_SB_TLM_HDR_SIZE: 6-byte primary header + 6-byte time). Multi-byte
+// fields use the target byte order. Compiler-inserted holes and spare members
+// are listed as padding.
+//
+// Values taken from the FSW (update if the mission changes them):
+//   ntpm_msgids.h        CFE_SB_HK_TLM_MID 0x0803, CFE_SB_STATS_TLM_MID 0x080A,
+//                        CFE_SB_ALLSUBS_TLM_MID 0x080D, CFE_SB_ONESUB_TLM_MID 0x080E
+//   ntpm_mission_cfg.h   CFE_MISSION_SB_MAX_PIPES 64
+//   cfe_sb.h             CFE_SB_SUB_ENTRIES_PER_PKT 20
+//   CFE_ES_MemHandle_t is a cpuaddr: 8 bytes on SIL, so hk starts with a 4-byte
+//   hole (flight 32-bit ARM layouts differ).
+{
+  "app": "sb",
+  "help": "cFE Software Bus",
+  "packets": [
+    {
+      "name": "hk",
+      "mid": "0x0803",
+      "help": "Housekeeping, every 30 s (CFE_SB_HousekeepingTlm_t)",
+      "fields": [
+        { "type": "padding", "size": 4 },
+        { "name": "command_counter", "type": "u8" },
+        { "name": "command_error_counter", "type": "u8" },
+        { "name": "no_subscribers_counter", "type": "u8" },
+        { "name": "msg_send_error_counter", "type": "u8" },
+        { "name": "msg_receive_error_counter", "type": "u8" },
+        { "name": "internal_error_counter", "type": "u8" },
+        { "name": "create_pipe_error_counter", "type": "u8" },
+        { "name": "subscribe_error_counter", "type": "u8" },
+        { "name": "pipe_opts_error_counter", "type": "u8" },
+        { "name": "duplicate_subscriptions_counter", "type": "u8" },
+        { "type": "padding", "size": 2 },
+        { "name": "pipe_overflow_error_counter", "type": "u16",
+          "help": "Messages dropped because a pipe was full (TO's pipe holds 10)" },
+        { "name": "msg_limit_error_counter", "type": "u16",
+          "help": "Messages dropped by a per-MID pipe limit (1 for most TO routes)" },
+        { "name": "mem_pool_handle", "type": "u64", "hex": true },
+        { "name": "mem_in_use", "type": "u32", "units": "B" },
+        { "name": "unmarked_mem", "type": "u32", "units": "B",
+          "help": "CFE_PLATFORM_SB_BUF_MEMORY_BYTES (524288) minus peak memory in use" }
+      ]
+    },
+    {
+      "name": "stats",
+      "mid": "0x080A",
+      "help": "Statistics, on CFE_SB_SEND_SB_STATS_CC (CFE_SB_StatsTlm_t)",
+      "fields": [
+        { "name": "msg_ids_in_use", "type": "u32" },
+        { "name": "peak_msg_ids_in_use", "type": "u32" },
+        { "name": "max_msg_ids_allowed", "type": "u32" },
+        { "name": "pipes_in_use", "type": "u32" },
+        { "name": "peak_pipes_in_use", "type": "u32" },
+        { "name": "max_pipes_allowed", "type": "u32" },
+        { "name": "mem_in_use", "type": "u32", "units": "B" },
+        { "name": "peak_mem_in_use", "type": "u32", "units": "B" },
+        { "name": "max_mem_allowed", "type": "u32", "units": "B" },
+        { "name": "subscriptions_in_use", "type": "u32" },
+        { "name": "peak_subscriptions_in_use", "type": "u32" },
+        { "name": "max_subscriptions_allowed", "type": "u32" },
+        { "name": "sb_buffers_in_use", "type": "u32" },
+        { "name": "peak_sb_buffers_in_use", "type": "u32" },
+        { "name": "max_pipe_depth_allowed", "type": "u32" },
+        { "name": "pipe_stats", "count": 64, "help": "Indexed by pipe table index; unused pipes are 0",
+          "fields": [
+            { "name": "pipe_id", "type": "u8" },
+            { "type": "padding", "size": 1 },
+            { "name": "depth", "type": "u16" },
+            { "name": "in_use", "type": "u16" },
+            { "name": "peak_in_use", "type": "u16" }
+          ] }
+      ]
+    },
+    {
+      "name": "all_subs",
+      "mid": "0x080D",
+      "help": "Global subscriptions, a series of packets on CFE_SB_SEND_PREV_SUBS_CC; the last has entries < 20 (CFE_SB_AllSubscriptionsTlm_t)",
+      "fields": [
+        { "name": "pkt_segment", "type": "u32", "help": "1, 2, ... within one request" },
+        { "name": "total_segments", "type": "u32", "help": "Never written by this cFE: always 0" },
+        { "name": "entries", "type": "u32", "help": "Valid entries in this packet (1..20)" },
+        { "name": "entry", "count": 20,
+          "help": "Entries >= 'entries' hold stale data; Qos and Pipe are never written",
+          "fields": [
+            { "name": "msg_id", "type": "u16", "hex": true },
+            { "type": "padding", "size": 4 }
+          ] }
+      ]
+    },
+    {
+      "name": "one_sub",
+      "mid": "0x080E",
+      "help": "One subscription change, while enabled by CFE_SB_ENABLE_SUB_REPORTING_CC (CFE_SB_SingleSubscriptionTlm_t)",
+      "fields": [
+        { "name": "sub_type", "type": "u8", "enum": { "SUBSCRIPTION": 0, "UNSUBSCRIPTION": 1 } },
+        { "type": "padding", "size": 1 },
+        { "name": "msg_id", "type": "u16", "hex": true },
+        { "type": "padding", "size": 2 },
+        { "name": "pipe", "type": "u8" },
+        { "type": "padding", "size": 1 }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+// HS (Health and Safety) telemetry. Source: hs_msg.h, hs_msgdefs.h, hs_msgids.h,
+// hs_platform_cfg.h, hs_monitors.c, hs_amt.c, hs_xct.c.
+//
+// Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
+// in targets.json. Layouts are the NTPM SIL build (x86-64, 64-bit), checked
+// with offsetof against the FSW headers.
+//   packets  one entry per telemetry MID the app sends
+//   event    true for EVS event packets: shown in the event log
+//   variable true: the payload may be longer than the listed fields
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   count    N or [N, M]: an array, shown as name_0, name_1, ... (row-major)
+//   fields   instead of type: a nested struct, shown as name_member
+//            (name_0_member with count)
+//   enum     { "name": value, ... }  value shown by name
+//   units    text shown after the value
+//   hex      true: integer shown as 0x..
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 12-byte telemetry header
+// (CFE_SB_TLM_HDR_SIZE: 6-byte primary header + 6-byte time). Multi-byte
+// fields use the target byte order. Compiler-inserted holes and spare members
+// are listed as padding.
+//
+// Values taken from the FSW (update if the mission changes them):
+//   hs_msgids.h        HS_HK_TLM_MID 0x096D, HS_CPU_TLM_MID 0x096E
+//   hs_platform_cfg.h  HS_MAX_MONITORED_APPS 32 (one enable word), HS_MAX_EXEC_CNT_SLOTS 32
+//   CPU values on SIL: the pc-linux PSP load word makes util_cpu_avg/peak read
+//   10000 almost always, and idle_percent is a custom formula (about 0-0.12).
+//   Show them raw.
+{
+  "app": "hs",
+  "help": "Health and Safety",
+  "packets": [
+    {
+      "name": "hk",
+      "mid": "0x096D",
+      "help": "Housekeeping, every 10 s (HS_HkPacket_t)",
+      "fields": [
+        { "name": "cmd_count", "type": "u8" },
+        { "name": "cmd_err_count", "type": "u8" },
+        { "name": "current_app_mon_state", "type": "u8", "enum": { "DISABLED": 0, "ENABLED": 1 } },
+        { "name": "current_event_mon_state", "type": "u8", "enum": { "DISABLED": 0, "ENABLED": 1 } },
+        { "name": "current_aliveness_state", "type": "u8", "enum": { "DISABLED": 0, "ENABLED": 1 } },
+        { "name": "current_cpu_hog_state", "type": "u8", "enum": { "DISABLED": 0, "ENABLED": 1 } },
+        { "name": "status_flags", "type": "u8", "hex": true,
+          "help": "0x01 XCT loaded, 0x02 MAT loaded, 0x04 AMT loaded, 0x08 EMT loaded, 0x10 CDS in use" },
+        { "type": "padding", "size": 1 },
+        { "name": "resets_performed", "type": "u16" },
+        { "name": "max_resets", "type": "u16" },
+        { "name": "events_monitored_count", "type": "u32" },
+        { "name": "invalid_event_mon_count", "type": "u32" },
+        { "name": "app_mon_enables", "type": "u32", "hex": true,
+          "help": "bit i = app-monitor entry i enabled (default AMT: 0 ES, 1 EVS, 2 TIME, 3 TBL, 4 SB, 5 AOCS_APP, 6 MAIN_APP, 7 PL, 8-9 DS)" },
+        { "name": "msg_act_exec", "type": "u32" },
+        { "name": "util_cpu_avg", "type": "u32", "help": "Raw, clamped to 10000; reads 10000 almost always on SIL" },
+        { "name": "util_cpu_peak", "type": "u32", "help": "Raw, clamped to 10000; reads 10000 almost always on SIL" },
+        { "name": "exe_counts", "type": "u32", "count": 32,
+          "help": "Execution counters (default XCT: 0 ES, 1 EVS, 2 TIME, 3 TBL, 4 SB); 0xFFFFFFFF = unused" }
+      ]
+    },
+    {
+      "name": "cpu",
+      "mid": "0x096E",
+      "help": "CPU usage, every 10 s while CPU monitoring runs (HS_CpuUsagePacket_t)",
+      "fields": [
+        { "name": "idle_percent", "type": "f32",
+          "help": "CFE_PSP_CalcPercentFromAvgLoad; rises with load on pc-linux, range about 0-0.12" }
+      ]
+    }
+  ]
+}

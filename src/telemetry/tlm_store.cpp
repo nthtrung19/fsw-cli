@@ -96,7 +96,7 @@ TlmStore::MidTrack& TlmStore::track(std::uint16_t mid, const std::string& name, 
 
 void TlmStore::ingest(const Bytes& datagram, TlmTime now)
 {
-    const TlmParseResult parsed = parseTelemetry(datagram);
+    const TlmParseResult parsed = parseTelemetry(datagram, endian_);
 
     std::lock_guard<std::mutex> lock(mutex_);
     ++counters_.received;
@@ -153,7 +153,10 @@ void TlmStore::ingest(const Bytes& datagram, TlmTime now)
         return;
     }
 
-    if (frame.payload.size() != def->payloadSize()) {
+    // A variable-length packet only needs the bytes its fields cover.
+    const bool lengthOk = def->variableLength ? frame.payload.size() >= def->payloadSize()
+                                              : frame.payload.size() == def->payloadSize();
+    if (!lengthOk) {
         ++t.stats.lengthErrors;
         // A gap is the more urgent finding; keep it as the status if both apply.
         if (record.status == PacketStatus::Ok) {

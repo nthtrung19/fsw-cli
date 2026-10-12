@@ -1,0 +1,73 @@
+// SC (Stored Command) telemetry. Source: sc_msg.h, sc_msgdefs.h, sc_msgids.h,
+// sc_platform_cfg.h.
+//
+// Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
+// in targets.json. Layouts are the NTPM SIL build (x86-64, 64-bit), checked
+// with offsetof against the FSW headers.
+//   packets  one entry per telemetry MID the app sends
+//   event    true for EVS event packets: shown in the event log
+//   variable true: the payload may be longer than the listed fields
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   count    N or [N, M]: an array, shown as name_0, name_1, ... (row-major)
+//   fields   instead of type: a nested struct, shown as name_member
+//            (name_0_member with count)
+//   enum     { "name": value, ... }  value shown by name
+//   units    text shown after the value
+//   hex      true: integer shown as 0x..
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 12-byte telemetry header
+// (CFE_SB_TLM_HDR_SIZE: 6-byte primary header + 6-byte time). Multi-byte
+// fields use the target byte order. Compiler-inserted holes and spare members
+// are listed as padding.
+//
+// Values taken from the FSW (update if the mission changes them):
+//   sc_msgids.h        SC_HK_TLM_MID 0x098A
+//   sc_platform_cfg.h  SC_NUMBER_OF_RTS 64 (4 bitmap words), SC_ATS_BUFF_SIZE 8000 words,
+//                      SC_TIME_TO_USE = SC_USE_CFE_TIME (TAI seconds)
+{
+  "app": "sc",
+  "help": "Stored Command",
+  "packets": [
+    {
+      "name": "hk",
+      "mid": "0x098A",
+      "help": "Housekeeping, every 5 s (SC_HkTlm_t)",
+      "fields": [
+        { "name": "ats_number", "type": "u8", "enum": { "NONE": 0, "ATS_A": 1, "ATS_B": 2 } },
+        { "name": "atp_state", "type": "u8",
+          "enum": { "EMPTY": 0, "LOADED": 1, "IDLE": 2, "EXECUTING": 5, "STARTING": 8 } },
+        { "name": "continue_ats_on_failure_flag", "type": "u8",
+          "help": "1 = keep running the ATS after a failed command" },
+        { "name": "cmd_err_ctr", "type": "u8" },
+        { "name": "cmd_ctr", "type": "u8" },
+        { "type": "padding", "size": 1 },
+        { "name": "switch_pend_flag", "type": "u16", "help": "1 = an ATS switch is pending" },
+        { "name": "num_rts_active", "type": "u16" },
+        { "name": "rts_number", "type": "u16", "help": "Next RTS number to run (1-64)" },
+        { "name": "rts_active_ctr", "type": "u16" },
+        { "name": "rts_active_err_ctr", "type": "u16" },
+        { "name": "ats_cmd_ctr", "type": "u16" },
+        { "name": "ats_cmd_err_ctr", "type": "u16" },
+        { "name": "rts_cmd_ctr", "type": "u16" },
+        { "name": "rts_cmd_err_ctr", "type": "u16" },
+        { "name": "last_ats_err_seq", "type": "u16", "help": "1 = ATS A, 2 = ATS B" },
+        { "name": "last_ats_err_cmd", "type": "u16" },
+        { "name": "last_rts_err_seq", "type": "u16", "help": "RTS number" },
+        { "name": "last_rts_err_cmd", "type": "u16", "help": "Offset of the failed command in the RTS buffer, in 16-bit words" },
+        { "name": "append_cmd_arg", "type": "u16", "help": "1 = ATS A, 2 = ATS B" },
+        { "name": "append_entry_count", "type": "u16" },
+        { "name": "append_byte_count", "type": "u16", "units": "B" },
+        { "name": "append_load_count", "type": "u16" },
+        { "name": "atp_cmd_number", "type": "u32" },
+        { "name": "atp_free_bytes", "type": "u32", "count": 2, "units": "B", "help": "[0] = ATS A, [1] = ATS B" },
+        { "name": "next_rts_time", "type": "u32", "units": "s", "help": "TAI seconds; 0xFFFFFFFF = nothing pending" },
+        { "name": "next_ats_time", "type": "u32", "units": "s", "help": "TAI seconds; 0xFFFFFFFF = nothing pending" },
+        { "name": "rts_executing_status", "type": "u16", "count": 4, "hex": true,
+          "help": "RTS r (1-64): word (r-1)/16, bit (r-1)%16" },
+        { "name": "rts_disabled_status", "type": "u16", "count": 4, "hex": true,
+          "help": "RTS r (1-64): word (r-1)/16, bit (r-1)%16" }
+      ]
+    }
+  ]
+}

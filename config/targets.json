@@ -31,7 +31,11 @@
       "transport": { "type": "udp", "host": "127.0.0.1", "port": 1234 },
       "telemetry": {
         "receiver": { "type": "udp", "port": 5011 },
-        "catalog":  ["telemetry/evs.json"]
+        "catalog":  ["telemetry/es.json", "telemetry/evs.json", "telemetry/sb.json", "telemetry/tbl.json",
+                     "telemetry/time.json", "telemetry/to.json", "telemetry/ci.json", "telemetry/sch.json",
+                     "telemetry/sc.json", "telemetry/hs.json", "telemetry/cf.json", "telemetry/fm.json",
+                     "telemetry/ds.json", "telemetry/lc.json", "telemetry/aocs.json", "telemetry/main.json",
+                     "telemetry/pl.json", "telemetry/fdir.json"]
       }
     },
 
@@ -43,7 +47,11 @@
       "transport": { "type": "dryrun" },
       "telemetry": {
         "receiver": { "type": "udp", "port": 5011 },
-        "catalog":  ["telemetry/evs.json"]
+        "catalog":  ["telemetry/es.json", "telemetry/evs.json", "telemetry/sb.json", "telemetry/tbl.json",
+                     "telemetry/time.json", "telemetry/to.json", "telemetry/ci.json", "telemetry/sch.json",
+                     "telemetry/sc.json", "telemetry/hs.json", "telemetry/cf.json", "telemetry/fm.json",
+                     "telemetry/ds.json", "telemetry/lc.json", "telemetry/aocs.json", "telemetry/main.json",
+                     "telemetry/pl.json", "telemetry/fdir.json"]
       }
     }
 

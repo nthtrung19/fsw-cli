@@ -1,0 +1,222 @@
+// CF (CCSDS File Delivery Protocol) telemetry. Source: cf_msg.h, cf_defs.h, cf_msgids.h,
+// cf_platform_cfg.h, cf_cmds.c, cf_callbacks.c, cf_app.h, PUB/cfdp_data_structures.h.
+//
+// Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
+// in targets.json. Layouts are the NTPM SIL build (x86-64, 64-bit), checked
+// with offsetof against the FSW headers.
+//   packets  one entry per telemetry MID the app sends
+//   event    true for EVS event packets: shown in the event log
+//   variable true: the payload may be longer than the listed fields
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   count    N or [N, M]: an array, shown as name_0, name_1, ... (row-major)
+//   fields   instead of type: a nested struct, shown as name_member
+//            (name_0_member with count)
+//   enum     { "name": value, ... }  value shown by name
+//   units    text shown after the value
+//   hex      true: integer shown as 0x..
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 12-byte telemetry header
+// (CFE_SB_TLM_HDR_SIZE: 6-byte primary header + 6-byte time). Multi-byte
+// fields use the target byte order. Compiler-inserted holes and spare members
+// are listed as padding.
+//
+// Values taken from the FSW (update if the mission changes them):
+//   cf_msgids.h        CF_HK_TLM_MID 0x0920, CF_TRANS_TLM_MID 0x0921, CF_CONFIG_TLM_MID 0x0922,
+//                      CF_SPACE_TO_GND_PDU_MID 0x092D
+//   cf_platform_cfg.h  CF_MAX_PLAYBACK_CHANNELS 2, CF_MEMORY_POOL_BYTES 32768,
+//                      CF_SEND_FIXED_SIZE_PKTS 0 (PDU packets have variable length)
+//   CFDP enums (cfdp_data_structures.h): CONDITION_CODE, DELIVERY_CODE, FINAL_STATUS,
+//   ROLE, STATE; CF_STAT_* (cf_defs.h).
+{
+  "app": "cf",
+  "help": "CCSDS File Delivery Protocol",
+  "packets": [
+    {
+      "name": "hk",
+      "mid": "0x0920",
+      "help": "Housekeeping, every 5 s (CF_HkPacket_t)",
+      "fields": [
+        { "name": "cmd_counter", "type": "u16" },
+        { "name": "err_counter", "type": "u16" },
+        { "name": "wakeup_for_file_proc", "type": "u32" },
+        { "name": "engine_cycle_count", "type": "u32" },
+        { "name": "mem_in_use", "type": "u32", "units": "B" },
+        { "name": "peak_mem_in_use", "type": "u32", "units": "B" },
+        { "name": "low_memory_mark", "type": "u32", "units": "B" },
+        { "name": "max_mem_needed", "type": "u32", "units": "B" },
+        { "name": "mem_allocated", "type": "u32", "units": "B" },
+        { "name": "buffer_pool_handle", "type": "u32", "hex": true },
+        { "name": "q_nodes_allocated", "type": "u32" },
+        { "name": "q_nodes_deallocated", "type": "u32" },
+        { "name": "pdus_received", "type": "u32" },
+        { "name": "pdus_rejected", "type": "u32" },
+        { "name": "total_in_prog_trans", "type": "u32" },
+        { "name": "total_failed_trans", "type": "u32" },
+        { "name": "total_abandon_trans", "type": "u32" },
+        { "name": "total_success_trans", "type": "u32" },
+        { "name": "total_completed_trans", "type": "u32" },
+        { "name": "last_failed_trans", "type": "string", "size": 20 },
+        { "name": "auto_suspend", "fields": [
+            { "name": "en_flag", "type": "u32", "enum": { "DISABLED": 0, "ENABLED": 1 } },
+            { "name": "low_free_mark", "type": "u32" }
+          ] },
+        { "name": "cond", "help": "Fault counters by CFDP condition", "fields": [
+            { "name": "pos_ack_num", "type": "u8" },
+            { "name": "file_store_rej_num", "type": "u8" },
+            { "name": "file_checksum_num", "type": "u8" },
+            { "name": "file_size_num", "type": "u8" },
+            { "name": "nak_limit_num", "type": "u8" },
+            { "name": "inactive_num", "type": "u8" },
+            { "name": "suspend_num", "type": "u8" },
+            { "name": "cancel_num", "type": "u8" }
+          ] },
+        { "name": "eng", "help": "CFDP engine", "fields": [
+            { "name": "flight_engine_entity_id", "type": "string", "size": 16 },
+            { "name": "flags", "type": "u32", "hex": true, "help": "bit 0 = engine frozen" },
+            { "name": "machines_allocated", "type": "u32" },
+            { "name": "machines_deallocated", "type": "u32" },
+            { "name": "are_any_partners_frozen", "type": "u8" },
+            { "type": "padding", "size": 3 },
+            { "name": "how_many_senders", "type": "u32" },
+            { "name": "how_many_receivers", "type": "u32" },
+            { "name": "how_many_frozen", "type": "u32" },
+            { "name": "how_many_suspended", "type": "u32" },
+            { "name": "total_files_sent", "type": "u32" },
+            { "name": "total_files_received", "type": "u32" },
+            { "name": "total_unsuccessful_senders", "type": "u32" },
+            { "name": "total_unsuccessful_receivers", "type": "u32" }
+          ] },
+        { "name": "up", "help": "Uplink", "fields": [
+            { "name": "meta_count", "type": "u32" },
+            { "name": "uplink_active_q_file_cnt", "type": "u32" },
+            { "name": "success_counter", "type": "u32" },
+            { "name": "failed_counter", "type": "u32" },
+            { "name": "last_file_uplinked", "type": "string", "size": 64 }
+          ] },
+        { "name": "chan", "count": 2, "help": "Downlink (playback) channels", "fields": [
+            { "name": "pdus_sent", "type": "u32" },
+            { "name": "files_sent", "type": "u32" },
+            { "name": "success_counter", "type": "u32" },
+            { "name": "failed_counter", "type": "u32" },
+            { "name": "pending_q_file_cnt", "type": "u32" },
+            { "name": "active_q_file_cnt", "type": "u32" },
+            { "name": "history_q_file_cnt", "type": "u32" },
+            { "name": "flags", "type": "u32", "hex": true,
+              "help": "bit 0 = dequeue enabled, bit 1 = data blast in progress" },
+            { "name": "red_light_cntr", "type": "u32" },
+            { "name": "green_light_cntr", "type": "u32" },
+            { "name": "poll_dirs_checked", "type": "u32" },
+            { "name": "pending_q_checked", "type": "u32" },
+            { "name": "sem_value", "type": "u32" }
+          ] }
+      ]
+    },
+    {
+      "name": "trans",
+      "mid": "0x0921",
+      "help": "One transaction, on CF_SEND_TRANS_DIAG_DATA_CC; eng_* is fresh only when app_status is ACTIVE (CF_TransPacket_t)",
+      "fields": [
+        { "name": "eng", "fields": [
+            { "name": "trans_len", "type": "u8", "help": "Source entity ID length" },
+            { "name": "trans_val", "type": "u8", "help": "First byte of the source entity ID" },
+            { "name": "naks", "type": "u8" },
+            { "name": "part_len", "type": "u8", "help": "Partner entity ID length" },
+            { "name": "part_val", "type": "u8", "help": "First byte of the partner entity ID" },
+            { "name": "phase", "type": "u8" },
+            { "type": "padding", "size": 2 },
+            { "name": "flags", "type": "u32", "hex": true,
+              "help": "0 abandoned, 1 cancelled, 2 external xfer, 3 finished, 4 frozen, 5 metadata rcvd, 6 ACK-FIN only, 7 suspended, 8 md.file_transfer, 9 md.segmentation_control" },
+            { "name": "trans_num", "type": "u32" },
+            { "name": "attempts", "type": "u32" },
+            { "name": "cond_code", "type": "u32",
+              "enum": { "NO_ERROR": 0, "POSITIVE_ACK_LIMIT_REACHED": 1, "KEEP_ALIVE_LIMIT_REACHED": 2,
+                        "INVALID_TRANSMISSION_MODE": 3, "FILESTORE_REJECTION": 4,
+                        "FILE_CHECKSUM_FAILURE": 5, "FILE_SIZE_ERROR": 6, "NAK_LIMIT_REACHED": 7,
+                        "INACTIVITY_DETECTED": 8, "INVALID_FILE_STRUCTURE": 9,
+                        "SUSPEND_REQUEST_RECEIVED": 14, "CANCEL_REQUEST_RECEIVED": 15 } },
+            { "name": "deli_code", "type": "u32",
+              "enum": { "DONT_CARE": 0, "DONT_CARE_1": 1, "DATA_COMPLETE": 2, "DATA_INCOMPLETE": 3 } },
+            { "name": "fd_offset", "type": "u32", "units": "B" },
+            { "name": "fd_length", "type": "u32", "units": "B" },
+            { "name": "checksum", "type": "u32", "hex": true },
+            { "name": "final_stat", "type": "u32",
+              "enum": { "UNKNOWN": 0, "SUCCESSFUL": 1, "CANCELLED": 2, "ABANDONED": 3, "NO_METADATA": 4 } },
+            { "name": "file_size", "type": "u32", "units": "B" },
+            { "name": "rcvd_file_size", "type": "u32", "units": "B" },
+            { "name": "role", "type": "u32",
+              "enum": { "UNDEFINED": 0, "CLASS_1_SENDER": 1, "CLASS_1_RECEIVER": 2,
+                        "CLASS_2_SENDER": 3, "CLASS_2_RECEIVER": 4 } },
+            { "name": "state", "type": "u32",
+              "enum": { "UNINITIALIZED": 0, "S1": 1, "S2": 2, "S3": 3, "S4": 4, "S5": 5, "S6": 6,
+                        "FINISHED": 7 } },
+            { "name": "start_time", "type": "u32", "units": "s", "help": "Host time(NULL): Unix seconds on SIL" },
+            { "name": "src_file", "type": "string", "size": 64 },
+            { "name": "dst_file", "type": "string", "size": 64 },
+            { "name": "tmp_file", "type": "string", "size": 64 }
+          ] },
+        { "name": "app", "fields": [
+            { "name": "status", "type": "u32",
+              "enum": { "UNKNOWN": 0, "SUCCESS": 1, "CANCELLED": 2, "ABANDON": 3, "NO_META": 4,
+                        "PENDING": 5, "ALRDY_ACTIVE": 6, "PUT_REQ_ISSUED": 7, "PUT_REQ_FAIL": 8,
+                        "ACTIVE": 9 } },
+            { "name": "cond_code", "type": "u32",
+              "enum": { "NO_ERROR": 0, "POSITIVE_ACK_LIMIT_REACHED": 1, "KEEP_ALIVE_LIMIT_REACHED": 2,
+                        "INVALID_TRANSMISSION_MODE": 3, "FILESTORE_REJECTION": 4,
+                        "FILE_CHECKSUM_FAILURE": 5, "FILE_SIZE_ERROR": 6, "NAK_LIMIT_REACHED": 7,
+                        "INACTIVITY_DETECTED": 8, "INVALID_FILE_STRUCTURE": 9,
+                        "SUSPEND_REQUEST_RECEIVED": 14, "CANCEL_REQUEST_RECEIVED": 15 } },
+            { "name": "priority", "type": "u32", "help": "Playback only; 0 = highest" },
+            { "name": "class", "type": "u32", "enum": { "CLASS_1": 1, "CLASS_2": 2 } },
+            { "name": "chan_num", "type": "u32", "help": "Playback channel" },
+            { "name": "source", "type": "u32",
+              "enum": { "PLAYBACK_FILE": 1, "PLAYBACK_DIR": 2, "POLL_DIRECTORY": 3, "UPLINK": 255 } },
+            { "name": "node_type", "type": "u32", "enum": { "UPLINK": 1, "PLAYBACK": 2 } },
+            { "name": "trans_num", "type": "u32" },
+            { "name": "src_entity_id", "type": "string", "size": 16 },
+            { "name": "src_file", "type": "string", "size": 64 },
+            { "name": "dst_file", "type": "string", "size": 64 }
+          ] }
+      ]
+    },
+    {
+      "name": "config",
+      "mid": "0x0922",
+      "help": "Configuration, on CF_SEND_CFG_PARAMS_CC (CF_ConfigPacket_t)",
+      "fields": [
+        { "name": "eng_cyc_per_wakeup", "type": "u32" },
+        { "name": "ack_limit", "type": "u32" },
+        { "name": "ack_timeout", "type": "u32", "units": "s" },
+        { "name": "nak_limit", "type": "u32" },
+        { "name": "nak_timeout", "type": "u32", "units": "s" },
+        { "name": "inact_timeout", "type": "u32", "units": "s" },
+        { "name": "def_outgoing_chunk_size", "type": "u32", "units": "B" },
+        { "name": "pipe_depth", "type": "u32" },
+        { "name": "max_simultaneous_trans", "type": "u32" },
+        { "name": "incoming_pdu_buf_size", "type": "u32", "units": "B" },
+        { "name": "outgoing_pdu_buf_size", "type": "u32", "units": "B" },
+        { "name": "num_input_channels", "type": "u32" },
+        { "name": "max_playback_chans", "type": "u32" },
+        { "name": "max_polling_dirs_per_chan", "type": "u32" },
+        { "name": "mem_pool_bytes", "type": "u32", "units": "B" },
+        { "name": "debug_compiled_in", "type": "u32", "help": "0 on SIL (the build flag is misspelled -DCF_DEUBG)" },
+        { "name": "save_incomplete_files", "type": "string", "size": 8 },
+        { "name": "pipe_name", "type": "string", "size": 20 },
+        { "name": "tmp_file_prefix", "type": "string", "size": 64 },
+        { "name": "cfg_tbl_name", "type": "string", "size": 64 },
+        { "name": "cfg_tbl_filename", "type": "string", "size": 64 },
+        { "name": "def_q_info_filename", "type": "string", "size": 64 }
+      ]
+    },
+    {
+      "name": "pdu",
+      "mid": "0x092D",
+      "variable": true,
+      "help": "Outgoing CFDP PDU during file downlink, one per packet; the rest of the PDU is raw big-endian CFDP and is not decoded",
+      "fields": [
+        { "name": "octet1", "type": "u8", "hex": true,
+          "help": "PDU header byte 0: bit 4 = 1 file data, 0 file directive; bit 3 = direction" }
+      ]
+    }
+  ]
+}

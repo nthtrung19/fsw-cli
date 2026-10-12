@@ -72,8 +72,11 @@ private:
 
 // A cFE 6.7 telemetry packet: CCSDS primary header (big-endian, secondary
 // header flag set), 6-byte big-endian time, then `payload`.
+// `timeOrder` is the byte order of the secondary-header time (cFE 6.7 writes
+// it in the CPU's order).
 inline Bytes tlmPacket(std::uint16_t mid, std::uint16_t sequence, const Bytes& payload,
-                       std::uint32_t seconds = 0, std::uint16_t subseconds = 0)
+                       std::uint32_t seconds = 0, std::uint16_t subseconds = 0,
+                       Endian timeOrder = Endian::Big)
 {
     const std::size_t length = 12 + payload.size();
     const auto lengthField = static_cast<std::uint16_t>(length - 7);
@@ -84,6 +87,10 @@ inline Bytes tlmPacket(std::uint16_t mid, std::uint16_t sequence, const Bytes& p
             static_cast<std::uint8_t>(seconds >> 24),   static_cast<std::uint8_t>(seconds >> 16),
             static_cast<std::uint8_t>(seconds >> 8),    static_cast<std::uint8_t>(seconds),
             static_cast<std::uint8_t>(subseconds >> 8), static_cast<std::uint8_t>(subseconds)};
+    if (timeOrder == Endian::Little) {
+        std::reverse(p.begin() + 6, p.begin() + 10);
+        std::reverse(p.begin() + 10, p.begin() + 12);
+    }
     p.insert(p.end(), payload.begin(), payload.end());
     return p;
 }

@@ -179,6 +179,7 @@ Color eventColor(std::int64_t type)
     case 2: return Color::Green;      // INFO
     case 3: return Color::Red;        // ERROR
     case 4: return Color::RedLight;   // CRITICAL
+    case 5: return Color::Yellow;     // WARNING
     default: return Color::Default;
     }
 }

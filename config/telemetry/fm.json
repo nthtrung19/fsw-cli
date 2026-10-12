@@ -1,0 +1,134 @@
+// FM (File Manager) telemetry. Source: fm_msg.h, fm_defs.h, fm_msgdefs.h, fm_msgids.h,
+// fm_platform_cfg.h.
+//
+// Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
+// in targets.json. Layouts are the NTPM SIL build (x86-64, 64-bit), checked
+// with offsetof against the FSW headers.
+//   packets  one entry per telemetry MID the app sends
+//   event    true for EVS event packets: shown in the event log
+//   variable true: the payload may be longer than the listed fields
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   count    N or [N, M]: an array, shown as name_0, name_1, ... (row-major)
+//   fields   instead of type: a nested struct, shown as name_member
+//            (name_0_member with count)
+//   enum     { "name": value, ... }  value shown by name
+//   units    text shown after the value
+//   hex      true: integer shown as 0x..
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 12-byte telemetry header
+// (CFE_SB_TLM_HDR_SIZE: 6-byte primary header + 6-byte time). Multi-byte
+// fields use the target byte order. Compiler-inserted holes and spare members
+// are listed as padding.
+//
+// Values taken from the FSW (update if the mission changes them):
+//   fm_msgids.h        FM_HK_TLM_MID 0x095A, FM_FILE_INFO_TLM_MID 0x095B,
+//                      FM_DIR_LIST_TLM_MID 0x095C, FM_OPEN_FILES_TLM_MID 0x095D,
+//                      FM_FREE_SPACE_TLM_MID 0x095E, FM_COMPRESS_INFO_TLM_MID 0x0960,
+//                      FM_DECOMPRESS_INFO_TLM_MID 0x0961
+//   fm_platform_cfg.h  FM_DIR_LIST_PKT_ENTRIES 20, FM_TABLE_ENTRY_COUNT 8,
+//                      OS_MAX_NUM_OPEN_FILES 50
+//   File times are host mtime - 789004800 (CFE_MISSION_TIME_FS_FACTOR):
+//   Unix time = value + 789004800.
+{
+  "app": "fm",
+  "help": "File Manager",
+  "packets": [
+    {
+      "name": "hk",
+      "mid": "0x095A",
+      "help": "Housekeeping, every 50 s (FM_HousekeepingPkt_t)",
+      "fields": [
+        { "name": "command_counter", "type": "u8" },
+        { "name": "command_err_counter", "type": "u8" },
+        { "type": "padding", "size": 1 },
+        { "name": "num_open_files", "type": "u8" },
+        { "name": "child_cmd_counter", "type": "u8" },
+        { "name": "child_cmd_err_counter", "type": "u8" },
+        { "name": "child_cmd_warn_counter", "type": "u8" },
+        { "name": "child_queue_count", "type": "u8" },
+        { "name": "child_current_cc", "type": "u8", "help": "FM command code running now; 0 when idle" },
+        { "name": "child_previous_cc", "type": "u8" },
+        { "name": "ds_current_path_index", "type": "u8", "help": "Mission addition: current DS storage path index" }
+      ]
+    },
+    {
+      "name": "file_info",
+      "mid": "0x095B",
+      "help": "File information, on FM_GET_FILE_INFO_CC (FM_FileInfoPkt_t)",
+      "fields": [
+        { "name": "file_status", "type": "u8",
+          "enum": { "NAME_IS_INVALID": 0, "NOT_IN_USE": 1, "FILE_OPEN": 2, "FILE_CLOSED": 3,
+                    "DIRECTORY": 4 } },
+        { "name": "crc_computed", "type": "u8" },
+        { "type": "padding", "size": 2 },
+        { "name": "crc", "type": "u32", "hex": true, "help": "Valid only if crc_computed = 1" },
+        { "name": "file_size", "type": "u32", "units": "B" },
+        { "name": "last_modified_time", "type": "u32", "units": "s", "help": "Unix time = value + 789004800" },
+        { "name": "mode", "type": "u32", "hex": true, "help": "POSIX st_mode" },
+        { "name": "filename", "type": "string", "size": 64 }
+      ]
+    },
+    {
+      "name": "dir_list",
+      "mid": "0x095C",
+      "help": "One page of a directory listing, on FM_GET_DIR_PKT_CC (FM_DirListPkt_t)",
+      "fields": [
+        { "name": "dir_name", "type": "string", "size": 64 },
+        { "name": "total_files", "type": "u32" },
+        { "name": "packet_files", "type": "u32", "help": "Valid entries in this packet (0-20)" },
+        { "name": "first_file", "type": "u32", "help": "Directory index of entry_0" },
+        { "name": "entry", "count": 20, "help": "Size, time and mode are 0 unless requested", "fields": [
+            { "name": "name", "type": "string", "size": 64 },
+            { "name": "size", "type": "u32", "units": "B" },
+            { "name": "modify_time", "type": "u32", "units": "s" },
+            { "name": "mode", "type": "u32", "hex": true }
+          ] }
+      ]
+    },
+    {
+      "name": "open_files",
+      "mid": "0x095D",
+      "help": "Open files, on FM_GET_OPEN_FILES_CC (FM_OpenFilesPkt_t)",
+      "fields": [
+        { "name": "num_open_files", "type": "u32", "help": "Valid entries (0-50)" },
+        { "name": "file", "count": 50, "fields": [
+            { "name": "logical_name", "type": "string", "size": 64 },
+            { "name": "app_name", "type": "string", "size": 20 }
+          ] }
+      ]
+    },
+    {
+      "name": "free_space",
+      "mid": "0x095E",
+      "help": "Free space per file system, on FM_GET_FREE_SPACE_CC (FM_FreeSpacePkt_t)",
+      "fields": [
+        { "name": "file_sys", "count": 8, "help": "Disabled table entries stay 0", "fields": [
+            { "name": "free_bytes", "type": "u64", "units": "B",
+              "help": "FreeSpace_A (low) and FreeSpace_B (high) read as one u64" },
+            { "name": "name", "type": "string", "size": 64 }
+          ] }
+      ]
+    },
+    {
+      "name": "compress_info",
+      "mid": "0x0960",
+      "help": "Result of FM_ENCODE_CCSDS_FILE_CC (FM_CompressInfoPkt_t)",
+      "fields": [
+        { "name": "file_size", "type": "u32", "units": "B", "help": "Size of the encoded file" },
+        { "name": "compress_ratio", "type": "u32", "units": "%", "help": "output / input x 100, truncated" },
+        { "name": "filename", "type": "string", "size": 64 }
+      ]
+    },
+    {
+      "name": "decompress_info",
+      "mid": "0x0961",
+      "help": "Result of FM_DECODE_CCSDS_FILE_CC (FM_DecompressInfoPkt_t)",
+      "fields": [
+        { "name": "file_size", "type": "u32", "units": "B", "help": "Size of the decoded file" },
+        { "name": "compress_ratio", "type": "u32", "units": "%", "help": "output / input x 100, truncated" },
+        { "name": "filename", "type": "string", "size": 64 }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+// TO (Telemetry Output) telemetry. Source: to_hktlm.h, to_cmds.h/.c, to_mission_cfg.h,
+// to_msgids.h, to_config.c.
+//
+// Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
+// in targets.json. Layouts are the NTPM SIL build (x86-64, 64-bit), checked
+// with offsetof against the FSW headers.
+//   packets  one entry per telemetry MID the app sends
+//   event    true for EVS event packets: shown in the event log
+//   variable true: the payload may be longer than the listed fields
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   count    N or [N, M]: an array, shown as name_0, name_1, ... (row-major)
+//   fields   instead of type: a nested struct, shown as name_member
+//            (name_0_member with count)
+//   enum     { "name": value, ... }  value shown by name
+//   units    text shown after the value
+//   hex      true: integer shown as 0x..
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 12-byte telemetry header
+// (CFE_SB_TLM_HDR_SIZE: 6-byte primary header + 6-byte time). Multi-byte
+// fields use the target byte order. Compiler-inserted holes and spare members
+// are listed as padding.
+//
+// Values taken from the FSW (update if the mission changes them):
+//   to_msgids.h   TO_HK_TLM_MID 0x09A0, TO_DATA_TYPE_MID 0x09A2, TO_ACK_TLM_MID 0x09A3
+//                 (TO_OUT_DATA_MID 0x09A1 and TO_COMM_STATE_TLM_MID 0x09A5 are not routed)
+//   to_app.h      TO_TLM_PIPE_DEPTH 10; most routes allow 1 message per MID per drain
+//   TO_DEFAULT_DEST_PORT 5011
+{
+  "app": "to",
+  "help": "Telemetry Output",
+  "packets": [
+    {
+      "name": "hk",
+      "mid": "0x09A0",
+      "help": "Housekeeping, every 10 s (TO_HkTlm_t)",
+      "fields": [
+        { "name": "cmd_cnt", "type": "u16" },
+        { "name": "cmd_err_cnt", "type": "u16" },
+        { "name": "msg_sub_cnt", "type": "u16", "help": "MID subscriptions made for the telemetry pipe" },
+        { "name": "msg_sub_err_cnt", "type": "u16" },
+        { "name": "tbl_update_cnt", "type": "u16" },
+        { "name": "tbl_err_cnt", "type": "u16" },
+        { "name": "config_routes", "type": "u16", "hex": true, "help": "bit n = route n configured (route 0 = UDP)" },
+        { "name": "enabled_routes", "type": "u16", "hex": true, "help": "bit n = route n enabled (route 0 = UDP)" }
+      ]
+    },
+    {
+      "name": "data_types",
+      "mid": "0x09A2",
+      "help": "Byte-order test pattern, on TO_SEND_DATA_TYPE_CC (TO_TypeDefPacket_t). Expected: synch 0x6969, bits 0x4A79, bl1 0, bl2 1, b1 16, b2 127, b3 0x7F, b4 0x45, w1 0x2468, w2 0x7FFF, dw1 0x12345678, dw2 0x87654321, f1 90.01, f2 4.5e-06, df1 99.9, df2 0.4444, str ABCDEFGHIJ",
+      "fields": [
+        { "name": "synch", "type": "u16", "hex": true },
+        { "name": "bits", "type": "u16", "hex": true,
+          "help": "Bitfields, LSB first: bit1 b0, bit2 b1, bit34 b2-3, bit56 b4-5, bit78 b6-7, nibble1 b8-11, nibble2 b12-15" },
+        { "name": "bl1", "type": "u8" },
+        { "name": "bl2", "type": "u8" },
+        { "name": "b1", "type": "i8" },
+        { "name": "b2", "type": "i8" },
+        { "name": "b3", "type": "i8", "hex": true },
+        { "name": "b4", "type": "i8", "hex": true },
+        { "name": "w1", "type": "i16", "hex": true },
+        { "name": "w2", "type": "i16", "hex": true },
+        { "type": "padding", "size": 2 },
+        { "name": "dw1", "type": "i32", "hex": true },
+        { "name": "dw2", "type": "i32", "hex": true },
+        { "name": "f1", "type": "f32" },
+        { "name": "f2", "type": "f32" },
+        { "type": "padding", "size": 4 },
+        { "name": "df1", "type": "f64" },
+        { "name": "df2", "type": "f64" },
+        { "name": "str", "type": "string", "size": 10 },
+        { "type": "padding", "size": 6 }
+      ]
+    },
+    {
+      "name": "output_ack",
+      "mid": "0x09A3",
+      "help": "Echo of an accepted TO_ENABLE_OUTPUT_CC (TO_EnableOutputTlm_t)",
+      "fields": [
+        { "name": "dest_ip", "type": "string", "size": 16 },
+        { "name": "dest_port", "type": "u16", "help": "0 = the default port 5011 was used" }
+      ]
+    }
+  ]
+}

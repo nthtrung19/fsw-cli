@@ -1,5 +1,7 @@
+#include "config/target_config.hpp"
 #include "config/tlm_catalog_loader.hpp"
 #include "core/errors.hpp"
+#include "core/text.hpp"
 #include "telemetry/ccsds_tlm_parser.hpp"
 #include "telemetry/tlm_catalog.hpp"
 #include "telemetry/tlm_decoder.hpp"
@@ -7,6 +9,9 @@
 #include "unit/test_helpers.hpp"
 
 #include <gtest/gtest.h>
+
+#include <cstring>
+#include <map>
 
 using namespace mcs;
 using namespace mcs::test;
@@ -78,6 +83,24 @@ Bytes dsHkPayload(std::uint8_t accepted, std::uint16_t state = 1)
     return {accepted, 0, static_cast<std::uint8_t>(state), 0, 0x00, 0x04, 0, 0, 0xFE, 0xFF, 0x0F, 0x00};
 }
 
+// Every telemetry file the shipped "sil" target lists.
+TelemetryCatalog shippedCatalog()
+{
+    const TargetsFile targets = loadTargetsFile(kSourceDir + "/config/targets.json");
+    const std::optional<std::string> name = "sil";
+    const TargetConfig& sil = selectTarget(targets, name);
+    return loadTelemetryCatalog(sil.telemetry->catalogFiles);
+}
+
+std::vector<std::string> fieldNames(const TlmPacketDef& p)
+{
+    std::vector<std::string> out;
+    for (const auto& f : p.fields) {
+        out.push_back(f.visible() ? f.name : "pad" + std::to_string(f.size));
+    }
+    return out;
+}
+
 std::string valueOf(const PacketState& p, const std::string& name)
 {
     for (const auto& v : p.values) {
@@ -121,6 +144,18 @@ TEST(TlmParser, GoldenBytes)
     EXPECT_EQ(r.frame->sequence, 5);
     EXPECT_EQ(r.frame->seconds, 10U);
     EXPECT_TRUE(r.frame->payload.empty());
+}
+
+TEST(TlmParser, LittleEndianHeaderTime)
+{
+    // cFE 6.7 memcpy's the time in CPU order: little-endian on the x86-64 SIL.
+    const Bytes packet = tlmPacket(0x0800, 1, {}, 0x01020304, 0x8001, Endian::Little);
+    EXPECT_EQ(packet[6], 0x04);
+    const auto r = parseTelemetry(packet, Endian::Little);
+    ASSERT_TRUE(r.frame) << r.error;
+    EXPECT_EQ(r.frame->seconds, 0x01020304U);
+    EXPECT_EQ(r.frame->subseconds, 0x8001);
+    EXPECT_EQ(r.frame->mid, 0x0800);   // the primary header stays big-endian
 }
 
 TEST(TlmParser, RejectsBadPackets)
@@ -201,6 +236,190 @@ TEST(TlmCatalogLoader, ReportsFileAndLocation)
         { "name": "a", "mid": "0x0808", "fields": [] } ] })");
     EXPECT_THROW(loadTelemetryCatalog({kSourceDir + "/config/telemetry/evs.json", dupMid}),
                  ConfigError);
+}
+
+TEST(TlmCatalogLoader, CountExpandsArrays)
+{
+    TempDir dir;
+    const auto file = dir.write("arr.json", R"({ "app": "x", "packets": [
+        { "name": "p", "mid": "0x0900", "fields": [
+          { "name": "mask", "type": "u16", "count": 3, "hex": true, "help": "h" },
+          { "type": "padding", "size": 2, "count": 3 },
+          { "name": "q", "type": "f64", "count": [2, 2] },
+          { "name": "label", "type": "string", "size": 4, "count": 2 } ] } ] })");
+    const TelemetryCatalog c = loadTelemetryCatalog({file});
+    const TlmPacketDef& p = *c.find(0x0900);
+    EXPECT_EQ(fieldNames(p), (std::vector<std::string>{"mask_0", "mask_1", "mask_2", "pad6", "q_0_0",
+                                                        "q_0_1", "q_1_0", "q_1_1", "label_0", "label_1"}));
+    EXPECT_TRUE(p.findField("mask_2")->hex);
+    EXPECT_EQ(p.findField("mask_2")->help, "h");
+    EXPECT_EQ(p.findField("q_0_0")->offset, 12U);
+    EXPECT_EQ(p.findField("q_1_1")->offset, 36U);
+    EXPECT_EQ(p.findField("label_1")->offset, 48U);
+    EXPECT_EQ(p.payloadSize(), 52U);
+}
+
+TEST(TlmCatalogLoader, GroupsExpandNestedStructs)
+{
+    TempDir dir;
+    const auto file = dir.write("grp.json", R"({ "app": "x", "packets": [
+        { "name": "p", "mid": "0x0900", "fields": [
+          { "name": "n", "type": "u8" },
+          { "name": "chan", "count": 2, "fields": [
+            { "name": "id", "type": "u8" },
+            { "type": "padding", "size": 1 },
+            { "name": "inner", "fields": [ { "name": "v", "type": "u16", "count": 2 } ] } ] } ] } ] })");
+    const TelemetryCatalog c = loadTelemetryCatalog({file});
+    const TlmPacketDef& p = *c.find(0x0900);
+    EXPECT_EQ(fieldNames(p), (std::vector<std::string>{"n", "chan_0_id", "pad1", "chan_0_inner_v_0",
+                                                        "chan_0_inner_v_1", "chan_1_id", "pad1",
+                                                        "chan_1_inner_v_0", "chan_1_inner_v_1"}));
+    EXPECT_EQ(p.findField("chan_1_id")->offset, 7U);
+    EXPECT_EQ(p.findField("chan_1_inner_v_1")->offset, 11U);
+    EXPECT_FALSE(p.variableLength);
+}
+
+TEST(TlmCatalogLoader, RejectsBadCountsAndGroups)
+{
+    TempDir dir;
+    const auto errorOf = [&](const std::string& field) {
+        const auto file = dir.write("bad.json", R"({ "app": "x", "packets": [
+            { "name": "p", "mid": "0x0900", "fields": [ )" + field + " ] } ] }");
+        try {
+            loadTelemetryCatalog({file});
+        } catch (const ConfigError& e) {
+            return std::string(e.what());
+        }
+        return std::string("<no error>");
+    };
+    EXPECT_NE(errorOf(R"({ "name": "a", "type": "u8", "count": 0 })").find("at least 1"), std::string::npos);
+    EXPECT_NE(errorOf(R"({ "name": "a", "type": "u8", "count": [] })").find("empty array"), std::string::npos);
+    EXPECT_NE(errorOf(R"({ "name": "a", "type": "u8", "count": "x" })").find("'count'"), std::string::npos);
+    EXPECT_NE(errorOf(R"({ "name": "a", "type": "u8", "count": [100, 100] })").find("max 4096"),
+              std::string::npos);
+    EXPECT_NE(errorOf(R"({ "name": "g", "type": "u8", "fields": [] })").find("'type'"), std::string::npos);
+    EXPECT_NE(errorOf(R"({ "name": "g", "fields": {} })").find("'fields' must be an array"),
+              std::string::npos);
+    EXPECT_NE(errorOf(R"({ "fields": [] })").find("'name'"), std::string::npos);
+}
+
+// ---- shipped telemetry files ------------------------------------------------------
+
+TEST(TlmShipped, SizesMatchTheFsw)
+{
+    // sizeof() of each FSW telemetry struct, header included (NTPM SIL build,
+    // mcs_tlm_reference.md Part 2). The CF PDU (0x092D) has variable length.
+    const std::map<std::uint16_t, std::size_t> fswSizeof{
+        {0x0800, 156}, {0x080B, 200}, {0x0810, 248}, {0x080F, 76},                    // es
+        {0x0801, 156}, {0x0808, 168}, {0x0809, 44},                                   // evs
+        {0x0803, 48},  {0x080A, 584}, {0x080D, 144}, {0x080E, 20},                    // sb
+        {0x0804, 304}, {0x080C, 200},                                                 // tbl
+        {0x0805, 44},  {0x0806, 212},                                                 // time
+        {0x09A0, 28},  {0x09A2, 80},  {0x09A3, 30},                                   // to
+        {0x0934, 16},                                                                 // ci
+        {0x0997, 64},  {0x0998, 126},                                                 // sch
+        {0x098A, 88},                                                                 // sc
+        {0x096D, 176}, {0x096E, 16},                                                  // hs
+        {0x0920, 368}, {0x0921, 444}, {0x0922, 360},                                  // cf
+        {0x095A, 23},  {0x095B, 96},  {0x095C, 1608}, {0x095D, 4216}, {0x095E, 588},  // fm
+        {0x0960, 84},  {0x0961, 84},
+        {0x0948, 108}, {0x0949, 1356},                                                // ds
+        {0x0977, 220},                                                                // lc
+        {0x0911, 16},  {0x0912, 408}, {0x0913, 80},  {0x0916, 48},  {0x0917, 144},    // aocs
+        {0x0918, 40},  {0x0919, 416},
+        {0x0909, 28},  {0x090A, 416}, {0x0901, 24},  {0x0903, 24},  {0x0904, 24},     // main
+        {0x0905, 24},  {0x0906, 56},  {0x0907, 64},  {0x0908, 88},
+        {0x09F1, 24},                                                                 // pl
+        {0x0883, 32},                                                                 // fdir
+    };
+    const TelemetryCatalog c = shippedCatalog();
+    for (const auto& [mid, size] : fswSizeof) {
+        const TlmPacketDef* p = c.find(mid);
+        ASSERT_NE(p, nullptr) << toHexString(mid, 4);
+        EXPECT_EQ(kTlmHeaderSize + p->payloadSize(), size) << p->fullName();
+        EXPECT_FALSE(p->variableLength) << p->fullName();
+    }
+    const TlmPacketDef* pdu = c.find(0x092D);
+    ASSERT_NE(pdu, nullptr);
+    EXPECT_TRUE(pdu->variableLength);
+    EXPECT_EQ(c.packets().size(), fswSizeof.size() + 1);   // nothing else is defined
+}
+
+TEST(TlmShipped, OffsetsAfterCompilerHoles)
+{
+    // Payload offsets (absolute - 12) from the FSW offsetof output.
+    const TelemetryCatalog c = shippedCatalog();
+    const auto offset = [&](std::uint16_t mid, const std::string& name) -> std::size_t {
+        const TlmFieldDef* f = c.find(mid)->findField(name);
+        return f != nullptr ? f->offset : 9999;
+    };
+    EXPECT_EQ(offset(0x0810, "pool_handle"), 4U);
+    EXPECT_EQ(offset(0x0810, "block_stats_16_num_free"), 228U);
+    EXPECT_EQ(offset(0x0803, "mem_pool_handle"), 20U);
+    EXPECT_EQ(offset(0x0804, "mem_pool_handle"), 68U);
+    EXPECT_EQ(offset(0x080C, "owner_app_name"), 160U);
+    EXPECT_EQ(offset(0x0801, "app_data_15_enable_status"), 142U);
+    EXPECT_EQ(offset(0x0906, "mode_stage"), 8U);
+    EXPECT_EQ(offset(0x0907, "ats_table_handler"), 50U);
+    EXPECT_EQ(offset(0x0908, "time_deactive_prop"), 68U);
+    EXPECT_EQ(offset(0x09A2, "dw1"), 16U);
+    EXPECT_EQ(offset(0x09A2, "df1"), 36U);
+    EXPECT_EQ(offset(0x0912, "qbn_1_3"), 132U);
+    EXPECT_EQ(offset(0x0912, "rw_status_3"), 393U);
+    EXPECT_EQ(offset(0x0920, "chan_1_sem_value"), 352U);
+    EXPECT_EQ(offset(0x0921, "app_dst_file"), 368U);
+    EXPECT_EQ(offset(0x095C, "entry_19_mode"), 1592U);
+    EXPECT_EQ(offset(0x095E, "file_sys_7_name"), 512U);
+    EXPECT_EQ(offset(0x0949, "file_15_name"), 1280U);
+    EXPECT_EQ(offset(0x0977, "ap_results_0"), 100U);
+    EXPECT_EQ(offset(0x080A, "pipe_stats_63_peak_in_use"), 570U);
+}
+
+TEST(TlmShipped, DecodesTheToDataTypePattern)
+{
+    // TO_SendDataTypePktCmd fills TO_TypeDefPacket_t with constants to check
+    // byte order and packing (x86-64 little-endian, gcc bitfields LSB first).
+    Bytes payload(68, 0);
+    const auto put = [&](std::size_t at, const void* v, std::size_t n) { std::memcpy(&payload[at], v, n); };
+    const std::uint16_t synch = 0x6969, bits = 0x4A79;
+    const std::int16_t w1 = 0x2468, w2 = 0x7FFF;
+    const std::int32_t dw1 = 0x12345678, dw2 = static_cast<std::int32_t>(0x87654321U);
+    const float f1 = 90.01f;
+    const double df1 = 99.9;
+    put(0, &synch, 2);
+    put(2, &bits, 2);
+    payload[5] = 1;      // bl2
+    payload[6] = 16;     // b1
+    payload[9] = 0x45;   // b4
+    put(10, &w1, 2);
+    put(12, &w2, 2);
+    put(16, &dw1, 4);
+    put(20, &dw2, 4);
+    put(24, &f1, 4);
+    put(36, &df1, 8);
+    std::memcpy(&payload[52], "ABCDEFGHIJ", 10);
+
+    const TelemetryCatalog c = shippedCatalog();
+    TlmStore store(c, Endian::Little);
+    store.ingest(tlmPacket(0x09A2, 0, payload, 1000, 0, Endian::Little));
+    const TlmSnapshot s = store.snapshot();
+    ASSERT_EQ(s.packets.size(), 1U);
+    const PacketState& p = s.packets[0];
+    EXPECT_EQ(p.seconds, 1000U);
+    EXPECT_EQ(valueOf(p, "synch"), "0x6969");
+    EXPECT_EQ(valueOf(p, "bits"), "0x4A79");
+    EXPECT_EQ(valueOf(p, "bl2"), "1");
+    EXPECT_EQ(valueOf(p, "b1"), "16");
+    EXPECT_EQ(valueOf(p, "b4"), "0x45");
+    EXPECT_EQ(valueOf(p, "w1"), "0x2468");
+    EXPECT_EQ(valueOf(p, "w2"), "0x7FFF");
+    EXPECT_EQ(valueOf(p, "dw1"), "0x12345678");
+    EXPECT_EQ(valueOf(p, "dw2"), "0x87654321");
+    EXPECT_EQ(valueOf(p, "f1"), "90.01");
+    EXPECT_EQ(valueOf(p, "df1"), "99.9");
+    EXPECT_EQ(valueOf(p, "str"), "ABCDEFGHIJ");
+    EXPECT_EQ(s.counters.received, 1U);
+    EXPECT_EQ(store.monitorTail({}, 1).front().status, PacketStatus::Ok);
 }
 
 // ---- decoder -------------------------------------------------------------------
@@ -291,9 +510,10 @@ TEST(TlmStore, EventsUnknownAndMalformed)
     const TelemetryCatalog c = catalogWithDsAndEvs();
     TlmStore store(c, Endian::Little);
 
-    store.ingest(tlmPacket(0x0808, 0, evsLongEventPayload("CI", 5, 3, "Invalid length"), 100, 0));
-    store.ingest(tlmPacket(0x0801, 0, Bytes(30, 0)));
-    store.ingest(tlmPacket(0x0801, 1, Bytes(30, 0)));
+    store.ingest(tlmPacket(0x0808, 0, evsLongEventPayload("CI", 5, 3, "Invalid length"), 100, 0,
+                           Endian::Little));
+    store.ingest(tlmPacket(0x0899, 0, Bytes(30, 0)));   // a spare MID: not in the catalog
+    store.ingest(tlmPacket(0x0899, 1, Bytes(30, 0)));
     store.ingest({0x08, 0x00, 0xC0});
 
     const TlmSnapshot s = store.snapshot();
@@ -306,7 +526,7 @@ TEST(TlmStore, EventsUnknownAndMalformed)
     EXPECT_EQ(s.events[0].seconds, 100U);
 
     ASSERT_EQ(s.unknown.size(), 1U);
-    EXPECT_EQ(s.unknown[0].mid, 0x0801);
+    EXPECT_EQ(s.unknown[0].mid, 0x0899);
     EXPECT_EQ(s.unknown[0].count, 2U);
     EXPECT_EQ(s.unknown[0].lastLength, 42U);
     EXPECT_EQ(s.counters.unknown, 2U);
@@ -356,6 +576,28 @@ TEST(TlmStore, LengthMismatchStillDecodes)
     const TlmSnapshot s = store.snapshot();
     EXPECT_EQ(valueOf(s.packets[0], "cmd_accepted"), "9");
     EXPECT_EQ(s.stats[0].lengthErrors, 1U);
+}
+
+TEST(TlmStore, VariableLengthPackets)
+{
+    TlmPacketDef pdu;
+    pdu.app = "cf";
+    pdu.name = "pdu";
+    pdu.mid = 0x092D;
+    pdu.variableLength = true;
+    pdu.fields.push_back(field("octet1", FieldType::U8));
+    TelemetryCatalog c;
+    c.add(pdu);
+    TlmStore store(c, Endian::Little);
+
+    store.ingest(tlmPacket(0x092D, 0, Bytes(40, 0x24)));   // longer than the fields: fine
+    store.ingest(tlmPacket(0x092D, 1, {}));                 // shorter: length error
+
+    const auto records = store.monitorTail({}, 10);
+    ASSERT_EQ(records.size(), 2U);
+    EXPECT_EQ(records[0].status, PacketStatus::Ok);
+    EXPECT_EQ(records[1].status, PacketStatus::LengthMismatch);
+    EXPECT_EQ(store.snapshot().stats[0].lengthErrors, 1U);
 }
 
 TEST(TlmStore, RateOverWindow)

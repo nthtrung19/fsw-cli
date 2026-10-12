@@ -1,0 +1,181 @@
+// MAIN (mode manager) telemetry. Source: main_msgdefs.h, main_modedefs.h, main_app.h,
+// main_eps_utils.h, main_app.c, base_model.h and pcdu_model.h (hw_lib)
+// (lib_simulation_udp build).
+//
+// Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
+// in targets.json. Layouts are the NTPM SIL build (x86-64, 64-bit), checked
+// with offsetof against the FSW headers.
+//   packets  one entry per telemetry MID the app sends
+//   event    true for EVS event packets: shown in the event log
+//   variable true: the payload may be longer than the listed fields
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   count    N or [N, M]: an array, shown as name_0, name_1, ... (row-major)
+//   fields   instead of type: a nested struct, shown as name_member
+//            (name_0_member with count)
+//   enum     { "name": value, ... }  value shown by name
+//   units    text shown after the value
+//   hex      true: integer shown as 0x..
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 12-byte telemetry header
+// (CFE_SB_TLM_HDR_SIZE: 6-byte primary header + 6-byte time). Multi-byte
+// fields use the target byte order. Compiler-inserted holes and spare members
+// are listed as padding.
+//
+// Values taken from the FSW (update if the mission changes them):
+//   main_msgids.h   MAIN_HK_TLM_MID 0x0909, MAIN_EPS_HK_TLM_MID 0x090A, mode packets
+//                   MAIN_DTB 0x0901, MAIN_CSP 0x0903, MAIN_FNP 0x0904, MAIN_FSP 0x0905,
+//                   MAIN_CAP 0x0906, MAIN_DLK 0x0907, MAIN_OBT 0x0908
+//                   (MAIN_CNP_HK_TLM_MID 0x0902 is never sent; the HIBERNATE packet has an
+//                   all-zero header and is not routed)
+//   pcdu_model.h    PCDU_NUM_SWITCH 14
+//   Every 5 s MAIN sends hk, eps and the packet of the current mode only.
+//   MAIN never time-stamps its packets: header time is 0.
+//   Capture, downlink and orbit_transfer contain doubles, so they start with an
+//   8-byte gap (4-byte compiler hole + the PaddingHead member).
+//   dev_mask bit n = HardwareIdentifier_t n: 0 STR_0, 1 STR_1, 2 GYR_0, 3 MTM_0, 4 GPS_0,
+//   5-8 FSS_0-3, 9-11 MTQ_0-2, 12-15 RWL_0-3, 16 THR_0, 17 PAYLOAD_0, 18 XTX_0,
+//   19 STRX_0, 20 UVTRX_0, 21 PCDU_0.
+{
+  "app": "main",
+  "help": "Mode manager",
+  "packets": [
+    {
+      "name": "hk",
+      "mid": "0x0909",
+      "help": "Housekeeping, every 5 s (MAIN_HkTlm_t)",
+      "fields": [
+        { "name": "cmd_counter", "type": "u8" },
+        { "name": "cmd_err_counter", "type": "u8" },
+        { "type": "padding", "size": 2 },
+        { "name": "current_mode", "type": "u32",
+          "enum": { "HIBERNATE": 0, "DETUMBLE": 1, "COARSE_SUN_POINTING": 2, "FINE_NADIR_POINTING": 3,
+                    "FINE_SUN_POINTING": 4, "CAPTURE": 5, "DOWNLINK": 6, "ORBIT_TRANSFER": 7,
+                    "EPS_NOT_INITIALIZED": 8 } },
+        { "name": "target_mode", "type": "u32",
+          "enum": { "HIBERNATE": 0, "DETUMBLE": 1, "COARSE_SUN_POINTING": 2, "FINE_NADIR_POINTING": 3,
+                    "FINE_SUN_POINTING": 4, "CAPTURE": 5, "DOWNLINK": 6, "ORBIT_TRANSFER": 7,
+                    "EPS_NOT_INITIALIZED": 8 } },
+        { "name": "bus_healthy", "type": "u32", "help": "Always 0 in SIL (never assigned)" }
+      ]
+    },
+    {
+      "name": "eps",
+      "mid": "0x090A",
+      "help": "Power switches and battery, every 5 s; values repeat when the PCDU sample fails (MAIN_EPS_Hk_t)",
+      "fields": [
+        { "name": "switch_state", "type": "u32", "count": 14, "enum": { "OFF": 0, "ON": 1 } },
+        { "name": "switch_error_mask", "type": "u32", "hex": true, "help": "bit n = switch n could not be fixed" },
+        { "name": "switch_voltage", "type": "f64", "count": 14, "help": "0 when the switch is OFF; unit not stated" },
+        { "name": "switch_voltage_lower_threshold", "type": "f64", "count": 14 },
+        { "name": "switch_voltage_upper_threshold", "type": "f64", "count": 14 },
+        { "name": "battery_soc", "type": "f64", "help": "Battery state of charge; unit not stated" }
+      ]
+    },
+    {
+      "name": "detumble",
+      "mid": "0x0901",
+      "help": "DETUMBLE mode data, every 5 s in that mode (MAIN_DetumbleModeHkPacket_t)",
+      "fields": [
+        { "name": "mode_stage", "type": "u32", "enum": { "STAGE_0": 0, "STAGE_1": 1, "SUCCESS": 2, "FAILURE": 3 } },
+        { "name": "dev_mask", "type": "u32", "hex": true, "help": "Devices used by this mode" },
+        { "name": "mode_retries", "type": "u8" },
+        { "name": "mode_max_retries", "type": "u8" },
+        { "type": "padding", "size": 2 }
+      ]
+    },
+    {
+      "name": "coarse_sun",
+      "mid": "0x0903",
+      "help": "COARSE SUN POINTING mode data, every 5 s in that mode (MAIN_CoarseSunPointingModeHkPacket_t)",
+      "fields": [
+        { "name": "mode_stage", "type": "u32",
+          "enum": { "STAGE_0": 0, "STAGE_1": 1, "STANDBY": 2, "SUCCESS": 3, "FAILURE": 4 } },
+        { "name": "dev_mask", "type": "u32", "hex": true, "help": "Devices used by this mode" },
+        { "name": "mode_retries", "type": "u8" },
+        { "name": "mode_max_retries", "type": "u8" },
+        { "type": "padding", "size": 2 }
+      ]
+    },
+    {
+      "name": "fine_nadir",
+      "mid": "0x0904",
+      "help": "FINE NADIR POINTING mode data, every 5 s in that mode (MAIN_FineNadirPointingModeHkPacket_t)",
+      "fields": [
+        { "name": "mode_stage", "type": "u32", "enum": { "STAGE_0": 0, "STAGE_1": 1, "SUCCESS": 2, "FAILURE": 3 } },
+        { "name": "dev_mask", "type": "u32", "hex": true, "help": "Devices used by this mode" },
+        { "name": "mode_retries", "type": "u8" },
+        { "name": "mode_max_retries", "type": "u8" },
+        { "type": "padding", "size": 2 }
+      ]
+    },
+    {
+      "name": "fine_sun",
+      "mid": "0x0905",
+      "help": "FINE SUN POINTING mode data, every 5 s in that mode (MAIN_FineSunPointingModeHkPacket_t)",
+      "fields": [
+        { "name": "mode_stage", "type": "u32", "enum": { "STAGE_0": 0, "STAGE_1": 1, "SUCCESS": 2, "FAILURE": 3 } },
+        { "name": "dev_mask", "type": "u32", "hex": true, "help": "Devices used by this mode" },
+        { "name": "mode_retries", "type": "u8" },
+        { "name": "mode_max_retries", "type": "u8" },
+        { "type": "padding", "size": 2 }
+      ]
+    },
+    {
+      "name": "capture",
+      "mid": "0x0906",
+      "help": "CAPTURE mode data, every 5 s in that mode (MAIN_CaptureModeHkPacket_t)",
+      "fields": [
+        { "type": "padding", "size": 8 },
+        { "name": "mode_stage", "type": "u32",
+          "enum": { "STAGE_0": 0, "STAGE_1": 1, "STAGE_2": 2, "SUCCESS": 3, "FAILURE": 4 } },
+        { "name": "dev_mask", "type": "u32", "hex": true, "help": "Devices used by this mode" },
+        { "name": "mode_retries", "type": "u8" },
+        { "name": "mode_max_retries", "type": "u8" },
+        { "name": "mode_capture", "type": "u8", "enum": { "SPOT": 0, "STRIP": 1 } },
+        { "type": "padding", "size": 1 },
+        { "name": "start_point", "type": "f64", "count": 3,
+          "help": "Target (spot) or start point (strip) from the command; unit not stated" }
+      ]
+    },
+    {
+      "name": "downlink",
+      "mid": "0x0907",
+      "help": "DOWNLINK mode data, every 5 s in that mode (MAIN_DownlinkModeHkPacket_t)",
+      "fields": [
+        { "type": "padding", "size": 8 },
+        { "name": "mode_stage", "type": "u32",
+          "enum": { "STAGE_0": 0, "STAGE_1": 1, "STAGE_2": 2, "STAGE_3": 3, "SUCCESS": 4, "FAILURE": 5 } },
+        { "name": "dev_mask", "type": "u32", "hex": true, "help": "Devices used by this mode" },
+        { "name": "mode_retries", "type": "u8" },
+        { "name": "mode_max_retries", "type": "u8" },
+        { "name": "is_x_band_connection_established", "type": "u8", "help": "Copied from TO's comm state" },
+        { "type": "padding", "size": 1 },
+        { "name": "gs_coordinate", "type": "f64", "count": 3, "help": "Ground-station coordinate from the command; unit not stated" },
+        { "name": "rts_table_index", "type": "i16" },
+        { "name": "ats_table_index", "type": "i16" },
+        { "name": "rts_table_handler", "type": "i16", "help": "Never assigned in SIL (0)" },
+        { "name": "ats_table_handler", "type": "i16", "help": "Never assigned in SIL (0)" }
+      ]
+    },
+    {
+      "name": "orbit_transfer",
+      "mid": "0x0908",
+      "help": "ORBIT TRANSFER mode data, every 5 s in that mode (MAIN_OrbitTransferModeHkPacket_t)",
+      "fields": [
+        { "type": "padding", "size": 8 },
+        { "name": "mode_stage", "type": "u32",
+          "enum": { "STAGE_0": 0, "STAGE_1": 1, "STAGE_2": 2, "STAGE_3": 3, "STAGE_4": 4, "SUCCESS": 5,
+                    "FAILURE": 6 } },
+        { "name": "dev_mask", "type": "u32", "hex": true, "help": "Devices used by this mode" },
+        { "name": "mode_retries", "type": "u8" },
+        { "name": "mode_max_retries", "type": "u8" },
+        { "type": "padding", "size": 2 },
+        { "name": "target_quaternion", "type": "f64", "count": 4, "help": "Target attitude quaternion from the command" },
+        { "name": "time_prop_init", "type": "f64", "units": "s" },
+        { "name": "time_active_prop", "type": "f64", "units": "s" },
+        { "name": "time_deactive_prop", "type": "f64", "units": "s" }
+      ]
+    }
+  ]
+}

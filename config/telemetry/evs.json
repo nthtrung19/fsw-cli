@@ -1,29 +1,67 @@
-// EVS (Event Services) event messages. Source: cFE 6.7 cfe_evs_msg.h,
-// cfe_msgids.h, cfe_mission_cfg.h.
+// EVS (Event Services) telemetry. Source: cFE 6.7.0 cfe_evs_msg.h,
+// cfe_evs_extern_typedefs.h, ntpm_msgids.h, ntpm_mission_cfg.h, ntpm_platform_cfg.h.
 //
 // Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
-// in targets.json.
+// in targets.json. Layouts are the NTPM SIL build (x86-64, 64-bit), checked
+// with offsetof against the FSW headers.
 //   packets  one entry per telemetry MID the app sends
 //   event    true for EVS event packets: shown in the event log. They must define
 //            app_name, event_id and event_type, and may define message.
+//   variable true: the payload may be longer than the listed fields
 // Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
 //   size     required for string and padding (bytes on the wire)
+//   count    N or [N, M]: an array, shown as name_0, name_1, ... (row-major)
+//   fields   instead of type: a nested struct, shown as name_member
+//            (name_0_member with count)
 //   enum     { "name": value, ... }  value shown by name
 //   units    text shown after the value
 //   hex      true: integer shown as 0x..
 // Numbers may be written as JSON integers or as "0x.." strings.
 // Fields are listed in payload order, after the 12-byte telemetry header
 // (CFE_SB_TLM_HDR_SIZE: 6-byte primary header + 6-byte time). Multi-byte
-// fields use the target byte order.
+// fields use the target byte order. Compiler-inserted holes and spare members
+// are listed as padding.
 //
 // Values taken from the FSW (update if the mission changes them):
-//   cfe_msgids.h       CFE_EVS_LONG_EVENT_MSG_MID 0x0808, CFE_EVS_SHORT_EVENT_MSG_MID 0x0809
-//   cfe_mission_cfg.h  CFE_MISSION_MAX_API_LEN 20, CFE_MISSION_EVS_MAX_MESSAGE_LENGTH 122
-//   cfe_evs_extern_typedefs.h  CFE_EVS_EventType: DEBUG 1, INFORMATION 2, ERROR 3, CRITICAL 4
+//   ntpm_msgids.h        CFE_EVS_HK_TLM_MID 0x0801, CFE_EVS_LONG_EVENT_MSG_MID 0x0808,
+//                        CFE_EVS_SHORT_EVENT_MSG_MID 0x0809 (not routed by TO)
+//   ntpm_mission_cfg.h   CFE_MISSION_MAX_API_LEN 20, CFE_MISSION_EVS_MAX_MESSAGE_LENGTH 122,
+//                        CFE_MISSION_ES_MAX_APPLICATIONS 16
+//   cfe_evs_extern_typedefs.h  CFE_EVS_EventType: UNDEFINED 0, DEBUG 1, INFORMATION 2,
+//                        ERROR 3, CRITICAL 4, WARNING 5
+//   SIL: SpacecraftID 31 (CMake SPACECRAFT_ID), ProcessorID 1
 {
   "app": "evs",
   "help": "cFE Event Services",
   "packets": [
+    {
+      "name": "hk",
+      "mid": "0x0801",
+      "help": "Housekeeping, every 50 s (CFE_EVS_HousekeepingTlm_t)",
+      "fields": [
+        { "name": "command_counter", "type": "u8" },
+        { "name": "command_error_counter", "type": "u8" },
+        { "name": "message_format_mode", "type": "u8", "enum": { "SHORT": 0, "LONG": 1 },
+          "help": "SHORT: no events reach the ground (0x0809 is not routed)" },
+        { "name": "message_trunc_counter", "type": "u8" },
+        { "name": "unregistered_app_counter", "type": "u8" },
+        { "name": "output_port", "type": "u8", "hex": true, "help": "bit n = port n+1" },
+        { "name": "log_full_flag", "type": "u8" },
+        { "name": "log_mode", "type": "u8", "enum": { "OVERWRITE": 0, "DISCARD": 1 } },
+        { "name": "message_send_counter", "type": "u16" },
+        { "name": "log_overflow_counter", "type": "u16" },
+        { "name": "log_enabled", "type": "u8" },
+        { "type": "padding", "size": 3 },
+        { "name": "app_data", "count": 16,
+          "help": "Registered apps in AppID order, cut at 16 (SIL registers 20); unused entries are 0",
+          "fields": [
+            { "name": "app_id", "type": "u32" },
+            { "name": "message_sent_counter", "type": "u16" },
+            { "name": "enable_status", "type": "u8", "enum": { "DISABLED": 0, "ENABLED": 1 } },
+            { "type": "padding", "size": 1 }
+          ] }
+      ]
+    },
     {
       "name": "long_event",
       "mid": "0x0808",
@@ -33,10 +71,11 @@
         { "name": "app_name", "type": "string", "size": 20 },
         { "name": "event_id", "type": "u16" },
         { "name": "event_type", "type": "u16",
-          "enum": { "DEBUG": 1, "INFO": 2, "ERROR": 3, "CRIT": 4 } },
+          "enum": { "UNDEF": 0, "DEBUG": 1, "INFO": 2, "ERROR": 3, "CRIT": 4, "WARN": 5 } },
         { "name": "spacecraft_id", "type": "u32" },
         { "name": "processor_id", "type": "u32" },
-        { "name": "message", "type": "string", "size": 122 },
+        { "name": "message", "type": "string", "size": 122,
+          "help": "Byte 120 is '$' when the text was truncated" },
         { "type": "padding", "size": 2 }
       ]
     },
@@ -44,12 +83,12 @@
       "name": "short_event",
       "mid": "0x0809",
       "event": true,
-      "help": "Event message without text, sent in short format mode (CFE_EVS_ShortEventTlm_t)",
+      "help": "Event message without text, sent in short format mode (CFE_EVS_ShortEventTlm_t); not routed by TO in SIL",
       "fields": [
         { "name": "app_name", "type": "string", "size": 20 },
         { "name": "event_id", "type": "u16" },
         { "name": "event_type", "type": "u16",
-          "enum": { "DEBUG": 1, "INFO": 2, "ERROR": 3, "CRIT": 4 } },
+          "enum": { "UNDEF": 0, "DEBUG": 1, "INFO": 2, "ERROR": 3, "CRIT": 4, "WARN": 5 } },
         { "name": "spacecraft_id", "type": "u32" },
         { "name": "processor_id", "type": "u32" }
       ]

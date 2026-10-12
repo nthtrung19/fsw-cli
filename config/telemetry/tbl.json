@@ -1,0 +1,92 @@
+// TBL (Table Services) telemetry. Source: cFE 6.7.0 cfe_tbl_msg.h, ntpm_msgids.h,
+// ntpm_mission_cfg.h, ntpm_platform_cfg.h.
+//
+// Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
+// in targets.json. Layouts are the NTPM SIL build (x86-64, 64-bit), checked
+// with offsetof against the FSW headers.
+//   packets  one entry per telemetry MID the app sends
+//   event    true for EVS event packets: shown in the event log
+//   variable true: the payload may be longer than the listed fields
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   count    N or [N, M]: an array, shown as name_0, name_1, ... (row-major)
+//   fields   instead of type: a nested struct, shown as name_member
+//            (name_0_member with count)
+//   enum     { "name": value, ... }  value shown by name
+//   units    text shown after the value
+//   hex      true: integer shown as 0x..
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 12-byte telemetry header
+// (CFE_SB_TLM_HDR_SIZE: 6-byte primary header + 6-byte time). Multi-byte
+// fields use the target byte order. Compiler-inserted holes and spare members
+// are listed as padding.
+//
+// Values taken from the FSW (update if the mission changes them):
+//   ntpm_msgids.h        CFE_TBL_HK_TLM_MID 0x0804, CFE_TBL_REG_TLM_MID 0x080C
+//   ntpm_mission_cfg.h   CFE_MISSION_TBL_MAX_FULL_NAME_LEN 40, CFE_MISSION_MAX_PATH_LEN 64,
+//                        CFE_MISSION_MAX_API_LEN 20
+//   Time fields are CFE_TIME_SysTime_t: seconds + subseconds (LSB = 2^-32 s).
+//   CFE_ES_MemHandle_t and cpuaddr are 8 bytes on SIL, so both packets start
+//   with a 4-byte hole (flight 32-bit ARM layouts differ).
+{
+  "app": "tbl",
+  "help": "cFE Table Services",
+  "packets": [
+    {
+      "name": "hk",
+      "mid": "0x0804",
+      "help": "Housekeeping, every 60 s (CFE_TBL_HousekeepingTlm_t)",
+      "fields": [
+        { "type": "padding", "size": 4 },
+        { "name": "command_counter", "type": "u8" },
+        { "name": "command_error_counter", "type": "u8" },
+        { "name": "num_tables", "type": "u16" },
+        { "name": "num_load_pending", "type": "u16" },
+        { "name": "validation_counter", "type": "u16" },
+        { "name": "last_val_crc", "type": "u32", "hex": true },
+        { "name": "last_val_status", "type": "i32", "help": "cFE status from the validation function (0 = success)" },
+        { "name": "active_buffer", "type": "u8", "enum": { "INACTIVE": 0, "ACTIVE": 1 },
+          "help": "Buffer the last validation checked" },
+        { "name": "last_val_table_name", "type": "string", "size": 40 },
+        { "name": "success_val_counter", "type": "u8" },
+        { "name": "failed_val_counter", "type": "u8" },
+        { "name": "num_val_requests", "type": "u8" },
+        { "name": "num_free_shared_bufs", "type": "u8" },
+        { "type": "padding", "size": 3 },
+        { "name": "mem_pool_handle", "type": "u64", "hex": true },
+        { "name": "last_update_time_secs", "type": "u32", "units": "s" },
+        { "name": "last_update_time_subsecs", "type": "u32" },
+        { "name": "last_updated_table", "type": "string", "size": 40 },
+        { "name": "last_file_loaded", "type": "string", "size": 64 },
+        { "name": "last_file_dumped", "type": "string", "size": 64 },
+        { "name": "last_table_loaded", "type": "string", "size": 40 }
+      ]
+    },
+    {
+      "name": "registry",
+      "mid": "0x080C",
+      "help": "Registry of one table, sent once with the next HK after CFE_TBL_SEND_REGISTRY_CC (CFE_TBL_TableRegistryTlm_t)",
+      "fields": [
+        { "type": "padding", "size": 4 },
+        { "name": "size", "type": "u32", "units": "B" },
+        { "name": "crc", "type": "u32", "hex": true },
+        { "name": "active_buffer_addr", "type": "u64", "hex": true },
+        { "name": "inactive_buffer_addr", "type": "u64", "hex": true },
+        { "name": "validation_func_ptr", "type": "u64", "hex": true },
+        { "name": "time_of_last_update_secs", "type": "u32", "units": "s" },
+        { "name": "time_of_last_update_subsecs", "type": "u32" },
+        { "name": "file_create_time_secs", "type": "u32", "units": "s" },
+        { "name": "file_create_time_subsecs", "type": "u32" },
+        { "name": "table_loaded_once", "type": "u8" },
+        { "name": "load_pending", "type": "u8" },
+        { "name": "dump_only", "type": "u8" },
+        { "name": "double_buffered", "type": "u8" },
+        { "name": "name", "type": "string", "size": 40 },
+        { "name": "last_file_loaded", "type": "string", "size": 64 },
+        { "name": "owner_app_name", "type": "string", "size": 20 },
+        { "name": "critical", "type": "u8" },
+        { "type": "padding", "size": 7 }
+      ]
+    }
+  ]
+}

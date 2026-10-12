@@ -1,0 +1,73 @@
+// DS (Data Storage) telemetry. Source: ds_msg.h, ds_msgids.h, ds_platform_cfg.h.
+//
+// Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
+// in targets.json. Layouts are the NTPM SIL build (x86-64, 64-bit), checked
+// with offsetof against the FSW headers.
+//   packets  one entry per telemetry MID the app sends
+//   event    true for EVS event packets: shown in the event log
+//   variable true: the payload may be longer than the listed fields
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   count    N or [N, M]: an array, shown as name_0, name_1, ... (row-major)
+//   fields   instead of type: a nested struct, shown as name_member
+//            (name_0_member with count)
+//   enum     { "name": value, ... }  value shown by name
+//   units    text shown after the value
+//   hex      true: integer shown as 0x..
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 12-byte telemetry header
+// (CFE_SB_TLM_HDR_SIZE: 6-byte primary header + 6-byte time). Multi-byte
+// fields use the target byte order. Compiler-inserted holes and spare members
+// are listed as padding.
+//
+// Values taken from the FSW (update if the mission changes them):
+//   ds_msgids.h        DS_HK_TLM_MID 0x0948, DS_DIAG_TLM_MID 0x0949
+//   ds_platform_cfg.h  DS_DEST_FILE_CNT 16, DS_SECS_PER_HK_CYCLE 4
+//   SCH requests DS HK every 1 s but DS assumes 4 s per HK cycle, so file ages
+//   run 4x fast and file rates read 4x low.
+{
+  "app": "ds",
+  "help": "Data Storage",
+  "packets": [
+    {
+      "name": "hk",
+      "mid": "0x0948",
+      "help": "Housekeeping, every 1 s (DS_HkPacket_t)",
+      "fields": [
+        { "name": "cmd_accepted_counter", "type": "u8" },
+        { "name": "cmd_rejected_counter", "type": "u8" },
+        { "name": "dest_tbl_load_counter", "type": "u8" },
+        { "name": "dest_tbl_err_counter", "type": "u8" },
+        { "name": "filter_tbl_load_counter", "type": "u8" },
+        { "name": "filter_tbl_err_counter", "type": "u8" },
+        { "name": "app_enable_state", "type": "u8", "enum": { "DISABLED": 0, "ENABLED": 1 } },
+        { "type": "padding", "size": 1 },
+        { "name": "file_write_counter", "type": "u16" },
+        { "name": "file_write_err_counter", "type": "u16" },
+        { "name": "file_update_counter", "type": "u16" },
+        { "name": "file_update_err_counter", "type": "u16" },
+        { "name": "disabled_pkt_counter", "type": "u32" },
+        { "name": "ignored_pkt_counter", "type": "u32" },
+        { "name": "filtered_pkt_counter", "type": "u32" },
+        { "name": "passed_pkt_counter", "type": "u32" },
+        { "name": "filter_tbl_filename", "type": "string", "size": 64 }
+      ]
+    },
+    {
+      "name": "file_info",
+      "mid": "0x0949",
+      "help": "Destination file status, on DS_GET_FILE_INFO_CC (DS_FileInfoPkt_t)",
+      "fields": [
+        { "name": "file", "count": 16, "fields": [
+            { "name": "age", "type": "u32", "help": "+4 per DS HK (every 1 s): real age is about age / 4 s" },
+            { "name": "size", "type": "u32", "units": "B" },
+            { "name": "rate", "type": "u32", "help": "Bytes since the previous HK / 4: bytes/s = rate x 4" },
+            { "name": "sequence_count", "type": "u32" },
+            { "name": "enable_state", "type": "u16", "enum": { "DISABLED": 0, "ENABLED": 1 } },
+            { "name": "open_state", "type": "u16", "enum": { "CLOSED": 0, "OPEN": 1 } },
+            { "name": "name", "type": "string", "size": 64 }
+          ] }
+      ]
+    }
+  ]
+}

@@ -9,10 +9,59 @@ using jsonutil::Json;
 
 namespace {
 
-TlmFieldDef parseField(const Json& j, const std::string& ctx)
-{
-    jsonutil::checkKeys(j, {"name", "type", "size", "enum", "units", "hex", "help"}, ctx);
+constexpr std::uint64_t kMaxCount = 4096;
 
+// "count": N or [N, M, ...] (row-major); absent = a single item.
+std::vector<std::size_t> parseCount(const Json& j, const std::string& ctx)
+{
+    const auto it = j.find("count");
+    if (it == j.end()) {
+        return {};
+    }
+    std::vector<std::size_t> dims;
+    if (it->is_array()) {
+        if (it->empty()) {
+            throw ConfigError(ctx + ": 'count' must not be an empty array");
+        }
+        for (const auto& d : *it) {
+            dims.push_back(static_cast<std::size_t>(jsonutil::toUInt(d, ctx + ": 'count'", kMaxCount)));
+        }
+    } else {
+        dims.push_back(static_cast<std::size_t>(jsonutil::toUInt(*it, ctx + ": 'count'", kMaxCount)));
+    }
+    std::size_t total = 1;
+    for (const std::size_t d : dims) {
+        if (d == 0) {
+            throw ConfigError(ctx + ": 'count' must be at least 1");
+        }
+        total *= d;
+    }
+    if (total > kMaxCount) {
+        throw ConfigError(ctx + ": 'count' gives " + std::to_string(total) + " elements (max "
+                          + std::to_string(kMaxCount) + ")");
+    }
+    return dims;
+}
+
+// Name suffixes of every element of `dims`, in row-major order: "_0", "_1", ...
+// or "_0_0", "_0_1", ...; a single "" when there is no count.
+std::vector<std::string> elementSuffixes(const std::vector<std::size_t>& dims)
+{
+    std::vector<std::string> out{""};
+    for (const std::size_t d : dims) {
+        std::vector<std::string> next;
+        for (const auto& prefix : out) {
+            for (std::size_t i = 0; i < d; ++i) {
+                next.push_back(prefix + "_" + std::to_string(i));
+            }
+        }
+        out = std::move(next);
+    }
+    return out;
+}
+
+TlmFieldDef parseScalar(const Json& j, const std::string& ctx)
+{
     const std::string typeText = jsonutil::getString(j, "type", ctx);
     const auto type = parseFieldType(typeText);
     if (!type) {
@@ -46,9 +95,60 @@ TlmFieldDef parseField(const Json& j, const std::string& ctx)
     return f;
 }
 
+void parseFieldList(const Json& fields, const std::string& prefix, const std::string& ctx,
+                    std::vector<TlmFieldDef>& out);
+
+// Appends the fields of one entry to `out`. An entry is a scalar field, an
+// array of them ("count"), or a group of fields ("fields", a nested struct)
+// that may also be repeated. Expanded names: name_0, name_0_1, group_member,
+// group_0_member. `prefix` is the enclosing group's name plus "_".
+void parseField(const Json& j, const std::string& prefix, const std::string& ctx,
+                std::vector<TlmFieldDef>& out)
+{
+    const std::vector<std::size_t> dims = parseCount(j, ctx);
+    std::size_t total = 1;
+    for (const std::size_t d : dims) {
+        total *= d;
+    }
+
+    if (j.contains("fields")) {
+        jsonutil::checkKeys(j, {"name", "count", "fields", "help"}, ctx);
+        const std::string name = jsonutil::getString(j, "name", ctx);
+        const Json& members = j.at("fields");
+        for (const auto& suffix : elementSuffixes(dims)) {
+            parseFieldList(members, prefix + name + suffix + "_", ctx + " '" + name + "'", out);
+        }
+        return;
+    }
+
+    jsonutil::checkKeys(j, {"name", "type", "size", "count", "enum", "units", "hex", "help"}, ctx);
+    TlmFieldDef f = parseScalar(j, ctx);
+    if (f.type == FieldType::Padding) {
+        f.size *= total;
+        out.push_back(std::move(f));
+        return;
+    }
+    const std::string name = f.name;
+    for (const auto& suffix : elementSuffixes(dims)) {
+        f.name = prefix + name + suffix;
+        out.push_back(f);
+    }
+}
+
+void parseFieldList(const Json& fields, const std::string& prefix, const std::string& ctx,
+                    std::vector<TlmFieldDef>& out)
+{
+    if (!fields.is_array()) {
+        throw ConfigError(ctx + ": 'fields' must be an array");
+    }
+    for (std::size_t i = 0; i < fields.size(); ++i) {
+        parseField(fields[i], prefix, ctx + " fields[" + std::to_string(i) + "]", out);
+    }
+}
+
 TlmPacketDef parsePacket(const Json& j, const std::string& app, const std::string& ctx)
 {
-    jsonutil::checkKeys(j, {"name", "mid", "help", "event", "fields"}, ctx);
+    jsonutil::checkKeys(j, {"name", "mid", "help", "event", "variable", "fields"}, ctx);
 
     TlmPacketDef p;
     p.app = app;
@@ -57,14 +157,9 @@ TlmPacketDef parsePacket(const Json& j, const std::string& app, const std::strin
     p.mid = static_cast<std::uint16_t>(jsonutil::getUInt(j, "mid", where, 0xFFFF));
     p.help = jsonutil::optString(j, "help", where);
     p.isEvent = jsonutil::optBool(j, "event", where, false);
+    p.variableLength = jsonutil::optBool(j, "variable", where, false);
 
-    const Json& fields = jsonutil::require(j, "fields", where);
-    if (!fields.is_array()) {
-        throw ConfigError(where + ": 'fields' must be an array");
-    }
-    for (std::size_t i = 0; i < fields.size(); ++i) {
-        p.fields.push_back(parseField(fields[i], where + " fields[" + std::to_string(i) + "]"));
-    }
+    parseFieldList(jsonutil::require(j, "fields", where), "", where, p.fields);
     return p;
 }
 

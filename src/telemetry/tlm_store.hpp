@@ -47,7 +47,7 @@ struct EventRecord {
     std::uint16_t subseconds = 0;
     std::string app;
     std::int64_t eventId = 0;
-    std::int64_t eventType = 0;                // 1 DEBUG, 2 INFO, 3 ERROR, 4 CRITICAL
+    std::int64_t eventType = 0;                // 1 DEBUG, 2 INFO, 3 ERROR, 4 CRITICAL, 5 WARNING
     std::string typeName;                      // decoded enum text ("INFO")
     std::string message;
 };

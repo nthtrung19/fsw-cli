@@ -17,6 +17,17 @@ std::uint32_t be32(const Bytes& b, std::size_t at)
          | (static_cast<std::uint32_t>(b[at + 2]) << 8) | static_cast<std::uint32_t>(b[at + 3]);
 }
 
+std::uint16_t le16(const Bytes& b, std::size_t at)
+{
+    return static_cast<std::uint16_t>(b[at] | (b[at + 1] << 8));
+}
+
+std::uint32_t le32(const Bytes& b, std::size_t at)
+{
+    return static_cast<std::uint32_t>(b[at]) | (static_cast<std::uint32_t>(b[at + 1]) << 8)
+         | (static_cast<std::uint32_t>(b[at + 2]) << 16) | (static_cast<std::uint32_t>(b[at + 3]) << 24);
+}
+
 constexpr std::uint16_t kTypeBit = 0x1000;     // 1 = command
 constexpr std::uint16_t kApidMask = 0x07FF;
 constexpr std::uint16_t kSequenceMask = 0x3FFF;
@@ -31,7 +42,7 @@ std::optional<PrimaryHeader> readPrimaryHeader(const Bytes& packet)
     return PrimaryHeader{be16(packet, 0), static_cast<std::uint16_t>(be16(packet, 2) & kSequenceMask)};
 }
 
-TlmParseResult parseTelemetry(const Bytes& packet)
+TlmParseResult parseTelemetry(const Bytes& packet, Endian timeOrder)
 {
     TlmParseResult result;
     if (packet.size() < kTlmHeaderSize) {
@@ -57,8 +68,9 @@ TlmParseResult parseTelemetry(const Bytes& packet)
     f.apid = static_cast<std::uint16_t>(streamId & kApidMask);
     f.sequence = static_cast<std::uint16_t>(be16(packet, 2) & kSequenceMask);
     f.length = packet.size();
-    f.seconds = be32(packet, 6);
-    f.subseconds = be16(packet, 10);
+    const bool big = timeOrder == Endian::Big;
+    f.seconds = big ? be32(packet, 6) : le32(packet, 6);
+    f.subseconds = big ? be16(packet, 10) : le16(packet, 10);
     f.payload.assign(packet.begin() + static_cast<std::ptrdiff_t>(kTlmHeaderSize), packet.end());
     result.frame = std::move(f);
     return result;

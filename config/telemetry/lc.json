@@ -1,0 +1,62 @@
+// LC (Limit Checker) telemetry. Source: lc_msg.h, lc_msgdefs.h, lc_msgids.h,
+// lc_platform_cfg.h.
+//
+// Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
+// in targets.json. Layouts are the NTPM SIL build (x86-64, 64-bit), checked
+// with offsetof against the FSW headers.
+//   packets  one entry per telemetry MID the app sends
+//   event    true for EVS event packets: shown in the event log
+//   variable true: the payload may be longer than the listed fields
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   count    N or [N, M]: an array, shown as name_0, name_1, ... (row-major)
+//   fields   instead of type: a nested struct, shown as name_member
+//            (name_0_member with count)
+//   enum     { "name": value, ... }  value shown by name
+//   units    text shown after the value
+//   hex      true: integer shown as 0x..
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 12-byte telemetry header
+// (CFE_SB_TLM_HDR_SIZE: 6-byte primary header + 6-byte time). Multi-byte
+// fields use the target byte order. Compiler-inserted holes and spare members
+// are listed as padding.
+//
+// Values taken from the FSW (update if the mission changes them):
+//   lc_msgids.h        LC_HK_TLM_MID 0x0977
+//   lc_platform_cfg.h  LC_MAX_WATCHPOINTS 176 (44 result bytes used of 96),
+//                      LC_MAX_ACTIONPOINTS 176 (88 result bytes)
+//   wp_results byte i: bits 1-0 = WP 4i, 3-2 = WP 4i+1, 5-4 = WP 4i+2, 7-6 = WP 4i+3;
+//     0 FALSE, 1 TRUE, 2 ERROR, 3 STALE (LC_HKWR_*)
+//   ap_results byte i: bits 1-0 = AP 2i result, 3-2 = AP 2i state,
+//     5-4 = AP 2i+1 result, 7-6 = AP 2i+1 state;
+//     result 0 PASS, 1 FAIL, 2 ERROR, 3 STALE (LC_HKAR_*);
+//     state 0 NOT_USED, 1 ACTIVE, 2 PASSIVE, 3 DISABLED
+{
+  "app": "lc",
+  "help": "Limit Checker",
+  "packets": [
+    {
+      "name": "hk",
+      "mid": "0x0977",
+      "help": "Housekeeping, every 10 s (LC_HkPacket_t)",
+      "fields": [
+        { "name": "cmd_count", "type": "u8" },
+        { "name": "cmd_err_count", "type": "u8" },
+        { "name": "current_lc_state", "type": "u8", "enum": { "ACTIVE": 1, "PASSIVE": 2, "DISABLED": 3 } },
+        { "type": "padding", "size": 1 },
+        { "name": "wp_results", "type": "u8", "count": 44, "hex": true,
+          "help": "4 watchpoints per byte, 2 bits each, WP 4i in bits 1-0: 0 FALSE 1 TRUE 2 ERROR 3 STALE" },
+        { "type": "padding", "size": 52 },
+        { "name": "ap_results", "type": "u8", "count": 88, "hex": true,
+          "help": "2 actionpoints per byte: AP 2i result bits 1-0, state bits 3-2; AP 2i+1 in bits 7-4" },
+        { "name": "passive_rts_exec_count", "type": "u16" },
+        { "name": "wps_in_use", "type": "u16" },
+        { "name": "active_aps", "type": "u16" },
+        { "type": "padding", "size": 2 },
+        { "name": "ap_sample_count", "type": "u32" },
+        { "name": "monitored_msg_count", "type": "u32" },
+        { "name": "rts_exec_count", "type": "u32" }
+      ]
+    }
+  ]
+}

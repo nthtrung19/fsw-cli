@@ -1,0 +1,120 @@
+// TIME (Time Services) telemetry. Source: cFE 6.7.0 cfe_time_msg.h, cfe_time_utils.h,
+// ntpm_msgids.h, ntpm_mission_cfg.h, ntpm_platform_cfg.h.
+//
+// Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
+// in targets.json. Layouts are the NTPM SIL build (x86-64, 64-bit), checked
+// with offsetof against the FSW headers.
+//   packets  one entry per telemetry MID the app sends
+//   event    true for EVS event packets: shown in the event log
+//   variable true: the payload may be longer than the listed fields
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   count    N or [N, M]: an array, shown as name_0, name_1, ... (row-major)
+//   fields   instead of type: a nested struct, shown as name_member
+//            (name_0_member with count)
+//   enum     { "name": value, ... }  value shown by name
+//   units    text shown after the value
+//   hex      true: integer shown as 0x..
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 12-byte telemetry header
+// (CFE_SB_TLM_HDR_SIZE: 6-byte primary header + 6-byte time). Multi-byte
+// fields use the target byte order. Compiler-inserted holes and spare members
+// are listed as padding.
+//
+// Values taken from the FSW (update if the mission changes them):
+//   ntpm_msgids.h        CFE_TIME_HK_TLM_MID 0x0805, CFE_TIME_DIAG_TLM_MID 0x0806
+//   ntpm_platform_cfg.h  CFE_PLATFORM_TIME_CFG_SERVER true: hk carries the 1 Hz STCF
+//                        adjustment (a client build has SecondsDelay/SubsecsDelay there)
+//   ntpm_mission_cfg.h   time is TAI, epoch 2025-001T00:00:00, default leap seconds 32
+//   Subsecond fields have LSB = 2^-32 s. *_secs/*_subsecs pairs are CFE_TIME_SysTime_t.
+//   clock_state_flags (CFE_TIME_FLAG_*): bit 15 CLKSET, 14 FLYING, 13 SRCINT, 12 SIGPRI,
+//   11 SRVFLY, 10 CMDFLY, 9 ADDADJ, 8 ADD1HZ, 7 ADDTCL, 6 SERVER, 5 GDTONE.
+{
+  "app": "time",
+  "help": "cFE Time Services",
+  "packets": [
+    {
+      "name": "hk",
+      "mid": "0x0805",
+      "help": "Housekeeping, every 40 s (CFE_TIME_HousekeepingTlm_t)",
+      "fields": [
+        { "name": "command_counter", "type": "u8" },
+        { "name": "command_error_counter", "type": "u8" },
+        { "name": "clock_state_flags", "type": "u16", "hex": true,
+          "help": "15 CLKSET 14 FLYING 13 SRCINT 12 SIGPRI 11 SRVFLY 10 CMDFLY 9 ADDADJ 8 ADD1HZ 7 ADDTCL 6 SERVER 5 GDTONE" },
+        { "name": "clock_state_api", "type": "i16", "enum": { "INVALID": -1, "VALID": 0, "FLYWHEEL": 1 } },
+        { "name": "leap_seconds", "type": "i16", "units": "s" },
+        { "name": "seconds_met", "type": "u32", "units": "s" },
+        { "name": "subsecs_met", "type": "u32" },
+        { "name": "seconds_stcf", "type": "u32", "units": "s" },
+        { "name": "subsecs_stcf", "type": "u32" },
+        { "name": "seconds_1hz_adj", "type": "u32", "units": "s" },
+        { "name": "subsecs_1hz_adj", "type": "u32" }
+      ]
+    },
+    {
+      "name": "diag",
+      "mid": "0x0806",
+      "help": "Diagnostics, on CFE_TIME_SEND_DIAGNOSTIC_TLM_CC (CFE_TIME_DiagnosticTlm_t)",
+      "fields": [
+        { "name": "at_tone_met_secs", "type": "u32", "units": "s" },
+        { "name": "at_tone_met_subsecs", "type": "u32" },
+        { "name": "at_tone_stcf_secs", "type": "u32", "units": "s" },
+        { "name": "at_tone_stcf_subsecs", "type": "u32" },
+        { "name": "at_tone_delay_secs", "type": "u32", "units": "s" },
+        { "name": "at_tone_delay_subsecs", "type": "u32" },
+        { "name": "at_tone_latch_secs", "type": "u32", "units": "s" },
+        { "name": "at_tone_latch_subsecs", "type": "u32" },
+        { "name": "at_tone_leap_seconds", "type": "i16", "units": "s" },
+        { "name": "clock_state_api", "type": "i16", "enum": { "INVALID": -1, "VALID": 0, "FLYWHEEL": 1 } },
+        { "name": "time_since_tone_secs", "type": "u32", "units": "s" },
+        { "name": "time_since_tone_subsecs", "type": "u32" },
+        { "name": "current_latch_secs", "type": "u32", "units": "s" },
+        { "name": "current_latch_subsecs", "type": "u32" },
+        { "name": "current_met_secs", "type": "u32", "units": "s" },
+        { "name": "current_met_subsecs", "type": "u32" },
+        { "name": "current_tai_secs", "type": "u32", "units": "s" },
+        { "name": "current_tai_subsecs", "type": "u32" },
+        { "name": "current_utc_secs", "type": "u32", "units": "s" },
+        { "name": "current_utc_subsecs", "type": "u32" },
+        { "name": "clock_set_state", "type": "i16", "enum": { "NOT_SET": 0, "WAS_SET": 1 } },
+        { "name": "clock_fly_state", "type": "i16", "enum": { "NO_FLY": 0, "IS_FLY": 1 } },
+        { "name": "clock_source", "type": "i16", "enum": { "INTERNAL": 1, "EXTERNAL": 2 } },
+        { "name": "clock_signal", "type": "i16", "enum": { "PRIMARY": 1, "REDUNDANT": 2 } },
+        { "name": "server_fly_state", "type": "i16", "enum": { "NO_FLY": 0, "IS_FLY": 1 } },
+        { "name": "forced_2_fly", "type": "i16", "help": "Commanded into fly-wheel (0/1)" },
+        { "name": "clock_state_flags", "type": "u16", "hex": true, "help": "Same bits as hk clock_state_flags" },
+        { "name": "one_time_direction", "type": "i16", "enum": { "ADD": 1, "SUBTRACT": 2 } },
+        { "name": "one_hz_direction", "type": "i16", "enum": { "ADD": 1, "SUBTRACT": 2 } },
+        { "name": "delay_direction", "type": "i16", "enum": { "ADD": 1, "SUBTRACT": 2 } },
+        { "name": "one_time_adjust_secs", "type": "u32", "units": "s" },
+        { "name": "one_time_adjust_subsecs", "type": "u32" },
+        { "name": "one_hz_adjust_secs", "type": "u32", "units": "s" },
+        { "name": "one_hz_adjust_subsecs", "type": "u32" },
+        { "name": "tone_signal_latch_secs", "type": "u32", "units": "s" },
+        { "name": "tone_signal_latch_subsecs", "type": "u32" },
+        { "name": "tone_data_latch_secs", "type": "u32", "units": "s" },
+        { "name": "tone_data_latch_subsecs", "type": "u32" },
+        { "name": "tone_match_counter", "type": "u32" },
+        { "name": "tone_match_error_counter", "type": "u32" },
+        { "name": "tone_signal_counter", "type": "u32" },
+        { "name": "tone_data_counter", "type": "u32" },
+        { "name": "tone_int_counter", "type": "u32" },
+        { "name": "tone_int_error_counter", "type": "u32" },
+        { "name": "tone_task_counter", "type": "u32" },
+        { "name": "version_counter", "type": "u32" },
+        { "name": "local_int_counter", "type": "u32" },
+        { "name": "local_task_counter", "type": "u32" },
+        { "name": "virtual_met", "type": "u32", "units": "s" },
+        { "name": "min_elapsed", "type": "u32", "help": "Subseconds (LSB = 2^-32 s)" },
+        { "name": "max_elapsed", "type": "u32", "help": "Subseconds (LSB = 2^-32 s)" },
+        { "name": "max_local_clock_secs", "type": "u32", "units": "s" },
+        { "name": "max_local_clock_subsecs", "type": "u32" },
+        { "name": "tone_over_limit", "type": "u32", "help": "Subseconds (LSB = 2^-32 s)" },
+        { "name": "tone_under_limit", "type": "u32", "help": "Subseconds (LSB = 2^-32 s)" },
+        { "name": "data_store_status", "type": "u32",
+          "enum": { "ERROR": 1, "BAD": 2, "NEW": 3, "EXISTING": 4 } }
+      ]
+    }
+  ]
+}

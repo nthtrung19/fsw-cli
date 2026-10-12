@@ -1,0 +1,40 @@
+// CI (Command Ingest) telemetry. Source: ci_hktlm.h, ci_msgids.h.
+//
+// Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
+// in targets.json. Layouts are the NTPM SIL build (x86-64, 64-bit), checked
+// with offsetof against the FSW headers.
+//   packets  one entry per telemetry MID the app sends
+//   event    true for EVS event packets: shown in the event log
+//   variable true: the payload may be longer than the listed fields
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   count    N or [N, M]: an array, shown as name_0, name_1, ... (row-major)
+//   fields   instead of type: a nested struct, shown as name_member
+//            (name_0_member with count)
+//   enum     { "name": value, ... }  value shown by name
+//   units    text shown after the value
+//   hex      true: integer shown as 0x..
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 12-byte telemetry header
+// (CFE_SB_TLM_HDR_SIZE: 6-byte primary header + 6-byte time). Multi-byte
+// fields use the target byte order. Compiler-inserted holes and spare members
+// are listed as padding.
+//
+// Values taken from the FSW (update if the mission changes them):
+//   ci_msgids.h   CI_HK_TLM_MID 0x0934 (CI_OUT_DATA_MID 0x0935 is not routed;
+//                 CI_RESULT_AUTH_MID 0x0938 exists only with ENABLE_CRYPTO_LIB)
+{
+  "app": "ci",
+  "help": "Command Ingest",
+  "packets": [
+    {
+      "name": "hk",
+      "mid": "0x0934",
+      "help": "Housekeeping, every 5 s (CI_HkTlm_t)",
+      "fields": [
+        { "name": "cmd_cnt", "type": "u16" },
+        { "name": "cmd_err_cnt", "type": "u16" }
+      ]
+    }
+  ]
+}

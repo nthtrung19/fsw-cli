@@ -1,0 +1,49 @@
+// FDIR (fault detection, isolation and recovery) telemetry. Source: fdir_platform_msg.h,
+// fdir_sched.c, fdir_platform_msgids.h (lib_simulation_udp build).
+//
+// Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
+// in targets.json. Layouts are the NTPM SIL build (x86-64, 64-bit), checked
+// with offsetof against the FSW headers.
+//   packets  one entry per telemetry MID the app sends
+//   event    true for EVS event packets: shown in the event log
+//   variable true: the payload may be longer than the listed fields
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   count    N or [N, M]: an array, shown as name_0, name_1, ... (row-major)
+//   fields   instead of type: a nested struct, shown as name_member
+//            (name_0_member with count)
+//   enum     { "name": value, ... }  value shown by name
+//   units    text shown after the value
+//   hex      true: integer shown as 0x..
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 12-byte telemetry header
+// (CFE_SB_TLM_HDR_SIZE: 6-byte primary header + 6-byte time). Multi-byte
+// fields use the target byte order. Compiler-inserted holes and spare members
+// are listed as padding.
+//
+// Values taken from the FSW (update if the mission changes them):
+//   fdir_platform_msgids.h FDIR_APP_HK_TLM_MID 0x0883 (hardware HK 0x0884 and the fault
+//                   records 0x088A/0x088B are not routed)
+{
+  "app": "fdir",
+  "help": "Fault Detection, Isolation and Recovery",
+  "packets": [
+    {
+      "name": "hk",
+      "mid": "0x0883",
+      "help": "Housekeeping, every 5 s (FDIR_HousekeepingTlm_t)",
+      "fields": [
+        { "name": "cmd_accepted_cnt", "type": "u8" },
+        { "name": "cmd_rejected_cnt", "type": "u8", "help": "FSW bug: filled from cmd_accepted_cnt" },
+        { "name": "etd_status", "type": "u8", "help": "Event-tracking table loaded (0/1)" },
+        { "name": "fud_status", "type": "u8", "help": "Fault-unit table loaded (0/1)" },
+        { "name": "cmd_pipe_status", "type": "u8" },
+        { "name": "fault_pipe_status", "type": "u8" },
+        { "type": "padding", "size": 2 },
+        { "name": "boot_st", "type": "u32", "hex": true, "help": "CFE_PSP_GetBootStatus(); 0 on pc-linux" },
+        { "name": "reset_cause", "type": "u32", "hex": true, "help": "CFE_PSP_GetResetCause(); 0 on pc-linux" },
+        { "name": "device_id", "type": "u32", "hex": true, "help": "CFE_PSP_GetDeviceID(); 0 on pc-linux" }
+      ]
+    }
+  ]
+}

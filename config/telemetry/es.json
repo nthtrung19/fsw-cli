@@ -1,0 +1,148 @@
+// ES (Executive Services) telemetry. Source: cFE 6.7.0 cfe_es_msg.h, cfe_es.h,
+// cfe_es_extern_typedefs.h, cfe_es_shell.c, cfe_psp.h, ntpm_msgids.h, ntpm_mission_cfg.h,
+// ntpm_platform_cfg.h.
+//
+// Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
+// in targets.json. Layouts are the NTPM SIL build (x86-64, 64-bit), checked
+// with offsetof against the FSW headers.
+//   packets  one entry per telemetry MID the app sends
+//   event    true for EVS event packets: shown in the event log
+//   variable true: the payload may be longer than the listed fields
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   count    N or [N, M]: an array, shown as name_0, name_1, ... (row-major)
+//   fields   instead of type: a nested struct, shown as name_member
+//            (name_0_member with count)
+//   enum     { "name": value, ... }  value shown by name
+//   units    text shown after the value
+//   hex      true: integer shown as 0x..
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 12-byte telemetry header
+// (CFE_SB_TLM_HDR_SIZE: 6-byte primary header + 6-byte time). Multi-byte
+// fields use the target byte order. Compiler-inserted holes and spare members
+// are listed as padding.
+//
+// Values taken from the FSW (update if the mission changes them):
+//   ntpm_msgids.h        CFE_ES_HK_TLM_MID 0x0800, CFE_ES_APP_TLM_MID 0x080B,
+//                        CFE_ES_SHELL_TLM_MID 0x080F, CFE_ES_MEMSTATS_TLM_MID 0x0810
+//   ntpm_mission_cfg.h   CFE_MISSION_ES_PERF_MAX_IDS 128 (4 mask words),
+//                        CFE_MISSION_MAX_API_LEN 20, CFE_MISSION_MAX_PATH_LEN 64,
+//                        CFE_MISSION_ES_MAX_SHELL_PKT 64
+//   cfe_es.h             CFE_ES_MAX_MEMPOOL_BLOCK_SIZES 17
+//   CFE_ES_MemHandle_t is a cpuaddr: 8 bytes on SIL, so mem_stats starts with a
+//   4-byte hole (flight 32-bit ARM layouts differ).
+{
+  "app": "es",
+  "help": "cFE Executive Services",
+  "packets": [
+    {
+      "name": "hk",
+      "mid": "0x0800",
+      "help": "Housekeeping, every 20 s (CFE_ES_HousekeepingTlm_t)",
+      "fields": [
+        { "name": "command_counter", "type": "u8" },
+        { "name": "command_error_counter", "type": "u8" },
+        { "name": "cfe_core_checksum", "type": "u16", "hex": true,
+          "help": "CRC of the cFE core code segment; 0xFFFF if not available" },
+        { "name": "cfe_major_version", "type": "u8" },
+        { "name": "cfe_minor_version", "type": "u8" },
+        { "name": "cfe_revision", "type": "u8" },
+        { "name": "cfe_mission_revision", "type": "u8" },
+        { "name": "osal_major_version", "type": "u8" },
+        { "name": "osal_minor_version", "type": "u8" },
+        { "name": "osal_revision", "type": "u8" },
+        { "name": "osal_mission_revision", "type": "u8" },
+        { "name": "sys_log_bytes_used", "type": "u32", "units": "B" },
+        { "name": "sys_log_size", "type": "u32", "units": "B" },
+        { "name": "sys_log_entries", "type": "u32" },
+        { "name": "sys_log_mode", "type": "u32", "enum": { "OVERWRITE": 0, "DISCARD": 1 } },
+        { "name": "er_log_index", "type": "u32", "help": "Current index of the ER log (wraps)" },
+        { "name": "er_log_entries", "type": "u32" },
+        { "name": "registered_core_apps", "type": "u32" },
+        { "name": "registered_external_apps", "type": "u32" },
+        { "name": "registered_tasks", "type": "u32" },
+        { "name": "registered_libs", "type": "u32" },
+        { "name": "reset_type", "type": "u32", "enum": { "PROCESSOR": 1, "POWERON": 2 } },
+        { "name": "reset_subtype", "type": "u32",
+          "enum": { "POWER_CYCLE": 1, "PUSH_BUTTON": 2, "HW_SPECIAL_COMMAND": 3, "HW_WATCHDOG": 4,
+                    "RESET_COMMAND": 5, "EXCEPTION": 6, "UNDEFINED_RESET": 7, "HWDEBUG_RESET": 8,
+                    "BANKSWITCH_RESET": 9 } },
+        { "name": "processor_resets", "type": "u32" },
+        { "name": "max_processor_resets", "type": "u32" },
+        { "name": "boot_source", "type": "u32", "help": "Always 1 on the pc-linux PSP" },
+        { "name": "perf_state", "type": "u32",
+          "enum": { "IDLE": 0, "WAITING_FOR_TRIGGER": 1, "TRIGGERED": 2 } },
+        { "name": "perf_mode", "type": "u32",
+          "enum": { "TRIGGER_START": 0, "TRIGGER_CENTER": 1, "TRIGGER_END": 2 } },
+        { "name": "perf_trigger_count", "type": "u32" },
+        { "name": "perf_filter_mask", "type": "u32", "count": 4, "hex": true,
+          "help": "Element i bit b = perf ID 32*i + b" },
+        { "name": "perf_trigger_mask", "type": "u32", "count": 4, "hex": true,
+          "help": "Element i bit b = perf ID 32*i + b" },
+        { "name": "perf_data_start", "type": "u32" },
+        { "name": "perf_data_end", "type": "u32" },
+        { "name": "perf_data_count", "type": "u32" },
+        { "name": "perf_data_to_write", "type": "u32" },
+        { "name": "heap_bytes_free", "type": "u32", "units": "B" },
+        { "name": "heap_blocks_free", "type": "u32" },
+        { "name": "heap_max_block_size", "type": "u32", "units": "B" }
+      ]
+    },
+    {
+      "name": "app_info",
+      "mid": "0x080B",
+      "help": "One application's info, on CFE_ES_QUERY_ONE_CC (CFE_ES_OneAppTlm_t)",
+      "fields": [
+        { "name": "app_id", "type": "u32" },
+        { "name": "type", "type": "u32", "enum": { "CORE": 1, "EXTERNAL": 2 } },
+        { "name": "name", "type": "string", "size": 20 },
+        { "name": "entry_point", "type": "string", "size": 20 },
+        { "name": "file_name", "type": "string", "size": 64 },
+        { "name": "stack_size", "type": "u32", "units": "B" },
+        { "name": "module_id", "type": "u32" },
+        { "name": "addresses_are_valid", "type": "u32",
+          "help": "Always 0 on SIL: host addresses do not fit the 4-byte fields" },
+        { "name": "code_address", "type": "u32", "hex": true },
+        { "name": "code_size", "type": "u32", "units": "B" },
+        { "name": "data_address", "type": "u32", "hex": true },
+        { "name": "data_size", "type": "u32", "units": "B" },
+        { "name": "bss_address", "type": "u32", "hex": true },
+        { "name": "bss_size", "type": "u32", "units": "B" },
+        { "name": "start_address", "type": "u32", "hex": true, "help": "Truncated to 32 bits on SIL" },
+        { "name": "exception_action", "type": "u16", "enum": { "RESTART_APP": 0, "PROC_RESTART": 1 } },
+        { "name": "priority", "type": "u16", "help": "OS task priority (lower = higher)" },
+        { "name": "main_task_id", "type": "u32" },
+        { "name": "execution_counter", "type": "u32" },
+        { "name": "main_task_name", "type": "string", "size": 20 },
+        { "name": "num_of_child_tasks", "type": "u32" }
+      ]
+    },
+    {
+      "name": "mem_stats",
+      "mid": "0x0810",
+      "help": "Memory pool statistics, on CFE_ES_SEND_MEM_POOL_STATS_CC (CFE_ES_MemStatsTlm_t)",
+      "fields": [
+        { "type": "padding", "size": 4 },
+        { "name": "pool_handle", "type": "u64", "hex": true },
+        { "name": "pool_size", "type": "u32", "units": "B" },
+        { "name": "num_blocks_requested", "type": "u32" },
+        { "name": "check_err_ctr", "type": "u32" },
+        { "name": "num_free_bytes", "type": "u32", "units": "B" },
+        { "name": "block_stats", "count": 17, "fields": [
+            { "name": "block_size", "type": "u32", "units": "B" },
+            { "name": "num_created", "type": "u32" },
+            { "name": "num_free", "type": "u32" }
+          ] },
+        { "type": "padding", "size": 4 }
+      ]
+    },
+    {
+      "name": "shell",
+      "mid": "0x080F",
+      "help": "One 64-byte chunk of shell output, on CFE_ES_SHELL_CC; the last chunk ends with \"$\" (CFE_ES_ShellTlm_t)",
+      "fields": [
+        { "name": "shell_output", "type": "string", "size": 64 }
+      ]
+    }
+  ]
+}

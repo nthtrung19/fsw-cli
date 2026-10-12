@@ -1,0 +1,76 @@
+// SCH (Scheduler) telemetry. Source: sch_msg.h, sch_msgdefs.h, sch_msgids.h,
+// sch_platform_cfg.h.
+//
+// Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
+// in targets.json. Layouts are the NTPM SIL build (x86-64, 64-bit), checked
+// with offsetof against the FSW headers.
+//   packets  one entry per telemetry MID the app sends
+//   event    true for EVS event packets: shown in the event log
+//   variable true: the payload may be longer than the listed fields
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   count    N or [N, M]: an array, shown as name_0, name_1, ... (row-major)
+//   fields   instead of type: a nested struct, shown as name_member
+//            (name_0_member with count)
+//   enum     { "name": value, ... }  value shown by name
+//   units    text shown after the value
+//   hex      true: integer shown as 0x..
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 12-byte telemetry header
+// (CFE_SB_TLM_HDR_SIZE: 6-byte primary header + 6-byte time). Multi-byte
+// fields use the target byte order. Compiler-inserted holes and spare members
+// are listed as padding.
+//
+// Values taken from the FSW (update if the mission changes them):
+//   sch_msgids.h        SCH_HK_TLM_MID 0x0997, SCH_DIAG_TLM_MID 0x0998
+//   sch_platform_cfg.h  SCH_TOTAL_SLOTS 10, 5 entries per slot: SCH_TABLE_ENTRIES 50
+//                       (7 entry-state words)
+{
+  "app": "sch",
+  "help": "Scheduler",
+  "packets": [
+    {
+      "name": "hk",
+      "mid": "0x0997",
+      "help": "Housekeeping, every 5 s (SCH_HkPacket_t)",
+      "fields": [
+        { "name": "cmd_counter", "type": "u8" },
+        { "name": "err_counter", "type": "u8" },
+        { "name": "sync_to_met", "type": "u8",
+          "enum": { "NOT_SYNCHRONIZED": 0, "MINOR_SYNCHRONIZED": 1, "PENDING_MAJOR_SYNCH": 2,
+                    "MAJOR_SYNCHRONIZED": 4 } },
+        { "name": "major_frame_source", "type": "u8",
+          "enum": { "NONE": 0, "CFE_TIME": 1, "MINOR_FRAME_TIMER": 2 } },
+        { "name": "schedule_activity_success_count", "type": "u32" },
+        { "name": "schedule_activity_failure_count", "type": "u32" },
+        { "name": "slots_processed_count", "type": "u32" },
+        { "name": "skipped_slots_count", "type": "u16", "help": "Times slots were skipped (not the number of slots)" },
+        { "name": "multiple_slots_count", "type": "u16", "help": "Times several slots ran in one minor frame" },
+        { "name": "same_slot_count", "type": "u16" },
+        { "name": "bad_table_data_count", "type": "u16" },
+        { "name": "table_verify_success_count", "type": "u16" },
+        { "name": "table_verify_failure_count", "type": "u16" },
+        { "name": "table_pass_count", "type": "u32" },
+        { "name": "valid_major_frame_count", "type": "u32" },
+        { "name": "missed_major_frame_count", "type": "u32" },
+        { "name": "unexpected_major_frame_count", "type": "u32" },
+        { "name": "minor_frames_since_tone", "type": "u16" },
+        { "name": "next_slot_number", "type": "u16" },
+        { "name": "last_sync_met_slot", "type": "u16" },
+        { "name": "ignore_major_frame", "type": "u8" },
+        { "name": "unexpected_major_frame", "type": "u8" }
+      ]
+    },
+    {
+      "name": "diag",
+      "mid": "0x0998",
+      "help": "Schedule table state, on SCH_SEND_DIAG_TLM_CC (SCH_DiagPacket_t)",
+      "fields": [
+        { "name": "entry_states", "type": "u16", "count": 7, "hex": true,
+          "help": "2 bits per entry, 8 per word; entry n is word n/8, bits (7 - n%8)*2 (lowest entry in the MSBs). 0 UNUSED, 1 ENABLED, 2 DISABLED" },
+        { "name": "msg_ids", "type": "u16", "count": 50, "hex": true,
+          "help": "MID sent by entry n (slot n/5, position n%5); 0 for unused entries" }
+      ]
+    }
+  ]
+}

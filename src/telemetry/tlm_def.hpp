@@ -39,6 +39,7 @@ struct TlmPacketDef {
     std::uint16_t mid = 0;               // telemetry message ID (CCSDS stream ID)
     std::string help;
     bool isEvent = false;
+    bool variableLength = false;         // payload may be longer than the fields (e.g. CF PDUs)
     std::vector<TlmFieldDef> fields;     // in payload order, offsets filled in
 
     std::string fullName() const { return app + "." + name; }
