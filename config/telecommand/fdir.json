@@ -1,0 +1,214 @@
+// FDIR (fault detection, isolation and recovery) ground commands.
+// Source: fdir_platform_msgids.h, fdir_platform_msg.h, fdir_platform_cfg.h,
+// fdir_platform_facility.h, fdir_cmds.c, fdir_table.c, fdir_sched.c, fdir_init.c,
+// fdir_faults.c, fdir_hospital.c, fdir_queue.c, base_model.h (hw_lib).
+//
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   enum     { "name": value, ... }  names accepted as arguments, shown in help
+//   min/max  inclusive range for integer fields
+//   default  value used when the argument is omitted (only trailing arguments may be omitted)
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 8-byte command header (CFE_SB_CMD_HDR_SIZE).
+// The command structs have no compiler-inserted holes. FDIR checks the exact packet length
+// (FDIR_VerifyCmdLength) of every command except read_obc_temperature and read_obc_edac.
+//
+// Commands are grouped by the MID they are sent on ("mids").
+//   fdir_platform_msgids.h  FDIR_GND_CMD_MID 0x1882     FDIR_ProcessGroundCommand
+//                           FDIR_TBL_CMD_MID 0x1883     FDIR_ProcessTableCommand
+//                           FDIR_SEND_HK_MID 0x1884     FDIR_ProcessScheduleCmd (also the
+//                                                       scheduler MID)
+//                           FDIR_RELEASE_HW_MID 0x1885  FDIR_ReleaseHardware (code not read)
+//
+// Values taken from the FSW (update if the mission changes them):
+//   base_model.h  HardwareIdentifier_t: STR_0 0, GYR_0 1, MTM_0 2, GPS_0 3, FSS_0-3 4-7,
+//                 MTQ_0-2 8-10, RWL_0-3 11-14, PAYLOAD_0 15, PCDU_0 16,
+//                 OBC_0 17 (= HARDWARE_IDENTIFIER_NUM); hardware commands accept 0-17
+//   fdir_platform_facility.h  WP_OFF 0, WP_ON 1
+//   OS_MAX_API_NAME 20
+//   Tables load from and dump to /cf/fdir_etd.tbl, /cf/fdir_hqm.tbl, /cf/fdir_fud.tbl;
+//   update_io_timeout loads /cf/fdir_iot.tbl.
+//
+// Not listed: FDIR_GET_RUNNING_DEVICE_STATUS_MID 0x1886 (sent by MAIN, not subscribed),
+// FDIR_TRIGGER_HARDWARE_SAMPLE_MID 0x1887 (sent by FDIR), FDIR_WAKEUP_CMD_MID 0x188A
+// (scheduler wakeup that only paces the main loop).
+{
+  "app": "fdir",
+  "help": "Fault Detection, Isolation and Recovery",
+  "mids": [
+    {
+      "mid": "0x1882",
+      "commands": [
+        {
+          "name": "noop",
+          "cc": 0,
+          "help": "No-op: increments CmdAcceptedCnt and reports the FDIR version"
+        },
+        {
+          "name": "reset",
+          "cc": 1,
+          "help": "Reset the command counters and the per-hardware error counters"
+        },
+        {
+          "name": "trigger_event_watchpoint",
+          "cc": 2,
+          "help": "Turn an event watchpoint of the event-tracking table (ETD) on or off",
+          "fields": [
+            { "name": "app_name", "type": "string", "size": 20,
+              "help": "Owner app of the event, must be running (max 19 chars)" },
+            { "name": "event_id", "type": "u16", "help": "Event ID" },
+            { "name": "enable", "type": "u8", "enum": { "off": 0, "on": 1 },
+              "help": "Watchpoint state (on also turns the page on)" },
+            { "type": "padding", "size": 1 }
+          ]
+        },
+        {
+          "name": "enable_event_tracking",
+          "cc": 3,
+          "help": "Subscribe to the EVS short and long event messages (fault detection on)"
+        },
+        {
+          "name": "disable_event_tracking",
+          "cc": 4,
+          "help": "Unsubscribe from the EVS event messages (fault detection off)"
+        },
+        {
+          "name": "enable_hqm_idx",
+          "cc": 5,
+          "help": "Enable a hardware entry of the hospital queue (HQM)",
+          "fields": [
+            { "name": "target", "type": "u8",
+              "enum": { "str_0": 0, "gyr_0": 1, "mtm_0": 2, "gps_0": 3,
+                        "fss_0": 4, "fss_1": 5, "fss_2": 6, "fss_3": 7,
+                        "mtq_0": 8, "mtq_1": 9, "mtq_2": 10,
+                        "rwl_0": 11, "rwl_1": 12, "rwl_2": 13, "rwl_3": 14,
+                        "payload_0": 15, "pcdu_0": 16, "obc_0": 17 },
+              "help": "HardwareIdentifier_t" }
+          ]
+        },
+        {
+          "name": "disable_hqm_idx",
+          "cc": 6,
+          "help": "Disable a hardware entry of the hospital queue (HQM)",
+          "fields": [
+            { "name": "target", "type": "u8",
+              "enum": { "str_0": 0, "gyr_0": 1, "mtm_0": 2, "gps_0": 3,
+                        "fss_0": 4, "fss_1": 5, "fss_2": 6, "fss_3": 7,
+                        "mtq_0": 8, "mtq_1": 9, "mtq_2": 10,
+                        "rwl_0": 11, "rwl_1": 12, "rwl_2": 13, "rwl_3": 14,
+                        "payload_0": 15, "pcdu_0": 16, "obc_0": 17 },
+              "help": "HardwareIdentifier_t" }
+          ]
+        },
+        {
+          "name": "activate_hqm_overrequested",
+          "cc": 7,
+          "help": "Re-enable over-requested queue entries, treatment counts from the HQM table"
+        }
+      ]
+    },
+    {
+      "mid": "0x1883",
+      "commands": [
+        {
+          "name": "update_etd",
+          "cc": 0,
+          "help": "Reload the event-tracking table from /cf/fdir_etd.tbl"
+        },
+        {
+          "name": "update_hqm",
+          "cc": 1,
+          "help": "Reload the hospital-queue map table from /cf/fdir_hqm.tbl"
+        },
+        {
+          "name": "update_fud",
+          "cc": 2,
+          "help": "Reload the fault-unit table from /cf/fdir_fud.tbl"
+        },
+        {
+          "name": "dump_etd",
+          "cc": 3,
+          "help": "Dump the active event-tracking table to /cf/fdir_etd.tbl (its load file)"
+        },
+        {
+          "name": "dump_hqm",
+          "cc": 4,
+          "help": "Dump the active hospital-queue map table to /cf/fdir_hqm.tbl (its load file)"
+        },
+        {
+          "name": "dump_fud",
+          "cc": 5,
+          "help": "Dump the active fault-unit table to /cf/fdir_fud.tbl (its load file)"
+        },
+        {
+          "name": "manage_etd",
+          "cc": 6,
+          "help": "Let Table Services apply a pending event-tracking table update"
+        },
+        {
+          "name": "manage_hqm",
+          "cc": 7,
+          "help": "Let Table Services apply a pending hospital-queue map table update"
+        },
+        {
+          "name": "manage_fud",
+          "cc": 8,
+          "help": "Let Table Services apply a pending fault-unit table update"
+        },
+        {
+          "name": "update_io_timeout",
+          "cc": 9,
+          "help": "Load /cf/fdir_iot.tbl and apply its I/O timeouts to the selected hardware",
+          "fields": [
+            { "name": "dev_mask", "type": "u32", "max": "0x1FFFF",
+              "help": "Bit n = hardware n (0 str_0 ... 16 pcdu_0, see the header)" }
+          ]
+        }
+      ]
+    },
+    {
+      "mid": "0x1884",
+      "commands": [
+        {
+          "name": "hk",
+          "cc": 0,
+          "help": "Request the app housekeeping packet (0x0883)"
+        },
+        {
+          "name": "hw_hk",
+          "cc": 1,
+          "help": "Request the hardware housekeeping packet (0x0884)"
+        },
+        {
+          "name": "read_obc_temperature",
+          "cc": 2,
+          "help": "Read the OBC temperature (empty stub in this FSW version)"
+        },
+        {
+          "name": "read_obc_edac",
+          "cc": 3,
+          "help": "Read the OBC EDAC information (empty stub in this FSW version)"
+        }
+      ]
+    },
+    {
+      "mid": "0x1885",
+      "commands": [
+        {
+          "name": "release_hardware",
+          "cc": 0,
+          "help": "Set a hardware back to WORKABLE (release it from isolation)",
+          "fields": [
+            { "name": "id", "type": "u8",
+              "enum": { "str_0": 0, "gyr_0": 1, "mtm_0": 2, "gps_0": 3,
+                        "fss_0": 4, "fss_1": 5, "fss_2": 6, "fss_3": 7,
+                        "mtq_0": 8, "mtq_1": 9, "mtq_2": 10,
+                        "rwl_0": 11, "rwl_1": 12, "rwl_2": 13, "rwl_3": 14,
+                        "payload_0": 15, "pcdu_0": 16, "obc_0": 17 },
+              "help": "HardwareIdentifier_t" }
+          ]
+        }
+      ]
+    }
+  ]
+}

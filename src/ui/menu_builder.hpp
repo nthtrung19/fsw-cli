@@ -24,7 +24,8 @@ namespace mcs::ui {
 //   ├── arm                    allow the next critical command
 //   └── tlm                    telemetry display (only with a TlmContext that has a store)
 //       ├── view dash|monitor|stats
-//       ├── filter <app>|all   dashboard panels
+//       ├── show <packet>|all  tick a packet in the dashboard checklist (ds.hk or 0x08B8)
+//       ├── hide <packet>|all  untick it
 //       ├── monitor <app>|<mid>|all
 //       ├── pause [on|off]
 //       ├── clear

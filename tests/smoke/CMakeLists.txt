@@ -58,6 +58,18 @@ mcs_smoke(NAME dryrun_ci_hk EXIT 0
     ARGS ${BASE} -n -c "fsw ci hk"
     EXPECT "\\[dry-run\\] fsw ci hk  \\(8 bytes, apid=0x135 seq=0\\)\n  19 35 C0 00 00 01 12 00")
 
+mcs_smoke(NAME dryrun_aocs_hk EXIT 0
+    ARGS ${BASE} -n -c "fsw aocs hk"
+    EXPECT "\\[dry-run\\] fsw aocs hk  \\(8 bytes, apid=0x112 seq=0\\)\n  19 12 C0 00 00 01 35 00")
+
+mcs_smoke(NAME dryrun_sc_hk EXIT 0
+    ARGS ${BASE} -n -c "fsw sc hk"
+    EXPECT "\\[dry-run\\] fsw sc hk  \\(8 bytes, apid=0x18A seq=0\\)\n  19 8A C0 00 00 01 AD 00")
+
+mcs_smoke(NAME dryrun_fdir_hk EXIT 0
+    ARGS ${BASE} -n -c "fsw fdir hk"
+    EXPECT "\\[dry-run\\] fsw fdir hk  \\(8 bytes, apid=0x084 seq=0\\)\n  18 84 C0 00 00 01 A2 00")
+
 mcs_smoke(NAME dryrun_ds_hk EXIT 0
     ARGS ${BASE} -n -c "fsw ds hk"
     EXPECT "\\[dry-run\\] fsw ds hk  \\(8 bytes, apid=0x14C seq=0\\)\n  19 4C C0 00 00 01 6B 00")
@@ -77,6 +89,18 @@ mcs_smoke(NAME invalid_enum EXIT 1
 
 mcs_smoke(NAME ci_ip_too_long EXIT 1
     ARGS ${BASE} -n -c "fsw ci enable_to 1234567890123456 5011"
+    EXPECT "too long" REJECT "dry-run")
+
+mcs_smoke(NAME aocs_time_zero_rejected EXIT 1
+    ARGS ${BASE} -n -c "fsw aocs nadir_pointing 0"
+    EXPECT "below minimum 1" REJECT "dry-run")
+
+mcs_smoke(NAME sc_rts_out_of_range EXIT 1
+    ARGS ${BASE} -n -c "fsw sc start_rts 65"
+    EXPECT "above maximum 64" REJECT "dry-run")
+
+mcs_smoke(NAME fdir_app_name_too_long EXIT 1
+    ARGS ${BASE} -n -c "fsw fdir trigger_event_watchpoint ABCDEFGHIJKLMNOPQRSTU 1 on"
     EXPECT "too long" REJECT "dry-run")
 
 mcs_smoke(NAME unknown_command EXIT 1

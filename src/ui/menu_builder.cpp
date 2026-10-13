@@ -135,6 +135,36 @@ std::vector<std::pair<std::string, std::string>> tlmAppWords(const TlmStore& sto
     return words;
 }
 
+// Packets that can be ticked: "all", then every non-event packet of the catalog.
+std::vector<std::pair<std::string, std::string>> tlmPacketWords(const TlmStore& store, const char* all)
+{
+    std::vector<std::pair<std::string, std::string>> words{{"all", all}};
+    for (const auto& p : store.catalog().packets()) {
+        if (!p.isEvent) {
+            words.emplace_back(p.fullName(), toHexString(p.mid, 4) + (p.help.empty() ? "" : "  " + p.help));
+        }
+    }
+    return words;
+}
+
+// "ds.hk" (a catalog packet) or "0x08B8" (any MID, also unknown ones).
+std::optional<std::uint16_t> resolvePacket(const TlmStore& store, const std::string& arg)
+{
+    if (arg.rfind("0x", 0) == 0) {
+        const auto mid = parseUnsigned(arg);
+        if (mid && *mid <= 0xFFFF) {
+            return static_cast<std::uint16_t>(*mid);
+        }
+        return std::nullopt;
+    }
+    for (const auto& p : store.catalog().packets()) {
+        if (!p.isEvent && p.fullName() == arg) {
+            return p.mid;
+        }
+    }
+    return std::nullopt;
+}
+
 void printTlmStatus(const TlmContext& tlm, std::ostream& out)
 {
     const TlmCounters c = tlm.store->counters();
@@ -151,7 +181,7 @@ void printTlmStatus(const TlmContext& tlm, std::ostream& out)
         << ", seq gaps " << c.gaps << ")\n"
         << "sent:      " << c.sent << '\n'
         << "view:      " << toString(tlm.view.view) << (tlm.view.paused ? " (paused)" : "")
-        << ", panels " << (tlm.view.panelApp.empty() ? "all" : tlm.view.panelApp)
+        << ", " << tlm.view.shown.size() << " packet(s) shown"
         << ", monitor " << tlm.view.monitorFilter.describe() << '\n';
 }
 
@@ -185,23 +215,47 @@ std::unique_ptr<cli::Menu> buildTlmMenu(TlmContext& tlm, std::size_t& sessionErr
                         {"monitor", "every sent/received packet (F2)"},
                         {"stats", "per-MID link statistics (F4)"}})));
 
-    menu->Insert(std::make_unique<FswCommand>(
-        "filter", "Show only one app's packet panels on the dashboard",
-        std::vector<std::string>{"app|all"},
-        [&tlm, usage](std::ostream& out, const std::vector<std::string>& args) {
-            if (args.size() != 1) {
-                return usage(out, "filter <app>|all");
-            }
-            const std::string app = toLower(args[0]);
-            const auto apps = tlm.store->catalog().apps();
-            if (app != "all" && std::find(apps.begin(), apps.end(), app) == apps.end()) {
-                return usage(out, "filter <app>|all  (apps with telemetry: " + join(apps, ", ") + ")");
-            }
-            tlm.view.panelApp = app == "all" ? "" : app;
-            tlm.view.view = TlmView::Dashboard;
-            out << "dashboard: " << (app == "all" ? "all apps" : "app " + app) << '\n';
-        },
-        wordsCompleter(tlmAppWords(*tlm.store, "apps"))));
+    // show/hide: the same as ticking/unticking in the dashboard checklist (F6).
+    for (const bool show : {true, false}) {
+        const std::string name = show ? "show" : "hide";
+        menu->Insert(std::make_unique<FswCommand>(
+            name,
+            show ? "Show a packet on the dashboard (tick it in the checklist)"
+                 : "Remove a packet from the dashboard (untick it)",
+            std::vector<std::string>{"packet|mid|all"},
+            [&tlm, usage, show, name](std::ostream& out, const std::vector<std::string>& args) {
+                if (args.size() != 1) {
+                    return usage(out, name + " <packet>|<mid>|all  (e.g. ds.hk or 0x08B8)");
+                }
+                const std::string arg = toLower(args[0]);
+                if (arg == "all") {
+                    tlm.view.shown.clear();
+                    if (show) {
+                        for (const auto& p : tlm.store->catalog().packets()) {
+                            if (!p.isEvent) {
+                                tlm.view.shown.insert(p.mid);
+                            }
+                        }
+                        for (const auto& u : tlm.store->snapshot().unknown) {
+                            tlm.view.shown.insert(u.mid);
+                        }
+                    }
+                } else if (const auto mid = resolvePacket(*tlm.store, arg)) {
+                    if (show) {
+                        tlm.view.shown.insert(*mid);
+                    } else {
+                        tlm.view.shown.erase(*mid);
+                    }
+                } else {
+                    return usage(out, name + " <packet>|<mid>|all  ('" + arg
+                                          + "' is not a telemetry packet; Tab lists them)");
+                }
+                tlm.view.view = TlmView::Dashboard;
+                out << "dashboard: " << tlm.view.shown.size() << " packet(s) shown\n";
+            },
+            wordsCompleter(tlmPacketWords(*tlm.store, show ? "every packet in the checklist"
+                                                           : "clear the dashboard"))));
+    }
 
     menu->Insert(std::make_unique<FswCommand>(
         "monitor", "Filter the packet monitor by app (sent and received) or MID",

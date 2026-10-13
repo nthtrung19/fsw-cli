@@ -1,0 +1,264 @@
+// AOCS (attitude and orbit control) commands.
+// Source: aocs_app.c, aocs_app.h, aocs_app_msgids.h, aocs_cmds.c, aocs_cmds.h, aocs_utils.c,
+// aocs_lib.h, AOCSLib_Change_ControlGain (lib_control.c).
+//
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   enum     { "name": value, ... }  names accepted as arguments, shown in help
+//   min/max  inclusive range for integer fields
+//   default  value used when the argument is omitted (only trailing arguments may be omitted)
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 8-byte command header (CFE_SB_CMD_HDR_SIZE).
+// Layouts are the NTPM SIL build (x86-64, 64-bit: double is 8-byte aligned); compiler-inserted
+// holes and spare members are listed as padding.
+// AOCS checks the exact packet length (AOCS_VerifyCmdLength) for every command except
+// change_control_gain, change_test_solution and orbit_state_from_tle: those have no length
+// check and do not count commands, so a wrong layout is read silently.
+//
+// Commands are grouped by the MID they are sent on ("mids").
+//   aocs_app_msgids.h  AOCS_CMD_MID 0x1911      AOCS_GetCommands, dispatched by command code
+//                      AOCS_SEND_HK_MID 0x1912  AOCS_HousekeepingCmd (length 8, code not read)
+//
+// Values taken from the FSW:
+//   time       maximum control time in seconds; AOCS_CheckTime rejects 0 (uint32 "<= 0")
+//   lat/lon/alt  LLA coordinates: latitude deg, longitude deg, altitude m
+//   q0..q3     quaternion, element 3 is the scalar (as aocs_lib treats it)
+//   aocs_lib.h AOCS_X_AXIS 1, AOCS_Y_AXIS 2, AOCS_Z_AXIS 3; AOCS_TUNING_OFFLINE 0, _ONLINE 1;
+//              UC_AOCS_01 1 (inertial), UC_AOCS_03 3 (target), UC_AOCS_04 4 (nadir): the only
+//              modes AOCSLib_Change_ControlGain accepts (others: "Invalid selection mode");
+//              AOCS_RWL_MODE_SPEED 0, _CURRENT 1; AOCS_ADS_MODE_RAW 0, _STATIC 1, _FILTER 2,
+//              _ESTIMATOR 3; AOCS_NORMAL_CONTROL 0, AOCS_NO_CONTROL_RWL 1, AOCS_NO_CONTROL_MTQ 2
+//              (the comments in AOCS_ChangeTestSolution_t are out of date; the code uses these)
+// Checks the FSW still makes itself: thruster times 0 < prop_init < active < deactive,
+// mode preconditions of the thruster commands.
+//
+// Not listed: AOCS_UPDATE_DETUMB/ATTITUDE/MATRIX_CONFIG_CC 11-13 and AOCS_RETURN_CONFIG_CC 14
+// (no case in AOCS_GetCommands), AOCS_ChangeThreeValue_t (unused), and the MIDs AOCS receives
+// from other apps: SCH_10HZ_WAKEUP_MID, PL_TO_MAIN_TLM_MID, MAIN_DEV_STATUS_CMD_MID.
+{
+  "app": "aocs",
+  "help": "Attitude and Orbit Control",
+  "mids": [
+    {
+      "mid": "0x1911",
+      "commands": [
+        {
+          "name": "noop",
+          "cc": 0,
+          "help": "No-op: increments ReceivedCmdCnt and reports the AOCS version"
+        },
+        {
+          "name": "reset",
+          "cc": 1,
+          "help": "Reset ReceivedCmdCnt and ErrorCmdCnt"
+        },
+        {
+          "name": "process",
+          "cc": 2,
+          "help": "Routine processing (touches the config tables, sends an event)"
+        },
+        {
+          "name": "detumble_start",
+          "cc": 3,
+          "help": "Start detumbling (MTQ control)"
+        },
+        {
+          "name": "stop_control",
+          "cc": 4,
+          "help": "Stop control: hibernate mode, MTQ dipoles to 0, wheels hold their speed"
+        },
+        {
+          "name": "target_spot_pointing",
+          "cc": 5,
+          "help": "Target pointing, spot mode",
+          "fields": [
+            { "name": "lat", "type": "f64", "help": "Target latitude (deg)" },
+            { "name": "lon", "type": "f64", "help": "Target longitude (deg)" },
+            { "name": "alt", "type": "f64", "help": "Target altitude (m)" },
+            { "name": "time", "type": "u32", "min": 1, "help": "Maximum control time (s)" },
+            { "type": "padding", "size": 4 }
+          ]
+        },
+        {
+          "name": "nadir_pointing",
+          "cc": 6,
+          "help": "Nadir pointing",
+          "fields": [
+            { "name": "time", "type": "u32", "min": 1, "help": "Maximum control time (s)" }
+          ]
+        },
+        {
+          "name": "coarse_sun_pointing",
+          "cc": 7,
+          "help": "Coarse sun pointing (MTQ)",
+          "fields": [
+            { "name": "time", "type": "u32", "min": 1, "help": "Maximum control time (s)" }
+          ]
+        },
+        {
+          "name": "xband_pointing",
+          "cc": 8,
+          "help": "X-band antenna pointing at a ground station",
+          "fields": [
+            { "name": "lat", "type": "f64", "help": "Ground station latitude (deg)" },
+            { "name": "lon", "type": "f64", "help": "Ground station longitude (deg)" },
+            { "name": "alt", "type": "f64", "help": "Ground station altitude (m)" },
+            { "name": "time", "type": "u32", "min": 1, "help": "Maximum control time (s)" },
+            { "type": "padding", "size": 4 }
+          ]
+        },
+        {
+          "name": "sband_pointing",
+          "cc": 9,
+          "help": "S-band antenna pointing at a ground station",
+          "fields": [
+            { "name": "lat", "type": "f64", "help": "Ground station latitude (deg)" },
+            { "name": "lon", "type": "f64", "help": "Ground station longitude (deg)" },
+            { "name": "alt", "type": "f64", "help": "Ground station altitude (m)" },
+            { "name": "time", "type": "u32", "min": 1, "help": "Maximum control time (s)" },
+            { "type": "padding", "size": 4 }
+          ]
+        },
+        {
+          "name": "thruster_pointing",
+          "cc": 10,
+          "help": "Thruster pointing; init, ignites and stops the thruster at the given times",
+          "fields": [
+            { "name": "q0", "type": "f64", "help": "Thruster attitude in LVLH, element 0" },
+            { "name": "q1", "type": "f64", "help": "Element 1" },
+            { "name": "q2", "type": "f64", "help": "Element 2" },
+            { "name": "q3", "type": "f64", "help": "Element 3 (scalar)" },
+            { "name": "time_prop_init", "type": "f64",
+              "help": "Init the thruster after this many s (from the GPS time of week), > 0" },
+            { "name": "time_active_prop", "type": "f64",
+              "help": "Ignite after this many s, > time_prop_init" },
+            { "name": "time_deactive_prop", "type": "f64",
+              "help": "Stop after this many s, > time_active_prop" },
+            { "name": "time", "type": "u32", "min": 1, "help": "Maximum control time (s)" },
+            { "type": "padding", "size": 4 }
+          ]
+        },
+        {
+          "name": "request_thruster_ready",
+          "cc": 15,
+          "help": "Request the thruster to be ready (needs thruster pointing achieved)"
+        },
+        {
+          "name": "active_propul_system",
+          "cc": 16,
+          "help": "Ignite the thruster (needs request_thruster_ready success)"
+        },
+        {
+          "name": "deactive_propul_system",
+          "cc": 17,
+          "help": "Stop the thruster"
+        },
+        {
+          "name": "target_strip_pointing",
+          "cc": 18,
+          "help": "Target pointing, strip mode (along-track)",
+          "fields": [
+            { "name": "lat", "type": "f64", "help": "Start point latitude (deg)" },
+            { "name": "lon", "type": "f64", "help": "Start point longitude (deg)" },
+            { "name": "alt", "type": "f64", "help": "Start point altitude (m)" },
+            { "name": "time", "type": "u32", "min": 1, "help": "Maximum control time (s)" },
+            { "type": "padding", "size": 4 }
+          ]
+        },
+        {
+          "name": "fine_sun_pointing",
+          "cc": 19,
+          "help": "Fine sun pointing (reaction wheels)",
+          "fields": [
+            { "name": "time", "type": "u32", "min": 1, "help": "Maximum control time (s)" }
+          ]
+        },
+        {
+          "name": "inertial_pointing",
+          "cc": 20,
+          "help": "Inertial pointing to a quaternion, or 3-axis sun pointing",
+          "fields": [
+            { "name": "q0", "type": "f64", "help": "Attitude in ECI, element 0" },
+            { "name": "q1", "type": "f64", "help": "Element 1" },
+            { "name": "q2", "type": "f64", "help": "Element 2" },
+            { "name": "q3", "type": "f64", "help": "Element 3 (scalar)" },
+            { "name": "time", "type": "u32", "min": 1, "help": "Maximum control time (s)" },
+            { "type": "padding", "size": 4 },
+            { "name": "angle_of_rotation_deg", "type": "f64", "help": "Rotation angle (deg)" },
+            { "name": "axis", "type": "u8", "enum": { "x": 1, "y": 2, "z": 3 },
+              "help": "Axis of rotation" },
+            { "name": "sun_pointing", "type": "u8", "enum": { "no": 0, "yes": 1 },
+              "help": "yes: 3-axis sun pointing (quaternion ignored)" },
+            { "type": "padding", "size": 6 }
+          ]
+        },
+        {
+          "name": "change_control_gain",
+          "cc": 26,
+          "help": "Set the PID gains of a pointing mode (offline: gains ignored)",
+          "fields": [
+            { "name": "tuning", "type": "u8", "enum": { "offline": 0, "online": 1 },
+              "help": "IsTuningOnline" },
+            { "name": "control_mode", "type": "u8",
+              "enum": { "inertial": 1, "target": 3, "nadir": 4 },
+              "help": "Gain set to change" },
+            { "type": "padding", "size": 6 },
+            { "name": "px", "type": "f64", "help": "x axis P" },
+            { "name": "ix", "type": "f64", "help": "x axis I" },
+            { "name": "dx", "type": "f64", "help": "x axis D" },
+            { "name": "py", "type": "f64", "help": "y axis P" },
+            { "name": "iy", "type": "f64", "help": "y axis I" },
+            { "name": "dy", "type": "f64", "help": "y axis D" },
+            { "name": "pz", "type": "f64", "help": "z axis P" },
+            { "name": "iz", "type": "f64", "help": "z axis I" },
+            { "name": "dz", "type": "f64", "help": "z axis D" }
+          ]
+        },
+        {
+          "name": "change_test_solution",
+          "cc": 27,
+          "help": "Select the wheel control, attitude determination and actuator test modes",
+          "fields": [
+            { "name": "rwl_control_mode", "type": "u8", "enum": { "speed": 0, "current": 1 },
+              "help": "Reaction wheel control" },
+            { "name": "ads_mode", "type": "u8",
+              "enum": { "raw": 0, "static": 1, "filter": 2, "estimator": 3 },
+              "help": "Attitude determination" },
+            { "name": "acs_mode", "type": "u8",
+              "enum": { "normal": 0, "no_control_rwl": 1, "no_control_mtq": 2 },
+              "help": "Actuator use" }
+          ]
+        },
+        {
+          "name": "orbit_state_from_tle",
+          "cc": 28,
+          "help": "Compute position/velocity (ECI) from TLE line 2; result in two events",
+          "fields": [
+            { "name": "line_number", "type": "u8", "help": "TLE line number" },
+            { "type": "padding", "size": 3 },
+            { "name": "sat_catalog_number", "type": "u32", "help": "Satellite catalog number" },
+            { "name": "checksum", "type": "u8", "help": "TLE checksum" },
+            { "type": "padding", "size": 7 },
+            { "name": "inclination", "type": "f64", "help": "Inclination (deg)" },
+            { "name": "raan", "type": "f64", "help": "Right ascension of the ascending node (deg)" },
+            { "name": "eccentricity", "type": "f64", "help": "Eccentricity" },
+            { "name": "arg_of_perigee", "type": "f64", "help": "Argument of perigee (deg)" },
+            { "name": "mean_anomaly", "type": "f64", "help": "Mean anomaly (deg)" },
+            { "name": "mean_motion", "type": "f64", "help": "Mean motion (rev/day)" },
+            { "name": "rev_number_at_epoch", "type": "f64", "help": "Revolution number at epoch" }
+          ]
+        }
+      ]
+    },
+    {
+      "mid": "0x1912",
+      "commands": [
+        {
+          "name": "hk",
+          "cc": 0,
+          "help": "Request housekeeping (cmd_hk, devices, state, then sun_pointing or attit_control)"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,179 @@
+// SC (Stored Command) ground commands.
+// Source: sc_msgids.h, sc_msgdefs.h, sc_msg.h, sc_platform_cfg.h, sc_rts.h, sc_cmds.c,
+// sc_atsrq.c, sc_rtsrq.c, sc_utils.c.
+//
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   enum     { "name": value, ... }  names accepted as arguments, shown in help
+//   min/max  inclusive range for integer fields
+//   default  value used when the argument is omitted (only trailing arguments may be omitted)
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 8-byte command header (CFE_SB_CMD_HDR_SIZE).
+// Every SC command struct is the header followed by uint16/uint32 members only, so there are
+// no compiler-inserted holes on any build. SC checks the exact packet length of every command
+// (SC_VerifyCmdLength).
+//
+// Commands are grouped by the MID they are sent on ("mids").
+//   sc_msgids.h  SC_CMD_MID 0x1989      SC_ProcessCommand, dispatched by command code
+//                SC_SEND_HK_MID 0x198A  housekeeping request (length 8, code not read); the
+//                                       first one after boot also starts the auto-exec RTS
+//
+// Values taken from the FSW (update if the mission changes them):
+//   sc_msgdefs.h       SC_NUMBER_OF_ATS 2 (1 = ATS A, 2 = ATS B); every command
+//                      "Criticality: None"
+//   sc_platform_cfg.h  SC_NUMBER_OF_RTS 64 (RTS ids 1-64; the handlers reject 0 and > 64),
+//                      SC_TIME_TO_USE = SC_USE_CFE_TIME (TAI seconds),
+//                      SC_ENABLE_GROUP_COMMANDS TRUE (command codes 13-16 exist)
+//   sc_rts.h           RTS 1 = auto-exec after power-on reset, RTS 2 = after processor reset
+// Checks the FSW still makes itself: first_rts <= last_rts for the group commands, ATS/RTS
+// state preconditions (loaded, enabled, idle ...).
+//
+// Not listed: SC_MANAGE_TABLE_CC 12 (CFE_TBL_NotifyCmd_t, sent only by cFE Table Services)
+// and SC_1HZ_WAKEUP_MID 0x198B (scheduler wakeup that runs the stored commands).
+{
+  "app": "sc",
+  "help": "Stored Command",
+  "mids": [
+    {
+      "mid": "0x1989",
+      "commands": [
+        {
+          "name": "noop",
+          "cc": 0,
+          "help": "No-op: increments the command counter and reports the SC version"
+        },
+        {
+          "name": "reset",
+          "cc": 1,
+          "help": "Reset the command, ATS/RTS command and RTS activation counters"
+        },
+        {
+          "name": "start_ats",
+          "cc": 2,
+          "help": "Start an ATS (the ATP must be idle and the ATS loaded)",
+          "fields": [
+            { "name": "ats", "type": "u16", "enum": { "a": 1, "b": 2 }, "help": "ATS to start" }
+          ]
+        },
+        {
+          "name": "stop_ats",
+          "cc": 3,
+          "help": "Stop the running ATS (accepted even when none is running)"
+        },
+        {
+          "name": "start_rts",
+          "cc": 4,
+          "help": "Start an RTS (it must be loaded, enabled and not running)",
+          "fields": [
+            { "name": "rts", "type": "u16", "min": 1, "max": 64,
+              "help": "RTS number (1 = power-on auto-exec, 2 = processor-reset auto-exec)" }
+          ]
+        },
+        {
+          "name": "stop_rts",
+          "cc": 5,
+          "help": "Stop an RTS",
+          "fields": [
+            { "name": "rts", "type": "u16", "min": 1, "max": 64, "help": "RTS number" }
+          ]
+        },
+        {
+          "name": "disable_rts",
+          "cc": 6,
+          "help": "Disable an RTS (it can no longer be started)",
+          "fields": [
+            { "name": "rts", "type": "u16", "min": 1, "max": 64, "help": "RTS number" }
+          ]
+        },
+        {
+          "name": "enable_rts",
+          "cc": 7,
+          "help": "Enable an RTS",
+          "fields": [
+            { "name": "rts", "type": "u16", "min": 1, "max": 64, "help": "RTS number" }
+          ]
+        },
+        {
+          "name": "switch_ats",
+          "cc": 8,
+          "help": "Switch to the other ATS at the next safe time (an ATS must be running)"
+        },
+        {
+          "name": "jump_ats",
+          "cc": 9,
+          "help": "Jump the running ATS to a time: commands before it are skipped",
+          "fields": [
+            { "name": "new_time", "type": "u32", "help": "Absolute time to jump to (TAI s)" }
+          ]
+        },
+        {
+          "name": "continue_ats_on_failure",
+          "cc": 10,
+          "help": "Keep running the ATS when a command fails its checksum (or stop it)",
+          "fields": [
+            { "name": "state", "type": "u16", "enum": { "false": 0, "true": 1 },
+              "help": "true = continue, false = stop the ATS" }
+          ]
+        },
+        {
+          "name": "append_ats",
+          "cc": 11,
+          "help": "Append the loaded Append table to an ATS (the ATS must be loaded)",
+          "fields": [
+            { "name": "ats", "type": "u16", "enum": { "a": 1, "b": 2 }, "help": "ATS to append to" }
+          ]
+        },
+        {
+          "name": "start_rts_group",
+          "cc": 13,
+          "help": "Start every loaded, enabled, stopped RTS in first_rts..last_rts",
+          "fields": [
+            { "name": "first_rts", "type": "u16", "min": 1, "max": 64, "help": "First RTS number" },
+            { "name": "last_rts", "type": "u16", "min": 1, "max": 64,
+              "help": "Last RTS number (>= first_rts)" }
+          ]
+        },
+        {
+          "name": "stop_rts_group",
+          "cc": 14,
+          "help": "Stop every running RTS in first_rts..last_rts",
+          "fields": [
+            { "name": "first_rts", "type": "u16", "min": 1, "max": 64, "help": "First RTS number" },
+            { "name": "last_rts", "type": "u16", "min": 1, "max": 64,
+              "help": "Last RTS number (>= first_rts)" }
+          ]
+        },
+        {
+          "name": "disable_rts_group",
+          "cc": 15,
+          "help": "Disable every RTS in first_rts..last_rts",
+          "fields": [
+            { "name": "first_rts", "type": "u16", "min": 1, "max": 64, "help": "First RTS number" },
+            { "name": "last_rts", "type": "u16", "min": 1, "max": 64,
+              "help": "Last RTS number (>= first_rts)" }
+          ]
+        },
+        {
+          "name": "enable_rts_group",
+          "cc": 16,
+          "help": "Enable every RTS in first_rts..last_rts",
+          "fields": [
+            { "name": "first_rts", "type": "u16", "min": 1, "max": 64, "help": "First RTS number" },
+            { "name": "last_rts", "type": "u16", "min": 1, "max": 64,
+              "help": "Last RTS number (>= first_rts)" }
+          ]
+        }
+      ]
+    },
+    {
+      "mid": "0x198A",
+      "commands": [
+        {
+          "name": "hk",
+          "cc": 0,
+          "help": "Request housekeeping (the first request after boot also starts the auto-exec RTS)"
+        }
+      ]
+    }
+  ]
+}

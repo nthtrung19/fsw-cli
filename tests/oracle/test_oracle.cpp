@@ -2,7 +2,7 @@
 // on this (little-endian) host with cFE 6.7's own ccsds.h macros and
 // CCSDS_LoadCheckSum() from ccsds.c, exactly as the FSW lays them out in memory.
 //
-// The mcs side uses the real shipped catalog (config/catalog/ds.json), so
+// The mcs side uses the real shipped catalog (config/telecommand/ds.json), so
 // this also checks that the catalog matches the FSW structures.
 
 #include "catalog/catalog.hpp"
@@ -16,6 +16,7 @@ extern "C" {
 
 #include <gtest/gtest.h>
 
+#include <cstddef>
 #include <cstring>
 
 using namespace mcs;
@@ -72,6 +73,148 @@ struct CI_EnableTOCmd_t {
 };
 static_assert(sizeof(CI_EnableTOCmd_t) == 26, "unexpected padding");
 
+// AOCS command structs, copied from aocs_cmds.h (layout as built for x86-64).
+struct AOCS_AttitudeCoordinateCmd_t {
+    uint8 CmdHeader[8];
+    double Coordinate[3];
+    uint32 Time;
+    uint32 Padding32;
+};
+static_assert(sizeof(AOCS_AttitudeCoordinateCmd_t) == 40, "unexpected padding");
+
+struct AOCS_AttitudeNoArgumentCmd_t {
+    uint8 CmdHeader[8];
+    uint32 Time;
+};
+static_assert(sizeof(AOCS_AttitudeNoArgumentCmd_t) == 12, "unexpected padding");
+
+struct AOCS_AttitudeQuaternionCmd_t {
+    uint8 CmdHeader[8];
+    double Quaternion[4];
+    double TimePropInit;
+    double TimeActiveProp;
+    double TimeDeactiveProp;
+    uint32 Time;
+    uint32 Padding32;
+};
+static_assert(sizeof(AOCS_AttitudeQuaternionCmd_t) == 72, "unexpected padding");
+
+struct AOCS_AttitudeQuaternionNoTimeCmd_t {
+    uint8 CmdHeader[8];
+    double Quaternion[4];
+    uint32 Time;
+    uint32 Padding32;
+    double AngleOfRotationDegCmd;
+    uint8 AxisOfRotationCmd;
+    uint8 IsSunPointing;
+    uint8 Padding8[6];
+};
+static_assert(sizeof(AOCS_AttitudeQuaternionNoTimeCmd_t) == 64, "unexpected padding");
+
+// No length check in the FSW for the next three: the hidden holes must match exactly.
+struct AOCS_ChangeControlGainValue_t {
+    uint8 CmdHdr[8];
+    uint8 IsTuningOnline;
+    uint8 ControlMode;
+    double Px, Ix, Dx, Py, Iy, Dy, Pz, Iz, Dz;
+};
+static_assert(sizeof(AOCS_ChangeControlGainValue_t) == 88, "unexpected padding");
+static_assert(offsetof(AOCS_ChangeControlGainValue_t, Px) == 16, "6-byte hole before Px");
+
+struct AOCS_ChangeTestSolution_t {
+    uint8 CmdHdr[8];
+    uint8 RWLControl_Mode;
+    uint8 ADS_Mode;
+    uint8 ACS_Mode;
+};
+static_assert(sizeof(AOCS_ChangeTestSolution_t) == 11, "unexpected padding");
+
+struct AOCS_CalculateOrbitalStateTLE_t {
+    uint8 CmdHdr[8];
+    uint8 LineNumber;
+    uint32 SatelliteCatologNumber;
+    uint8 Checksum;
+    uint8 Padding[2];
+    double Inclination;
+    double RightAscensionOfTheAscendingNode;
+    double Eccentricity;
+    double ArgumentOfPerigee;
+    double MeanAnomaly;
+    double MeanMotion;
+    double RevolutionNumberAtEpoch;
+};
+static_assert(sizeof(AOCS_CalculateOrbitalStateTLE_t) == 80, "unexpected padding");
+static_assert(offsetof(AOCS_CalculateOrbitalStateTLE_t, SatelliteCatologNumber) == 12, "hole");
+static_assert(offsetof(AOCS_CalculateOrbitalStateTLE_t, Inclination) == 24, "hole");
+
+// SC command structs, copied from sc_msg.h.
+struct SC_StartAtsCmd_t {
+    uint8 CmdHeader[8];
+    uint16 AtsId;
+};
+static_assert(sizeof(SC_StartAtsCmd_t) == 10, "unexpected padding");
+
+struct SC_RtsCmd_t {
+    uint8 CmdHeader[8];
+    uint16 RtsId;
+};
+static_assert(sizeof(SC_RtsCmd_t) == 10, "unexpected padding");
+
+struct SC_JumpAtsCmd_t {
+    uint8 CmdHeader[8];
+    uint32 NewTime;
+};
+static_assert(sizeof(SC_JumpAtsCmd_t) == 12, "unexpected padding");
+
+struct SC_SetContinueAtsOnFailureCmd_t {
+    uint8 CmdHeader[8];
+    uint16 ContinueState;
+};
+static_assert(sizeof(SC_SetContinueAtsOnFailureCmd_t) == 10, "unexpected padding");
+
+struct SC_AppendAtsCmd_t {
+    uint8 CmdHeader[8];
+    uint16 AtsId;
+};
+static_assert(sizeof(SC_AppendAtsCmd_t) == 10, "unexpected padding");
+
+struct SC_RtsGrpCmd_t {
+    uint8 CmdHeader[8];
+    uint16 FirstRtsId;
+    uint16 LastRtsId;
+};
+static_assert(sizeof(SC_RtsGrpCmd_t) == 12, "unexpected padding");
+static_assert(offsetof(SC_RtsGrpCmd_t, LastRtsId) == 10, "unexpected padding");
+
+// FDIR command structs, copied from fdir_platform_msg.h (OS_MAX_API_NAME 20).
+struct FDIR_TriggerEtdCmd_t {
+    uint8 CmdHeader[8];
+    char ApplicationName[20];
+    uint16 EventID;
+    uint8 EventEnable;
+    uint8 Padding[1];
+};
+static_assert(sizeof(FDIR_TriggerEtdCmd_t) == 32, "unexpected padding");
+static_assert(offsetof(FDIR_TriggerEtdCmd_t, EventID) == 28, "unexpected padding");
+
+struct FDIR_TriggerHqmIdx_t {
+    uint8 CmdHeader[8];
+    uint8 Target;
+};
+static_assert(sizeof(FDIR_TriggerHqmIdx_t) == 9, "unexpected padding");
+
+struct FDIR_ReleaseHardware_t {
+    uint8 CmdHeader[8];
+    uint8 ID;
+};
+static_assert(sizeof(FDIR_ReleaseHardware_t) == 9, "unexpected padding");
+
+struct FDIR_UpdateIOTimeout_t {
+    uint8 CmdHeader[8];
+    uint32 DevMask;
+};
+static_assert(sizeof(FDIR_UpdateIOTimeout_t) == 12, "unexpected padding");
+
 // cFE's macros (unmodified NASA code) do implicit narrowing; silence those
 // warnings for the code that expands them, and only there.
 #pragma GCC diagnostic push
@@ -111,8 +254,11 @@ protected:
         if (first != 1) {
             GTEST_SKIP() << "oracle needs a little-endian host (the target is little-endian)";
         }
-        catalog_ = loadCatalog({std::string(mcs_SOURCE_DIR) + "/config/catalog/ds.json",
-                                std::string(mcs_SOURCE_DIR) + "/config/catalog/ci.json"});
+        catalog_ = loadCatalog({std::string(mcs_SOURCE_DIR) + "/config/telecommand/ds.json",
+                                std::string(mcs_SOURCE_DIR) + "/config/telecommand/ci.json",
+                                std::string(mcs_SOURCE_DIR) + "/config/telecommand/aocs.json",
+                                std::string(mcs_SOURCE_DIR) + "/config/telecommand/sc.json",
+                                std::string(mcs_SOURCE_DIR) + "/config/telecommand/fdir.json"});
     }
 
     // Full mcs path: catalog -> encoder -> CCSDS v1 format.
@@ -261,6 +407,210 @@ TEST_F(Oracle, CiHkMatchesCfe)
     // CI_SEND_HK_MID: header only.
     std::uint8_t header[8] = {};
     EXPECT_EQ(oursIn("ci", "hk", {}), cfeBuild(0x1935, 0, 0, header, sizeof header));
+}
+
+TEST_F(Oracle, AocsTargetSpotPointingMatchesCfe)
+{
+    AOCS_AttitudeCoordinateCmd_t cmd{};
+    cmd.Coordinate[0] = 21.0285;
+    cmd.Coordinate[1] = 105.8542;
+    cmd.Coordinate[2] = 12.5;
+    cmd.Time = 600;
+    EXPECT_EQ(oursIn("aocs", "target_spot_pointing", {"21.0285", "105.8542", "12.5", "600"}),
+              cfeBuild(0x1911, 5, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, AocsNadirPointingMatchesCfe)
+{
+    AOCS_AttitudeNoArgumentCmd_t cmd{};
+    cmd.Time = 0x12345678;
+    EXPECT_EQ(oursIn("aocs", "nadir_pointing", {"0x12345678"}),
+              cfeBuild(0x1911, 6, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, AocsThrusterPointingMatchesCfe)
+{
+    AOCS_AttitudeQuaternionCmd_t cmd{};
+    cmd.Quaternion[0] = 0.5;
+    cmd.Quaternion[1] = -0.5;
+    cmd.Quaternion[2] = 0.25;
+    cmd.Quaternion[3] = 0.6614378277661477;
+    cmd.TimePropInit = 10.0;
+    cmd.TimeActiveProp = 20.5;
+    cmd.TimeDeactiveProp = 31.25;
+    cmd.Time = 900;
+    EXPECT_EQ(oursIn("aocs", "thruster_pointing",
+                     {"0.5", "-0.5", "0.25", "0.6614378277661477", "10", "20.5", "31.25", "900"}),
+              cfeBuild(0x1911, 10, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, AocsInertialPointingMatchesCfe)
+{
+    AOCS_AttitudeQuaternionNoTimeCmd_t cmd{};
+    cmd.Quaternion[0] = 0.0;
+    cmd.Quaternion[1] = 0.0;
+    cmd.Quaternion[2] = 0.7071067811865476;
+    cmd.Quaternion[3] = 0.7071067811865476;
+    cmd.Time = 300;
+    cmd.AngleOfRotationDegCmd = 45.0;
+    cmd.AxisOfRotationCmd = 3;   // AOCS_Z_AXIS
+    cmd.IsSunPointing = 1;
+    EXPECT_EQ(oursIn("aocs", "inertial_pointing",
+                     {"0", "0", "0.7071067811865476", "0.7071067811865476", "300", "45", "z", "yes"}),
+              cfeBuild(0x1911, 20, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, AocsChangeControlGainMatchesCfe)
+{
+    AOCS_ChangeControlGainValue_t cmd{};
+    cmd.IsTuningOnline = 1;   // AOCS_TUNING_ONLINE
+    cmd.ControlMode = 4;      // UC_AOCS_04 (nadir)
+    cmd.Px = 1.5;
+    cmd.Ix = 0.01;
+    cmd.Dx = 2.0;
+    cmd.Py = 1.6;
+    cmd.Iy = 0.02;
+    cmd.Dy = 2.1;
+    cmd.Pz = 1.7;
+    cmd.Iz = 0.03;
+    cmd.Dz = 2.2;
+    EXPECT_EQ(oursIn("aocs", "change_control_gain",
+                     {"online", "nadir", "1.5", "0.01", "2.0", "1.6", "0.02", "2.1", "1.7", "0.03", "2.2"}),
+              cfeBuild(0x1911, 26, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, AocsChangeTestSolutionMatchesCfe)
+{
+    AOCS_ChangeTestSolution_t cmd{};
+    cmd.RWLControl_Mode = 1;   // AOCS_RWL_MODE_CURRENT
+    cmd.ADS_Mode = 3;          // AOCS_ADS_MODE_ESTIMATOR
+    cmd.ACS_Mode = 2;          // AOCS_NO_CONTROL_MTQ
+    EXPECT_EQ(oursIn("aocs", "change_test_solution", {"current", "estimator", "no_control_mtq"}),
+              cfeBuild(0x1911, 27, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, AocsOrbitStateFromTleMatchesCfe)
+{
+    AOCS_CalculateOrbitalStateTLE_t cmd{};
+    cmd.LineNumber = 2;
+    cmd.SatelliteCatologNumber = 25544;
+    cmd.Checksum = 7;
+    cmd.Inclination = 51.6416;
+    cmd.RightAscensionOfTheAscendingNode = 247.4627;
+    cmd.Eccentricity = 0.0006703;
+    cmd.ArgumentOfPerigee = 130.5360;
+    cmd.MeanAnomaly = 325.0288;
+    cmd.MeanMotion = 15.72125391;
+    cmd.RevolutionNumberAtEpoch = 56353;
+    EXPECT_EQ(oursIn("aocs", "orbit_state_from_tle",
+                     {"2", "25544", "7", "51.6416", "247.4627", "0.0006703", "130.5360", "325.0288",
+                      "15.72125391", "56353"}),
+              cfeBuild(0x1911, 28, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, AocsHkMatchesCfe)
+{
+    // AOCS_SEND_HK_MID: AOCS_NoArgsCmd_t, the command code is not read.
+    std::uint8_t header[8] = {};
+    EXPECT_EQ(oursIn("aocs", "hk", {}), cfeBuild(0x1912, 0, 0, header, sizeof header));
+}
+
+TEST_F(Oracle, ScNoopMatchesCfe)
+{
+    std::uint8_t header[8] = {};
+    EXPECT_EQ(oursIn("sc", "noop", {}), cfeBuild(0x1989, 0, 0, header, sizeof header));
+}
+
+TEST_F(Oracle, ScStartAtsMatchesCfe)
+{
+    SC_StartAtsCmd_t cmd{};
+    cmd.AtsId = 2;   // SC_ATSB
+    EXPECT_EQ(oursIn("sc", "start_ats", {"b"}), cfeBuild(0x1989, 2, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, ScStartRtsMatchesCfe)
+{
+    SC_RtsCmd_t cmd{};
+    cmd.RtsId = 64;   // SC_NUMBER_OF_RTS
+    EXPECT_EQ(oursIn("sc", "start_rts", {"64"}), cfeBuild(0x1989, 4, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, ScJumpAtsMatchesCfe)
+{
+    SC_JumpAtsCmd_t cmd{};
+    cmd.NewTime = 0x12345678;
+    EXPECT_EQ(oursIn("sc", "jump_ats", {"0x12345678"}), cfeBuild(0x1989, 9, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, ScContinueAtsOnFailureMatchesCfe)
+{
+    SC_SetContinueAtsOnFailureCmd_t cmd{};
+    cmd.ContinueState = 1;   // TRUE
+    EXPECT_EQ(oursIn("sc", "continue_ats_on_failure", {"true"}),
+              cfeBuild(0x1989, 10, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, ScAppendAtsMatchesCfe)
+{
+    SC_AppendAtsCmd_t cmd{};
+    cmd.AtsId = 1;   // SC_ATSA
+    EXPECT_EQ(oursIn("sc", "append_ats", {"a"}), cfeBuild(0x1989, 11, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, ScStartRtsGroupMatchesCfe)
+{
+    SC_RtsGrpCmd_t cmd{};
+    cmd.FirstRtsId = 3;
+    cmd.LastRtsId = 17;
+    EXPECT_EQ(oursIn("sc", "start_rts_group", {"3", "17"}),
+              cfeBuild(0x1989, 13, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, ScHkMatchesCfe)
+{
+    // SC_SEND_HK_MID: SC_NoArgsCmd_t, the command code is not read.
+    std::uint8_t header[8] = {};
+    EXPECT_EQ(oursIn("sc", "hk", {}), cfeBuild(0x198A, 0, 0, header, sizeof header));
+}
+
+TEST_F(Oracle, FdirTriggerEventWatchpointMatchesCfe)
+{
+    FDIR_TriggerEtdCmd_t cmd{};
+    std::strcpy(cmd.ApplicationName, "AOCS");
+    cmd.EventID = 0x1234;
+    cmd.EventEnable = 1;   // WP_ON
+    EXPECT_EQ(oursIn("fdir", "trigger_event_watchpoint", {"AOCS", "0x1234", "on"}),
+              cfeBuild(0x1882, 2, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, FdirEnableHqmIdxMatchesCfe)
+{
+    FDIR_TriggerHqmIdx_t cmd{};
+    cmd.Target = 17;   // OBC_0
+    EXPECT_EQ(oursIn("fdir", "enable_hqm_idx", {"obc_0"}), cfeBuild(0x1882, 5, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, FdirUpdateIoTimeoutMatchesCfe)
+{
+    FDIR_UpdateIOTimeout_t cmd{};
+    cmd.DevMask = 0x1A005;
+    EXPECT_EQ(oursIn("fdir", "update_io_timeout", {"0x1A005"}),
+              cfeBuild(0x1883, 9, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, FdirReleaseHardwareMatchesCfe)
+{
+    // FDIR_RELEASE_HW_MID: the command code is not read.
+    FDIR_ReleaseHardware_t cmd{};
+    cmd.ID = 13;   // RWL_2
+    EXPECT_EQ(oursIn("fdir", "release_hardware", {"rwl_2"}), cfeBuild(0x1885, 0, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, FdirHkMatchesCfe)
+{
+    // FDIR_SEND_HK_MID, FDIR_SEND_APP_HK_TLM: FDIR_NoArgsCmd_t.
+    std::uint8_t header[8] = {};
+    EXPECT_EQ(oursIn("fdir", "hk", {}), cfeBuild(0x1884, 0, 0, header, sizeof header));
 }
 
 } // namespace

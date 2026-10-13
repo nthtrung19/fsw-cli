@@ -1,5 +1,6 @@
 #include "ui/tui_session.hpp"
 
+#include "core/hex.hpp"
 #include "core/text.hpp"
 #include "ui/completion.hpp"
 
@@ -197,7 +198,7 @@ Color statusColor(PacketStatus s)
 }
 
 const char* const kSpinner[] = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
-constexpr int kPanelWidth = 38;
+constexpr int kListWidth = 28;   // dashboard checklist
 constexpr int kMaxCompletionRows = 6;
 
 // ---- the session -----------------------------------------------------------------
@@ -271,6 +272,16 @@ private:
             ++tick_;
             return false;
         }
+        if (e == Event::F6) {
+            if (tlm_.store != nullptr) {
+                listFocused_ = tlm_.view.view != TlmView::Dashboard || !listFocused_;
+                tlm_.view.view = TlmView::Dashboard;
+            }
+            return true;
+        }
+        if (listFocused_ && tlm_.view.view == TlmView::Dashboard && onChecklistEvent(e)) {
+            return true;
+        }
         if (e == Event::Return) {
             submit();
             return true;
@@ -295,13 +306,17 @@ private:
         const bool topUp = e == Event::ArrowUpCtrl || e == Event::Special("\x1b[1;3A");
         const bool topDown = e == Event::ArrowDownCtrl || e == Event::Special("\x1b[1;3B");
         if (topUp || topDown) {
-            int& scroll = tlm_.view.view == TlmView::Dashboard ? dashScroll_ : monitorScroll_;
-            scroll = std::max(0, scroll + (topUp ? 1 : -1) * (tlm_.view.view == TlmView::Dashboard ? 1 : 5));
+            if (tlm_.view.view == TlmView::Dashboard) {
+                displayScroll_ = std::max(0, displayScroll_ + (topUp ? -3 : 3));
+            } else {
+                monitorScroll_ = std::max(0, monitorScroll_ + (topUp ? 5 : -5));
+            }
             return true;
         }
         if (e == Event::F1 || e == Event::F2 || e == Event::F4) {
             tlm_.view.view = e == Event::F1 ? TlmView::Dashboard
                            : e == Event::F2 ? TlmView::Monitor : TlmView::Stats;
+            listFocused_ = false;
             return true;
         }
         if (e == Event::F5) {
@@ -325,6 +340,40 @@ private:
             return true;
         }
         return false;
+    }
+
+    // Keys while the checklist has the focus. Returns false for keys it does
+    // not use (F-keys, Ctrl-C, ...). A printable key gives the focus back to
+    // the command line and is typed there.
+    bool onChecklistEvent(const Event& e)
+    {
+        const int last = std::max(0, static_cast<int>(items_.size()) - 1);
+        const int page = std::max(1, listPage_);
+        if (e == Event::Escape) {
+            listFocused_ = false;
+        } else if (e == Event::ArrowUp) {
+            listCursor_ = std::max(0, listCursor_ - 1);
+        } else if (e == Event::ArrowDown) {
+            listCursor_ = std::min(last, listCursor_ + 1);
+        } else if (e == Event::PageUp) {
+            listCursor_ = std::max(0, listCursor_ - page);
+        } else if (e == Event::PageDown) {
+            listCursor_ = std::min(last, listCursor_ + page);
+        } else if (e == Event::Home) {
+            listCursor_ = 0;
+        } else if (e == Event::End) {
+            listCursor_ = last;
+        } else if (e == Event::Character(' ') || e == Event::Return) {
+            toggleCursorItem();
+        } else if (e == Event::Tab || e == Event::TabReverse) {
+            // nothing to complete here
+        } else if (e.is_character()) {
+            listFocused_ = false;
+            return false;   // the input line receives the character
+        } else {
+            return false;
+        }
+        return true;
     }
 
     void submit()
@@ -487,95 +536,305 @@ private:
     }
 
     // ---- F1 dashboard ----------------------------------------------------------
+    //
+    //   ┌ packets (F6) ──────┐┌ ds.hk 0x08B8 ─ seq 7 · 0.3 s ┐┌ ? 0x0803 ─ seq 4 ┐
+    //   │ [x] ds.hk        ● ││ cmd_accepted          9 ▲   ││ 0000: 08 03 C0 …  │
+    //   │ [ ] to.hk        ○ ││ ...                         ││                   │
+    //   │ [x] ? 0x0803     ● │└─────────────────────────────┘└───────────────────┘
+    //   └────────────────────┘
+    //   ─ events ─────────────────────────────────────────────────────────────────
+    //
+    // Left: every non-event packet of the catalog (● received, ○ not yet), then
+    // MIDs received without a definition. Right: the ticked ones, in checklist
+    // order, wrapped into rows; Ctrl+↑↓ scrolls them by lines.
 
-    Element packetPanel(const PacketState& p)
+    struct ChecklistItem {
+        std::uint16_t mid = 0;
+        std::string label;                    // "ds.hk" or "? 0x0803"
+        const PacketState* packet = nullptr;  // defined and received
+        const UnknownMid* unknown = nullptr;  // received without a definition
+        const TlmPacketDef* def = nullptr;    // defined (received or not)
+    };
+
+    void buildChecklist()
+    {
+        items_.clear();
+        for (const auto& def : tlm_.store->catalog().packets()) {
+            if (def.isEvent) {
+                continue;   // shown in the event log
+            }
+            ChecklistItem item;
+            item.mid = def.mid;
+            item.label = def.fullName();
+            item.def = &def;
+            for (const auto& p : snapshot_.packets) {
+                if (p.def == &def) {
+                    item.packet = &p;
+                }
+            }
+            items_.push_back(item);
+        }
+        for (const auto& u : snapshot_.unknown) {
+            ChecklistItem item;
+            item.mid = u.mid;
+            item.label = "? " + toHexString(u.mid, 4);
+            item.unknown = &u;
+            items_.push_back(item);
+        }
+        // Ticked with `tlm show 0x....` before anything arrived on that MID.
+        for (const std::uint16_t mid : tlm_.view.shown) {
+            const bool listed = std::any_of(items_.begin(), items_.end(),
+                                            [mid](const ChecklistItem& i) { return i.mid == mid; });
+            if (!listed) {
+                ChecklistItem item;
+                item.mid = mid;
+                item.label = "? " + toHexString(mid, 4);
+                items_.push_back(item);
+            }
+        }
+        listCursor_ = std::clamp(listCursor_, 0, std::max(0, static_cast<int>(items_.size()) - 1));
+    }
+
+    void toggleCursorItem()
+    {
+        if (items_.empty()) {
+            return;
+        }
+        const std::uint16_t mid = items_[static_cast<std::size_t>(listCursor_)].mid;
+        if (!tlm_.view.shown.erase(mid)) {
+            tlm_.view.shown.insert(mid);
+        }
+    }
+
+    Element checklist(int rows)
+    {
+        const int inner = std::max(1, rows - 2);
+        const int count = static_cast<int>(items_.size());
+        const bool overflow = count > inner;
+        const int visible = overflow ? std::max(1, inner - 2) : inner;   // two lines for ▲/▼
+        if (listCursor_ < listScroll_) {
+            listScroll_ = listCursor_;
+        } else if (listCursor_ >= listScroll_ + visible) {
+            listScroll_ = listCursor_ - visible + 1;
+        }
+        listScroll_ = std::clamp(listScroll_, 0, std::max(0, count - visible));
+        listPage_ = visible;
+
+        constexpr std::size_t kLabelWidth = static_cast<std::size_t>(kListWidth) - 10;
+        Elements lines;
+        if (overflow) {
+            lines.push_back(text(listScroll_ > 0 ? " ▲ " + std::to_string(listScroll_) + " more" : "") | dim);
+        }
+        for (int i = listScroll_; i < std::min(count, listScroll_ + visible); ++i) {
+            const ChecklistItem& item = items_[static_cast<std::size_t>(i)];
+            const bool ticked = tlm_.view.shown.count(item.mid) != 0;
+            const bool received = item.packet != nullptr || item.unknown != nullptr;
+            std::string label = item.label;
+            if (label.size() > kLabelWidth) {
+                label = label.substr(0, kLabelWidth - 1) + "…";
+            }
+            Element line = hbox({text(ticked ? " [x] " : " [ ] ") | color(pick(ticked, Color::Cyan, Color::Default)),
+                                 text(label) | color(pick(item.def == nullptr, Color::Magenta, Color::Default)),
+                                 filler(),
+                                 text(received ? "● " : "○ ") | color(pick(received, Color::Green, Color::GrayDark))});
+            if (i == listCursor_ && listFocused_) {
+                line = line | inverted;
+            }
+            lines.push_back(line);
+        }
+        if (overflow) {
+            const int below = count - listScroll_ - visible;
+            lines.push_back(text(below > 0 ? " ▼ " + std::to_string(below) + " more" : "") | dim);
+        }
+        if (items_.empty()) {
+            lines.push_back(text(" no packets defined") | dim);
+        }
+
+        Element title = text(listFocused_ ? " packets ↑↓ Space " : " packets (F6) ");
+        title = listFocused_ ? title | bold | color(Color::Cyan) : title | dim;
+        Element box = window(title, vbox(std::move(lines)) | yframe | flex);
+        if (listFocused_) {
+            box = box | color(Color::Cyan);
+        }
+        return box | size(WIDTH, EQUAL, kListWidth);
+    }
+
+    // A decoded packet: fields in as many columns as needed to fit `maxRows`
+    // (within `maxWidth`). Columns are as wide as the longest name and value.
+    Element fieldsPanel(const PacketState& p, int maxRows, int maxWidth, int& width, int& height)
     {
         const TlmTime now = frozen_ ? now_ : TlmClock::now();
         const double age = secondsBetween(p.lastRx, now);
+
+        std::size_t nameWidth = 4;
+        std::size_t valueWidth = 4;
+        for (const auto& v : p.values) {
+            nameWidth = std::max(nameWidth, v.name.size());
+            valueWidth = std::max(valueWidth, v.text.size());
+        }
+        // " name  value ▲ ": 1 + name + 2 + value + 3
+        const auto fixed = valueWidth + 6;
+        const auto widest = static_cast<std::size_t>(std::max(20, maxWidth - 2));
+        if (nameWidth + fixed > widest) {
+            nameWidth = widest > fixed + 4 ? widest - fixed : 4;
+        }
+        const int columnWidth = static_cast<int>(nameWidth + fixed);
+
         Elements rows;
         for (std::size_t i = 0; i < p.values.size(); ++i) {
             const DecodedValue& v = p.values[i];
             const bool recent = p.changedAt[i] != TlmTime{} && secondsBetween(p.changedAt[i], now) < 1.0;
             const char* arrow = p.trend[i] > 0 ? "▲" : p.trend[i] < 0 ? "▼" : " ";
+            std::string name = v.name.size() > nameWidth ? v.name.substr(0, nameWidth - 1) + "…" : v.name;
             Element value = text(v.text);
             if (v.missing) {
                 value = value | dim;
             } else if (recent) {
                 value = value | bold | color(Color::Yellow);
             }
-            rows.push_back(hbox({text(v.name) | dim, filler(), value,
-                                 text(std::string(" ") + (recent ? arrow : " ")) | color(Color::Yellow)}));
+            rows.push_back(hbox({text(" " + padRight(name, nameWidth) + "  ") | dim, filler(), value,
+                                 text(std::string(" ") + (recent ? arrow : " ") + " ") | color(Color::Yellow)})
+                           | size(WIDTH, EQUAL, columnWidth));
         }
         if (rows.empty()) {
-            rows.push_back(text("(no fields)") | dim);
+            rows.push_back(text(" (no fields)") | dim | size(WIDTH, EQUAL, columnWidth));
         }
-        const std::string title = " " + p.def->fullName() + " " + toHexString(p.def->mid, 4) + " ";
-        Element head = hbox({text(title) | bold, filler(),
-                             text("seq " + std::to_string(p.sequence) + " · "),
+
+        const int n = static_cast<int>(rows.size());
+        const int fitRows = std::max(3, maxRows - 2);
+        const int maxColumns = std::max(1, (maxWidth - 2 + 1) / (columnWidth + 1));
+        const int columns = std::clamp((n + fitRows - 1) / fitRows, 1, maxColumns);
+        const int perColumn = (n + columns - 1) / columns;
+        Elements cols;
+        for (int c = 0; c < columns; ++c) {
+            Elements col;
+            for (int r = c * perColumn; r < std::min(n, (c + 1) * perColumn); ++r) {
+                col.push_back(rows[static_cast<std::size_t>(r)]);
+            }
+            if (c > 0) {
+                cols.push_back(separatorLight());
+            }
+            cols.push_back(vbox(std::move(col)));
+        }
+        width = columns * columnWidth + (columns - 1) + 2;
+        height = perColumn + 2;
+
+        Element head = hbox({text(" " + p.def->fullName() + " " + toHexString(p.def->mid, 4) + " ") | bold,
+                             filler(), text("seq " + std::to_string(p.sequence) + " · ×"
+                                            + std::to_string(p.count) + " · "),
                              text(ageText(age)) | color(ageColor(age)), text(" ")});
-        return window(head, vbox(std::move(rows))) | size(WIDTH, EQUAL, kPanelWidth);
+        return window(head, hbox(std::move(cols))) | size(WIDTH, EQUAL, width);
     }
 
-    Element unknownPanel()
+    // A MID without a definition: header facts and the last packet as hex.
+    Element hexPanel(const UnknownMid& u, int& width, int& height)
     {
-        Elements rows;
-        for (const auto& u : snapshot_.unknown) {
-            rows.push_back(hbox({text(toHexString(u.mid, 4)), filler(),
-                                 text(std::to_string(u.lastLength) + " B ×" + std::to_string(u.count)) | dim}));
+        const TlmTime now = frozen_ ? now_ : TlmClock::now();
+        const double age = secondsBetween(u.lastRx, now);
+        Elements lines;
+        std::size_t longest = 0;
+        std::string dump = hexdump(u.lastPacket);
+        std::size_t from = 0;
+        while (from < dump.size()) {
+            const std::size_t nl = dump.find('\n', from);
+            std::string line = dump.substr(from, nl == std::string::npos ? std::string::npos : nl - from);
+            longest = std::max(longest, line.size());
+            lines.push_back(text(" " + line));
+            from = nl == std::string::npos ? dump.size() : nl + 1;
         }
-        return window(text(" unknown MIDs ") | color(Color::Magenta), vbox(std::move(rows)))
-             | size(WIDTH, EQUAL, kPanelWidth);
+        lines.push_back(text(" no definition: bytes 0-11 are the header") | dim);
+        width = std::max(44, static_cast<int>(longest) + 4);
+        height = static_cast<int>(lines.size()) + 2;
+        Element head = hbox({text(" ? " + toHexString(u.mid, 4) + " ") | bold | color(Color::Magenta), filler(),
+                             text("seq " + std::to_string(u.sequence) + " · " + std::to_string(u.lastLength)
+                                  + " B · ×" + std::to_string(u.count) + " · "),
+                             text(ageText(age)) | color(ageColor(age)), text(" ")});
+        return window(head, vbox(std::move(lines))) | size(WIDTH, EQUAL, width);
+    }
+
+    Element waitingPanel(const ChecklistItem& item, int& width, int& height)
+    {
+        width = std::max(30, static_cast<int>(item.label.size()) + 18);
+        height = 3;
+        return window(text(" " + item.label + " " + toHexString(item.mid, 4) + " ") | bold,
+                      text(" waiting for the first packet") | dim)
+             | size(WIDTH, EQUAL, width);
+    }
+
+    Element displayArea(int rows, int areaWidth)
+    {
+        struct Placed {
+            Element element;
+            int width;
+            int height;
+        };
+        std::vector<Placed> panels;
+        for (const auto& item : items_) {
+            if (tlm_.view.shown.count(item.mid) == 0) {
+                continue;
+            }
+            Placed p{nullptr, 0, 0};
+            if (item.packet != nullptr) {
+                p.element = fieldsPanel(*item.packet, rows, areaWidth, p.width, p.height);
+            } else if (item.unknown != nullptr) {
+                p.element = hexPanel(*item.unknown, p.width, p.height);
+            } else {
+                p.element = waitingPanel(item, p.width, p.height);
+            }
+            panels.push_back(std::move(p));
+        }
+
+        if (panels.empty()) {
+            return vbox({text(""),
+                         text("  Tick packets to show them here:") | dim,
+                         text("    F6, then ↑↓ and Space   (Esc returns to the command line)") | dim,
+                         text("    or type  tlm show ds.hk   /   tlm show all") | dim,
+                         text(""),
+                         text(snapshot_.counters.received == 0
+                                  ? "  No telemetry yet: start it with e.g.  fsw to enable_output 127.0.0.1 5011"
+                                  : "") | dim});
+        }
+
+        // Flow layout: left to right, wrapping when the next panel does not fit.
+        Elements lines;
+        Elements line;
+        int lineWidth = 0;
+        int lineHeight = 0;
+        int total = 0;
+        for (auto& p : panels) {
+            if (!line.empty() && lineWidth + p.width > areaWidth) {
+                lines.push_back(hbox(std::move(line)));
+                line = Elements{};
+                total += lineHeight;
+                lineWidth = 0;
+                lineHeight = 0;
+            }
+            line.push_back(p.element);
+            lineWidth += p.width;
+            lineHeight = std::max(lineHeight, p.height);
+        }
+        lines.push_back(hbox(std::move(line)));
+        total += lineHeight;
+
+        displayScroll_ = std::clamp(displayScroll_, 0, std::max(0, total - rows));
+        displayMore_ = total - rows - displayScroll_;
+        return vbox(std::move(lines)) | focusPosition(0, displayScroll_ + (rows - 1) / 2) | yframe;
     }
 
     Element dashboard(int rows)
     {
         const int eventRows = std::max(3, rows / 4);
-        const int panelRows = std::max(1, rows - eventRows - 1);
+        const int panelRows = std::max(3, rows - eventRows - 1);
+        buildChecklist();
 
-        Elements panels;
-        for (const auto& p : snapshot_.packets) {
-            if (p.def->isEvent) {
-                continue;   // shown in the event log
-            }
-            if (!tlm_.view.panelApp.empty() && p.def->app != tlm_.view.panelApp) {
-                continue;
-            }
-            panels.push_back(packetPanel(p));
+        std::string scrollNote;
+        Element display = displayArea(panelRows, width_ - 2 - kListWidth);
+        if (displayScroll_ > 0 || displayMore_ > 0) {
+            scrollNote = " Ctrl+↑↓ scroll: " + std::to_string(displayScroll_) + " line(s) above, "
+                       + std::to_string(std::max(0, displayMore_)) + " below ";
         }
-        if (!snapshot_.unknown.empty() && tlm_.view.panelApp.empty()) {
-            panels.push_back(unknownPanel());
-        }
-
-        Element panelArea;
-        if (panels.empty()) {
-            panelArea = vbox({text(""), text(tlm_.view.panelApp.empty()
-                                                 ? "  Waiting for telemetry packets..."
-                                                 : "  No packets received for app '" + tlm_.view.panelApp + "' yet.")
-                                            | dim,
-                              text("  Start the stream with e.g.  fsw to enable_output 127.0.0.1 5011") | dim});
-        } else {
-            const int columns = std::max(1, (width_ - 2) / kPanelWidth);
-            const int panelLines = static_cast<int>((panels.size() + static_cast<std::size_t>(columns) - 1)
-                                                    / static_cast<std::size_t>(columns));
-            dashScroll_ = std::min(dashScroll_, std::max(0, panelLines - 1));
-            Elements lines;
-            for (std::size_t i = static_cast<std::size_t>(dashScroll_ * columns); i < panels.size();
-                 i += static_cast<std::size_t>(columns)) {
-                Elements line;
-                for (std::size_t j = i; j < std::min(panels.size(), i + static_cast<std::size_t>(columns)); ++j) {
-                    line.push_back(panels[j]);
-                }
-                lines.push_back(hbox(std::move(line)));
-            }
-            panelArea = vbox(std::move(lines));
-            if (dashScroll_ > 0) {
-                panelArea = vbox({text("  ▲ " + std::to_string(dashScroll_) + " row(s) above (Ctrl+↑)") | dim,
-                                  panelArea});
-            }
-        }
-
-        return vbox({panelArea | frame | size(HEIGHT, EQUAL, panelRows),
-                     hbox({text("─ events ") | dim, separatorLight() | flex}),
+        return vbox({hbox({checklist(panelRows), display | flex}) | size(HEIGHT, EQUAL, panelRows),
+                     hbox({text("─ events ") | dim, separatorLight() | flex, text(scrollNote) | dim}),
                      eventLog(eventRows) | size(HEIGHT, EQUAL, eventRows)});
     }
 
@@ -711,7 +970,8 @@ private:
 
     Element inputLine(const Component& input)
     {
-        return hbox({text(" " + prompt_) | bold | color(Color::Green), input->Render() | flex});
+        Element line = hbox({text(" " + prompt_) | bold | color(Color::Green), input->Render() | flex});
+        return listFocused_ ? line | dim : line;   // keys go to the checklist meanwhile
     }
 
     int completionRows() const
@@ -751,8 +1011,13 @@ private:
 
     Element hintLine()
     {
-        return text(" Enter run · Tab complete · ↑↓ history · PgUp/PgDn output · Ctrl+↑↓ scroll view · "
-                    "F1/F2/F4 views · F5 pause · Ctrl-C clear/quit")
+        if (listFocused_) {
+            return text(" CHECKLIST: ↑↓ move · Space/Enter tick · PgUp/PgDn page · Esc/F6 back to the "
+                        "command line (or just type)")
+                 | color(Color::Cyan);
+        }
+        return text(" Enter run · Tab complete · ↑↓ history · PgUp/PgDn output · F6 packet list · "
+                    "Ctrl+↑↓ scroll view · F1/F2/F4 views · F5 pause · Ctrl-C clear/quit")
              | dim;
     }
 
@@ -773,7 +1038,13 @@ private:
     int width_ = 80;
     int outputRows_ = 5;
     int outputScroll_ = 0;
-    int dashScroll_ = 0;
+    int displayScroll_ = 0;              // dashboard display area, in lines
+    int displayMore_ = 0;                // lines below the visible part
+    bool listFocused_ = false;           // keys go to the checklist (F6)
+    int listCursor_ = 0;
+    int listScroll_ = 0;
+    int listPage_ = 1;                   // visible checklist rows (PgUp/PgDn step)
+    std::vector<ChecklistItem> items_;   // checklist of the last frame
     int monitorScroll_ = 0;
     unsigned tick_ = 0;
 

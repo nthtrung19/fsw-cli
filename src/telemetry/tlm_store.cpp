@@ -145,6 +145,8 @@ void TlmStore::ingest(const Bytes& datagram, TlmTime now)
         ++counters_.unknown;
         UnknownMid& u = unknown_[frame.mid];
         u.mid = frame.mid;
+        u.sequence = frame.sequence;
+        u.lastPacket = datagram;
         u.lastLength = frame.length;
         ++u.count;
         u.lastRx = now;

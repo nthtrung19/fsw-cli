@@ -7,7 +7,7 @@
 
 namespace mcs {
 
-// Loads one app definition file (see config/catalog/ds.json and docs/DESIGN.md §4.8).
+// Loads one app definition file (see config/telecommand/ds.json and docs/DESIGN.md §4.8).
 // Throws ConfigError with the file name and the location inside it.
 AppDef loadAppFile(const std::filesystem::path& file);
 

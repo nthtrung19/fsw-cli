@@ -35,6 +35,8 @@ struct PacketState {
 // A MID received without a definition.
 struct UnknownMid {
     std::uint16_t mid = 0;
+    std::uint16_t sequence = 0;                // of the last packet
+    Bytes lastPacket;                          // whole packet, header included (for a hexdump)
     std::size_t lastLength = 0;
     std::size_t count = 0;
     TlmTime lastRx{};

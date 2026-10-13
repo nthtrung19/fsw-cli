@@ -6,6 +6,8 @@
 #include "telemetry/telemetry_service.hpp"
 #include "telemetry/tlm_store.hpp"
 
+#include <cstdint>
+#include <set>
 #include <string>
 
 namespace mcs::ui {
@@ -16,7 +18,7 @@ const char* toString(TlmView view);
 
 struct TlmViewState {
     TlmView view = TlmView::Dashboard;
-    std::string panelApp;          // dashboard: only this app's panels; "" = all
+    std::set<std::uint16_t> shown; // dashboard: MIDs ticked in the packet checklist
     MonitorFilter monitorFilter;   // packet monitor
     bool paused = false;           // display frozen; receiving continues
 };

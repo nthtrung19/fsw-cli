@@ -40,7 +40,7 @@ const char* kMinimalApp = R"({ "app": "ds", "mid": "0x194B", "commands": [ { "na
 
 TEST(ShippedConfig, DsCatalogMatchesTheDesign)
 {
-    const CommandCatalog catalog = loadCatalog({kSourceDir + "/config/catalog/ds.json"});
+    const CommandCatalog catalog = loadCatalog({kSourceDir + "/config/telecommand/ds.json"});
     const AppDef* ds = catalog.findApp("ds");
     ASSERT_NE(ds, nullptr);
     EXPECT_EQ(ds->mids(), (std::vector<std::uint16_t>{0x194B, 0x194C}));   // ds_msgids.h
@@ -75,7 +75,7 @@ TEST(ShippedConfig, DsCatalogMatchesDsMsgH)
         {"set_dest_age", 12, 8},    {"set_dest_count", 13, 8}, {"close_file", 14, 4},
         {"get_file_info", 15, 0},   {"add_mid", 16, 4},        {"close_all", 17, 0},
     };
-    const CommandCatalog catalog = loadCatalog({kSourceDir + "/config/catalog/ds.json"});
+    const CommandCatalog catalog = loadCatalog({kSourceDir + "/config/telecommand/ds.json"});
     for (const auto& e : expected) {
         const CommandDef* def = catalog.findCommand("ds", e.name);
         ASSERT_NE(def, nullptr) << e.name;
@@ -86,7 +86,7 @@ TEST(ShippedConfig, DsCatalogMatchesDsMsgH)
 
 TEST(ShippedConfig, CiCatalogMatchesCiHeaders)
 {
-    const CommandCatalog catalog = loadCatalog({kSourceDir + "/config/catalog/ci.json"});
+    const CommandCatalog catalog = loadCatalog({kSourceDir + "/config/telecommand/ci.json"});
     const AppDef* ci = catalog.findApp("ci");
     ASSERT_NE(ci, nullptr);
     EXPECT_EQ(ci->mids(), (std::vector<std::uint16_t>{0x1934, 0x1935}));   // ci_msgids.h
@@ -117,6 +117,120 @@ TEST(ShippedConfig, CiCatalogMatchesCiHeaders)
               "enable_to <dest_ip: string[16] = 127.0.0.1> <dest_port: u16 = 5011>");
 }
 
+TEST(ShippedConfig, AocsCatalogMatchesAocsCmdsH)
+{
+    const CommandCatalog catalog = loadCatalog({kSourceDir + "/config/telecommand/aocs.json"});
+    const AppDef* aocs = catalog.findApp("aocs");
+    ASSERT_NE(aocs, nullptr);
+    EXPECT_EQ(aocs->mids(), (std::vector<std::uint16_t>{0x1911, 0x1912}));   // aocs_app_msgids.h
+
+    // Command code (aocs_cmds.h) and payload = sizeof(command struct) - 8, x86-64 layout.
+    struct Expected {
+        const char* name;
+        std::uint16_t mid;
+        int cc;
+        std::size_t payload;
+    };
+    const Expected expected[] = {
+        {"noop", 0x1911, 0, 0},                    {"reset", 0x1911, 1, 0},
+        {"process", 0x1911, 2, 0},                 {"detumble_start", 0x1911, 3, 0},
+        {"stop_control", 0x1911, 4, 0},            {"target_spot_pointing", 0x1911, 5, 32},
+        {"nadir_pointing", 0x1911, 6, 4},          {"coarse_sun_pointing", 0x1911, 7, 4},
+        {"xband_pointing", 0x1911, 8, 32},         {"sband_pointing", 0x1911, 9, 32},
+        {"thruster_pointing", 0x1911, 10, 64},     {"request_thruster_ready", 0x1911, 15, 0},
+        {"active_propul_system", 0x1911, 16, 0},   {"deactive_propul_system", 0x1911, 17, 0},
+        {"target_strip_pointing", 0x1911, 18, 32}, {"fine_sun_pointing", 0x1911, 19, 4},
+        {"inertial_pointing", 0x1911, 20, 56},     {"change_control_gain", 0x1911, 26, 80},
+        {"change_test_solution", 0x1911, 27, 3},   {"orbit_state_from_tle", 0x1911, 28, 72},
+        {"hk", 0x1912, 0, 0},
+    };
+    ASSERT_EQ(aocs->commands.size(), std::size(expected));
+    for (const auto& e : expected) {
+        const CommandDef* def = catalog.findCommand("aocs", e.name);
+        ASSERT_NE(def, nullptr) << e.name;
+        EXPECT_EQ(def->mid, e.mid) << e.name;
+        EXPECT_EQ(def->cc, e.cc) << e.name;
+        EXPECT_EQ(def->payloadSize(), e.payload) << e.name;
+        EXPECT_FALSE(def->critical) << e.name;
+    }
+}
+
+TEST(ShippedConfig, ScCatalogMatchesScMsgH)
+{
+    const CommandCatalog catalog = loadCatalog({kSourceDir + "/config/telecommand/sc.json"});
+    const AppDef* sc = catalog.findApp("sc");
+    ASSERT_NE(sc, nullptr);
+    EXPECT_EQ(sc->mids(), (std::vector<std::uint16_t>{0x1989, 0x198A}));   // sc_msgids.h
+
+    // Command code (sc_msgdefs.h) and payload = sizeof(command struct) - 8 (sc_msg.h).
+    struct Expected {
+        const char* name;
+        std::uint16_t mid;
+        int cc;
+        std::size_t payload;
+    };
+    const Expected expected[] = {
+        {"noop", 0x1989, 0, 0},                       {"reset", 0x1989, 1, 0},
+        {"start_ats", 0x1989, 2, 2},                  {"stop_ats", 0x1989, 3, 0},
+        {"start_rts", 0x1989, 4, 2},                  {"stop_rts", 0x1989, 5, 2},
+        {"disable_rts", 0x1989, 6, 2},                {"enable_rts", 0x1989, 7, 2},
+        {"switch_ats", 0x1989, 8, 0},                 {"jump_ats", 0x1989, 9, 4},
+        {"continue_ats_on_failure", 0x1989, 10, 2},   {"append_ats", 0x1989, 11, 2},
+        {"start_rts_group", 0x1989, 13, 4},           {"stop_rts_group", 0x1989, 14, 4},
+        {"disable_rts_group", 0x1989, 15, 4},         {"enable_rts_group", 0x1989, 16, 4},
+        {"hk", 0x198A, 0, 0},
+    };
+    ASSERT_EQ(sc->commands.size(), std::size(expected));
+    for (const auto& e : expected) {
+        const CommandDef* def = catalog.findCommand("sc", e.name);
+        ASSERT_NE(def, nullptr) << e.name;
+        EXPECT_EQ(def->mid, e.mid) << e.name;
+        EXPECT_EQ(def->cc, e.cc) << e.name;
+        EXPECT_EQ(def->payloadSize(), e.payload) << e.name;
+        EXPECT_FALSE(def->critical) << e.name;
+    }
+}
+
+TEST(ShippedConfig, FdirCatalogMatchesFdirPlatformMsgH)
+{
+    const CommandCatalog catalog = loadCatalog({kSourceDir + "/config/telecommand/fdir.json"});
+    const AppDef* fdir = catalog.findApp("fdir");
+    ASSERT_NE(fdir, nullptr);
+    EXPECT_EQ(fdir->mids(),
+              (std::vector<std::uint16_t>{0x1882, 0x1883, 0x1884, 0x1885}));   // fdir_platform_msgids.h
+
+    // Command code (FDIR_AppCmdCode_t) and payload = sizeof(command struct) - 8 (fdir_platform_msg.h).
+    struct Expected {
+        const char* name;
+        std::uint16_t mid;
+        int cc;
+        std::size_t payload;
+    };
+    const Expected expected[] = {
+        {"noop", 0x1882, 0, 0},                        {"reset", 0x1882, 1, 0},
+        {"trigger_event_watchpoint", 0x1882, 2, 24},   {"enable_event_tracking", 0x1882, 3, 0},
+        {"disable_event_tracking", 0x1882, 4, 0},      {"enable_hqm_idx", 0x1882, 5, 1},
+        {"disable_hqm_idx", 0x1882, 6, 1},             {"activate_hqm_overrequested", 0x1882, 7, 0},
+        {"update_etd", 0x1883, 0, 0},                  {"update_hqm", 0x1883, 1, 0},
+        {"update_fud", 0x1883, 2, 0},                  {"dump_etd", 0x1883, 3, 0},
+        {"dump_hqm", 0x1883, 4, 0},                    {"dump_fud", 0x1883, 5, 0},
+        {"manage_etd", 0x1883, 6, 0},                  {"manage_hqm", 0x1883, 7, 0},
+        {"manage_fud", 0x1883, 8, 0},                  {"update_io_timeout", 0x1883, 9, 4},
+        {"hk", 0x1884, 0, 0},                          {"hw_hk", 0x1884, 1, 0},
+        {"read_obc_temperature", 0x1884, 2, 0},        {"read_obc_edac", 0x1884, 3, 0},
+        {"release_hardware", 0x1885, 0, 1},
+    };
+    ASSERT_EQ(fdir->commands.size(), std::size(expected));
+    for (const auto& e : expected) {
+        const CommandDef* def = catalog.findCommand("fdir", e.name);
+        ASSERT_NE(def, nullptr) << e.name;
+        EXPECT_EQ(def->mid, e.mid) << e.name;
+        EXPECT_EQ(def->cc, e.cc) << e.name;
+        EXPECT_EQ(def->payloadSize(), e.payload) << e.name;
+        EXPECT_FALSE(def->critical) << e.name;
+    }
+}
+
 TEST(ShippedConfig, TargetsFileLoadsAndBuilds)
 {
     const TargetsFile targets = loadTargetsFile(kSourceDir + "/config/targets.json");
@@ -127,7 +241,7 @@ TEST(ShippedConfig, TargetsFileLoadsAndBuilds)
     EXPECT_EQ(sil.format.type, "ccsds_v1");
     EXPECT_EQ(sil.transport.type, "udp");
     EXPECT_EQ(sil.transport.options.at("port"), "1234");   // JSON number -> option text
-    ASSERT_EQ(sil.catalogFiles.size(), 12U);
+    ASSERT_EQ(sil.catalogFiles.size(), 15U);
     EXPECT_TRUE(std::filesystem::exists(sil.catalogFiles[0]));
 
     for (const auto& t : targets.targets) {

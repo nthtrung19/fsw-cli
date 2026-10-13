@@ -387,7 +387,7 @@ The only JSON-aware module (nlohmann/json).
     "sil": {
       "description": "cFS on this PC (ci_lab)",
       "endian": "little",
-      "catalog": ["catalog/ds.json"],
+      "catalog": ["telecommand/ds.json"],
       "format":    { "type": "ccsds_v1" },
       "layers":    [],
       "transport": { "type": "udp", "host": "127.0.0.1", "port": "1234" }
@@ -395,7 +395,7 @@ The only JSON-aware module (nlohmann/json).
     "sil-dry": {
       "description": "Same as sil, nothing sent",
       "endian": "little",
-      "catalog": ["catalog/ds.json"],
+      "catalog": ["telecommand/ds.json"],
       "format":    { "type": "ccsds_v1" },
       "transport": { "type": "dryrun" }
     }
@@ -408,7 +408,7 @@ The only JSON-aware module (nlohmann/json).
 - Inside `format`, each `layers[]` entry and `transport`, every key except
   `type` is passed to the factory as an option.
 
-**Catalog file** (`catalog/ds.json`, one file per app)
+**Catalog file** (`telecommand/ds.json`, one file per app)
 
 ```json
 {
@@ -524,7 +524,7 @@ mcs/
 ├── docs/DESIGN.md                    this document
 ├── config/
 │   ├── targets.json
-│   └── catalog/ds.json
+│   └── telecommand/ds.json
 ├── external/                         git submodules, pinned
 │   ├── cli/                          daniele77/cli v2.2.0
 │   ├── json/                         nlohmann/json (latest release tag)
@@ -555,8 +555,8 @@ mcs/
 
 | To add… | Do this | Code changed |
 |---|---|---|
-| A command to DS | Add an entry in `config/catalog/ds.json` | None |
-| A new app (e.g. `fm`) | Create `config/catalog/fm.json`, list it in the target's `catalog` | None |
+| A command to DS | Add an entry in `config/telecommand/ds.json` | None |
+| A new app (e.g. `fm`) | Create `config/telecommand/fm.json`, list it in the target's `catalog` | None |
 | A new target | Add an entry in `targets.json` | None |
 | A new packet format (e.g. `ccsds_v2`) | Implement `IPacketFormat`; one `addFormat` line in `builtin_plugins.cpp` | 1 new class + 1 line |
 | A new wrapping layer (e.g. `csp`) | Implement `IFramingLayer`; one `addLayer` line | 1 new class + 1 line |
@@ -567,7 +567,7 @@ Example: CSP over UDP later is just a new class plus this target entry:
 ```json
 "lab-csp": {
   "endian": "little",
-  "catalog": ["catalog/ds.json"],
+  "catalog": ["telecommand/ds.json"],
   "format": { "type": "ccsds_v1" },
   "layers": [ { "type": "csp", "src": "10", "dst": "1", "dport": "10", "crc32": "true" } ],
   "transport": { "type": "udp", "host": "192.168.1.50", "port": "9600" }

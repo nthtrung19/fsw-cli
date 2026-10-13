@@ -16,7 +16,7 @@
 
 namespace mcs::test {
 
-// The DS app as defined in config/catalog/ds.json, built in code.
+// The DS app as defined in config/telecommand/ds.json, built in code.
 inline AppDef dsApp()
 {
     AppDef app;

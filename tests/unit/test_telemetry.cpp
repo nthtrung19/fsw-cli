@@ -529,6 +529,8 @@ TEST(TlmStore, EventsUnknownAndMalformed)
     EXPECT_EQ(s.unknown[0].mid, 0x0899);
     EXPECT_EQ(s.unknown[0].count, 2U);
     EXPECT_EQ(s.unknown[0].lastLength, 42U);
+    EXPECT_EQ(s.unknown[0].sequence, 1);
+    EXPECT_EQ(s.unknown[0].lastPacket, tlmPacket(0x0899, 1, Bytes(30, 0)));
     EXPECT_EQ(s.counters.unknown, 2U);
     EXPECT_EQ(s.counters.malformed, 1U);
     EXPECT_EQ(s.counters.received, 4U);

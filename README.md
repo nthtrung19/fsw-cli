@@ -68,9 +68,11 @@ commanding: the output of your commands, the `mcs>` input line and key hints.
 
 ```
 ┌ TLM udp://0.0.0.0:5011 ● 1532 pkts · 3 unknown · last 0.2 s ago   F1 dash  F2 monitor  F4 stats ⠙ ┐
-│╭ ds.hk 0x08B8 seq 412 · 0.4 s ─╮╭ unknown MIDs ───────╮                                           │
-││cmd_accepted               12 ▲││0x0801       42 B ×9 │                                           │
-│╰───────────────────────────────╯╰─────────────────────╯                                           │
+│╭ packets (F6) ──────╮╭ ds.hk 0x08B8 seq 412 · ×412 · 0.4 s ┐╭ ? 0x0899 seq 9 · 42 B · ×9 ──────╮ │
+││ [x] ds.hk        ● ││ cmd_accepted                12 ▲   ││ 0000: 08 99 C0 09 00 23 ...      │ │
+││ [ ] evs.hk       ● ││ app_state               enable     ││ no definition: bytes 0-11 header │ │
+││ [x] ? 0x0899     ● │╰────────────────────────────────────╯╰──────────────────────────────────╯ │
+│╰────────────────────╯                                                                             │
 │─ events ──────────────────────────────────────────────────────────────────────────────────────────│
 │ 11:23:26.081  INFO   DS     12  No-op command, Version 2.5.0.0                                    │
 ╞═══════════════════════════════════════════════════════════════════════════════════════════════════╡
@@ -82,11 +84,12 @@ commanding: the output of your commands, the `mcs>` input line and key hints.
 
 | Key | Effect |
 |---|---|
-| F1 | Dashboard: one panel per received packet (latest values; changes highlighted with ▲/▼; age turns yellow/red when stale), unknown MIDs, EVS event log |
+| F1 | Dashboard: packet checklist on the left (every catalog packet, ● received / ○ not yet, then MIDs received without a definition); the ticked packets on the right (latest values, changes highlighted with ▲/▼, age turns yellow/red when stale; unknown MIDs as a hexdump); EVS event log below. Nothing is ticked at start. |
+| F6 | Move the keys to the checklist: ↑↓ move, Space/Enter tick, PgUp/PgDn page; Esc or F6 returns to the command line, and so does typing any character |
 | F2 | Packet monitor: every received and sent packet, with sequence-gap, length, unknown-MID and malformed checks |
 | F4 | Statistics per MID: count, rate, gaps, length errors, last seen |
 | F5 | Pause/resume the display (receiving continues) |
-| Ctrl+↑/↓ (or Alt+↑/↓) | Scroll the dashboard panels / packet monitor |
+| Ctrl+↑/↓ (or Alt+↑/↓) | Scroll the ticked packets / packet monitor |
 | PgUp/PgDn | Scroll the command output |
 | Ctrl-C | Clear the input line; on an empty line, quit (as do Ctrl-D and `exit`) |
 
@@ -114,7 +117,7 @@ descriptions) and enum arguments (`fsw ds set_app_state <TAB>` → `disable`,
 | `raw <hex bytes>` | Send pre-built bytes, e.g. `raw 19 4B C0 00 00 01 6C 00` |
 | `arm` | Allow the next command marked `critical` |
 | `tlm view dash\|monitor\|stats` | Switch the telemetry view (same as F1/F2/F4) |
-| `tlm filter <app>\|all` | Dashboard: only one app's panels |
+| `tlm show <packet>\|<mid>\|all`, `tlm hide ...` | Tick/untick packets in the dashboard checklist, e.g. `tlm show ds.hk`, `tlm show 0x0899` |
 | `tlm monitor <app>\|<mid>\|all` | Packet monitor: only one app (sent and received) or MID, e.g. `tlm monitor 0x0808` |
 | `tlm pause [on\|off]`, `tlm clear`, `tlm status` | Freeze the display; forget values and statistics; show receiver and counters |
 | `history`, `exit` | Library built-ins |
@@ -132,7 +135,7 @@ packet format, optional wrapping layers, transport). The file is found via
 `--config FILE`, then `$mcs_CONFIG`, then `./config/targets.json`, then the
 `config/` directory next to the build or install tree.
 
-`config/catalog/<app>.json` defines an app's commands, grouped by the MID they
+`config/telecommand/<app>.json` defines an app's commands, grouped by the MID they
 are sent on: `"mids": [ { "mid": ..., "commands": [...] }, ... ]` (an app with a
 single MID may write `"mid"` + `"commands"` instead). `fsw ds noop` and
 `fsw ds hk` can thus go to different MIDs. Command codes are unique per MID,
@@ -154,8 +157,8 @@ messages) is shipped; housekeeping definitions are written from each app's
 
 | To add | Do this | Rebuild? |
 |---|---|---|
-| A command | Add an entry to `config/catalog/<app>.json` | No |
-| An app (`ci`, `to`, `fm`, ...) | New `config/catalog/<app>.json`, list it in the target's `catalog` | No |
+| A command | Add an entry to `config/telecommand/<app>.json` | No |
+| An app (`ci`, `to`, `fm`, ...) | New `config/telecommand/<app>.json`, list it in the target's `catalog` | No |
 | A target | New entry in `config/targets.json` | No |
 | A telemetry packet | Add it to `config/telemetry/<app>.json`, list the file in the target's `telemetry.catalog` | No |
 | A packet format, wrapping layer (e.g. CSP), transport or telemetry receiver | Implement `IPacketFormat` / `IFramingLayer` / `ITransport` / `IReceiver`, add one line in `src/registry/builtin_plugins.cpp` | Yes |
@@ -163,7 +166,7 @@ messages) is shipped; housekeeping definitions are written from each app's
 ## Layout
 
 ```
-config/         targets.json, catalog/*.json, telemetry/*.json (shipped configuration)
+config/         targets.json, telecommand/*.json, telemetry/*.json (shipped configuration)
 docs/DESIGN.md  design specification
 external/       third-party submodules (do not edit; local fixes go in external/patches/)
 src/core        bytes, byte order, hex, plug-in options, errors
