@@ -215,6 +215,56 @@ struct FDIR_UpdateIOTimeout_t {
 };
 static_assert(sizeof(FDIR_UpdateIOTimeout_t) == 12, "unexpected padding");
 
+// MAIN command structs, copied from main_msgdefs.h (lib_labsat_bbb). The header is
+// CFE_SB_CmdHdr_t = CCSDS_CommandPacket_t, 2-byte aligned (uint16 in the secondary header).
+struct MAIN_EPS_SetSwitchStateCmd_t {
+    CCSDS_CommandPacket_t CmdHeader;
+    uint32 SwitchMask;
+};
+static_assert(sizeof(MAIN_EPS_SetSwitchStateCmd_t) == 12, "unexpected padding");
+
+struct MAIN_EPS_ChangeChargingStateCmd_t {
+    CCSDS_CommandPacket_t CmdHeader;
+    bool ChargingState;
+};
+static_assert(sizeof(MAIN_EPS_ChangeChargingStateCmd_t) == 10, "1-byte hole after the bool");
+
+struct MAIN_MODE_ToCaptureSpotCmd_t {
+    CCSDS_CommandPacket_t CmdHeader;
+    double TargetCoordinate[3];
+};
+static_assert(sizeof(MAIN_MODE_ToCaptureSpotCmd_t) == 32, "unexpected padding");
+
+struct MAIN_MODE_ToDownlinkCmd_t {
+    CCSDS_CommandPacket_t CmdHeader;
+    double GSCoordinate[3];
+    int16 RTS_TableIndex;
+    int16 ATS_TableIndex;
+    int32 Padding;
+};
+static_assert(sizeof(MAIN_MODE_ToDownlinkCmd_t) == 40, "unexpected padding");
+static_assert(offsetof(MAIN_MODE_ToDownlinkCmd_t, RTS_TableIndex) == 32, "unexpected padding");
+
+struct MAIN_MODE_ToOrbitTransferCmd_t {
+    CCSDS_CommandPacket_t CmdHeader;
+    double TargetQuarternion[4];
+    double TimePropInit;
+    double TimeActiveProp;
+    double TimeDeactiveProp;
+};
+static_assert(sizeof(MAIN_MODE_ToOrbitTransferCmd_t) == 64, "unexpected padding");
+
+struct MAIN_MODE_ToInertialPointingCmd_t {
+    CCSDS_CommandPacket_t CmdHeader;
+    double TargetQuarternion[4];
+    double AngleOfRotationDegCmd;
+    uint8 AxisOfRotationCmd;
+    uint8 IsSunPointing;
+    uint8 Padding8[6];
+};
+static_assert(sizeof(MAIN_MODE_ToInertialPointingCmd_t) == 56, "unexpected padding");
+static_assert(offsetof(MAIN_MODE_ToInertialPointingCmd_t, AxisOfRotationCmd) == 48, "hole");
+
 // cFE's macros (unmodified NASA code) do implicit narrowing; silence those
 // warnings for the code that expands them, and only there.
 #pragma GCC diagnostic push
@@ -258,7 +308,8 @@ protected:
                                 std::string(mcs_SOURCE_DIR) + "/config/telecommand/ci.json",
                                 std::string(mcs_SOURCE_DIR) + "/config/telecommand/aocs.json",
                                 std::string(mcs_SOURCE_DIR) + "/config/telecommand/sc.json",
-                                std::string(mcs_SOURCE_DIR) + "/config/telecommand/fdir.json"});
+                                std::string(mcs_SOURCE_DIR) + "/config/telecommand/fdir.json",
+                                std::string(mcs_SOURCE_DIR) + "/config/telecommand/main.json"});
     }
 
     // Full mcs path: catalog -> encoder -> CCSDS v1 format.
@@ -611,6 +662,77 @@ TEST_F(Oracle, FdirHkMatchesCfe)
     // FDIR_SEND_HK_MID, FDIR_SEND_APP_HK_TLM: FDIR_NoArgsCmd_t.
     std::uint8_t header[8] = {};
     EXPECT_EQ(oursIn("fdir", "hk", {}), cfeBuild(0x1884, 0, 0, header, sizeof header));
+}
+
+TEST_F(Oracle, MainSetSwitchStateMatchesCfe)
+{
+    MAIN_EPS_SetSwitchStateCmd_t cmd{};
+    cmd.SwitchMask = 0x2A5;
+    EXPECT_EQ(oursIn("main", "set_switch_state", {"0x2A5"}), cfeBuild(0x1900, 0, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, MainSetChargingStateMatchesCfe)
+{
+    MAIN_EPS_ChangeChargingStateCmd_t cmd{};
+    cmd.ChargingState = true;   // CHARGING_ON
+    EXPECT_EQ(oursIn("main", "set_charging_state", {"on"}), cfeBuild(0x1900, 1, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, MainToCaptureSpotMatchesCfe)
+{
+    MAIN_MODE_ToCaptureSpotCmd_t cmd{};
+    cmd.TargetCoordinate[0] = 21.0285;
+    cmd.TargetCoordinate[1] = 105.8542;
+    cmd.TargetCoordinate[2] = 12.5;
+    EXPECT_EQ(oursIn("main", "to_capture_spot", {"21.0285", "105.8542", "12.5"}),
+              cfeBuild(0x1901, 6, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, MainToDownlinkMatchesCfe)
+{
+    MAIN_MODE_ToDownlinkCmd_t cmd{};
+    cmd.GSCoordinate[0] = 21.0;
+    cmd.GSCoordinate[1] = 105.75;
+    cmd.GSCoordinate[2] = 30.0;
+    cmd.RTS_TableIndex = 12;
+    cmd.ATS_TableIndex = 2;
+    EXPECT_EQ(oursIn("main", "to_downlink", {"21", "105.75", "30", "12", "2"}),
+              cfeBuild(0x1901, 7, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, MainToOrbitTransferMatchesCfe)
+{
+    MAIN_MODE_ToOrbitTransferCmd_t cmd{};
+    cmd.TargetQuarternion[0] = 0.5;
+    cmd.TargetQuarternion[1] = -0.5;
+    cmd.TargetQuarternion[2] = 0.25;
+    cmd.TargetQuarternion[3] = 0.6614378277661477;
+    cmd.TimePropInit = 10.0;
+    cmd.TimeActiveProp = 20.5;
+    cmd.TimeDeactiveProp = 31.25;
+    EXPECT_EQ(oursIn("main", "to_orbit_transfer",
+                     {"0.5", "-0.5", "0.25", "0.6614378277661477", "10", "20.5", "31.25"}),
+              cfeBuild(0x1901, 8, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, MainToInertialPointingMatchesCfe)
+{
+    MAIN_MODE_ToInertialPointingCmd_t cmd{};
+    cmd.TargetQuarternion[2] = 0.7071067811865476;
+    cmd.TargetQuarternion[3] = 0.7071067811865476;
+    cmd.AngleOfRotationDegCmd = 45.0;
+    cmd.AxisOfRotationCmd = 3;   // AOCS_Z_AXIS
+    cmd.IsSunPointing = 1;
+    EXPECT_EQ(oursIn("main", "to_inertial_pointing",
+                     {"0", "0", "0.7071067811865476", "0.7071067811865476", "45", "z", "yes"}),
+              cfeBuild(0x1901, 10, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, MainHkMatchesCfe)
+{
+    // MAIN_HK_REQ_MID: MAIN_EPS_SampleEPSHkCmd_t, the command code is not read.
+    std::uint8_t header[8] = {};
+    EXPECT_EQ(oursIn("main", "hk", {}), cfeBuild(0x1906, 0, 0, header, sizeof header));
 }
 
 } // namespace

@@ -1,0 +1,259 @@
+// MAIN (mode manager) ground commands.
+// Source: main_msgids.h, main_msgdefs.h, main_app.c, main_mode_cmds.c/h, main_eps_cmds.c/h,
+// main_tbl_cmds.c/h, main_tbl.h, main_task_handler.c/h (lib_labsat_bbb build),
+// pcdu_model.h (hw_lib lib_labsat_bbb), cfe_sb.h/ccsds.h, common_types.h.
+//
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   enum     { "name": value, ... }  names accepted as arguments, shown in help
+//   min/max  inclusive range for integer fields
+//   default  value used when the argument is omitted (only trailing arguments may be omitted)
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 8-byte command header (CFE_SB_CmdHdr_t =
+// CCSDS_CommandPacket_t, 2-byte aligned). Layouts are the x86-64 build; compiler-inserted holes
+// and spare members are listed as padding (set_charging_state: 1 byte after the bool).
+// MAIN checks the exact packet length (MAIN_VerifyMsgLength) of every command except the
+// prop_ commands and capture.
+//
+// Commands are grouped by the MID they are sent on ("mids").
+//   main_msgids.h  MAIN_EPS_CMD_MID 0x1900       MAIN_ProcessEPSCmd (only after EPS init)
+//                  MAIN_MODE_MGT_CMD_MID 0x1901  MAIN_ProcessModeMgtCmd (only after EPS init)
+//                  MAIN_NOOP_CMD_MID 0x1903      MAIN_NoOpCmd (code not read)
+//                  MAIN_PROP_CMD_MID 0x1904      MAIN_ProcessPropulsionCmd
+//                  MAIN_TBL_CMD_MID 0x1905       MAIN_ProcessTBLCmd
+//                  MAIN_HK_REQ_MID 0x1906        MAIN_HousekeepingCmd (code not read)
+//                  MAIN_PL_CMD_MID 0x1907        MAIN_ProcessCaptureCmd (code not read)
+//
+// Values taken from the FSW (update if the mission changes them):
+//   pcdu_model.h      PCDU_NUM_SWITCH 10 (labsat; the SIL build lib_simulation_udp has 14),
+//                     PCDU_ChargingState_t CHARGING_OFF 0, CHARGING_ON 1
+//   main_mode_cmds.h  mode command codes (2 is unused); MAIN_TO_INERTIAL_POINTING_MODE_CC 10
+//                     exists only in the labsat build
+//   aocs_lib.h        AOCS_X/Y/Z_AXIS 1/2/3 (inertial pointing axis)
+//   Coordinates are passed on to AOCS: latitude deg, longitude deg, altitude m.
+//   Mode commands other than to_hibernate and to_detumble are ignored (no counter, no event)
+//   while in Detumble mode until the detumble task has succeeded.
+//   to_downlink: once X-band is up MAIN loads /cf/sc_rts<rts>.tbl and /cf/sc_ats<ats>.tbl
+//   (skipped for index 1) and sends SC start_rts / start_ats with these numbers.
+//   Tables load from and dump to /cf/main_devmap.tbl, main_modecfg.tbl, main_epscfg.tbl,
+//   main_dtbcfg.tbl, main_tevcfg.tbl.
+//
+// Not listed: MAIN_DEV_SAMPLE_REQ_MID 0x1902 (scheduler; retries the EPS init),
+// MAIN_TIME_SYNCH_REQ_MID 0x1908, MAIN_SOC_UPDATE_CMD_MID 0x190A and
+// MAIN_PREPARE_PAYLOAD_CMD_MID 0x190B (handled in MAIN_AppPipe but never subscribed),
+// MAIN_DEV_STATUS_CMD_MID 0x1909 (sent by MAIN to AOCS), and the packets MAIN receives from
+// other apps (AOCS_TO_MAIN, PL_TO_MAIN, AOCS_HK_STATE, TO_COMM_STATE, FDIR 0x1887).
+{
+  "app": "main",
+  "help": "Mode manager",
+  "mids": [
+    {
+      "mid": "0x1900",
+      "commands": [
+        {
+          "name": "set_switch_state",
+          "cc": 0,
+          "help": "Set the PCDU switches: switches in the mask ON, all others OFF",
+          "fields": [
+            { "name": "switch_mask", "type": "u32", "max": "0x3FF",
+              "help": "Bit n = PCDU switch n (0-9); switches not in the mask are turned OFF" }
+          ]
+        },
+        {
+          "name": "set_charging_state",
+          "cc": 1,
+          "help": "Turn battery charging on or off",
+          "fields": [
+            { "name": "state", "type": "u8", "enum": { "off": 0, "on": 1 },
+              "help": "PCDU_ChargingState_t" },
+            { "type": "padding", "size": 1 }
+          ]
+        }
+      ]
+    },
+    {
+      "mid": "0x1901",
+      "commands": [
+        {
+          "name": "to_hibernate",
+          "cc": 0,
+          "help": "Go to Hibernate mode"
+        },
+        {
+          "name": "to_detumble",
+          "cc": 1,
+          "help": "Go to Detumble mode"
+        },
+        {
+          "name": "to_coarse_sun_pointing",
+          "cc": 3,
+          "help": "Go to Coarse Sun Pointing mode"
+        },
+        {
+          "name": "to_fine_nadir_pointing",
+          "cc": 4,
+          "help": "Go to Fine Nadir Pointing mode"
+        },
+        {
+          "name": "to_fine_sun_pointing",
+          "cc": 5,
+          "help": "Go to Fine Sun Pointing mode"
+        },
+        {
+          "name": "to_capture_spot",
+          "cc": 6,
+          "help": "Go to Capture mode, spot: point at the target, then capture",
+          "fields": [
+            { "name": "lat", "type": "f64", "help": "Target latitude (deg)" },
+            { "name": "lon", "type": "f64", "help": "Target longitude (deg)" },
+            { "name": "alt", "type": "f64", "help": "Target altitude (m)" }
+          ]
+        },
+        {
+          "name": "to_downlink",
+          "cc": 7,
+          "help": "Go to Downlink mode: X-band pointing at the ground station, then run RTS/ATS",
+          "fields": [
+            { "name": "lat", "type": "f64", "help": "Ground station latitude (deg)" },
+            { "name": "lon", "type": "f64", "help": "Ground station longitude (deg)" },
+            { "name": "alt", "type": "f64", "help": "Ground station altitude (m)" },
+            { "name": "rts", "type": "i16", "min": 1, "max": 64,
+              "help": "RTS to load and start once X-band is up" },
+            { "name": "ats", "type": "i16", "min": 1, "max": 2,
+              "help": "ATS to load and start once X-band is up (1 = A, 2 = B)" },
+            { "type": "padding", "size": 4 }
+          ]
+        },
+        {
+          "name": "to_orbit_transfer",
+          "cc": 8,
+          "help": "Go to Orbit Transfer mode: thruster pointing, then prop_init/activate/deactivate",
+          "fields": [
+            { "name": "q0", "type": "f64", "help": "Thruster attitude in LVLH, element 0" },
+            { "name": "q1", "type": "f64", "help": "Element 1" },
+            { "name": "q2", "type": "f64", "help": "Element 2" },
+            { "name": "q3", "type": "f64", "help": "Element 3 (scalar)" },
+            { "name": "time_prop_init", "type": "f64",
+              "help": "Init the thruster after this many s (from the GPS time of week), > 0" },
+            { "name": "time_active_prop", "type": "f64",
+              "help": "Ignite after this many s, > time_prop_init" },
+            { "name": "time_deactive_prop", "type": "f64",
+              "help": "Stop after this many s, > time_active_prop" }
+          ]
+        },
+        {
+          "name": "to_capture_strip",
+          "cc": 9,
+          "help": "Go to Capture mode, strip: point at the start point, then capture",
+          "fields": [
+            { "name": "lat", "type": "f64", "help": "Start point latitude (deg)" },
+            { "name": "lon", "type": "f64", "help": "Start point longitude (deg)" },
+            { "name": "alt", "type": "f64", "help": "Start point altitude (m)" }
+          ]
+        },
+        {
+          "name": "to_inertial_pointing",
+          "cc": 10,
+          "help": "Go to Inertial Pointing mode (labsat build only)",
+          "fields": [
+            { "name": "q0", "type": "f64", "help": "Attitude in ECI, element 0" },
+            { "name": "q1", "type": "f64", "help": "Element 1" },
+            { "name": "q2", "type": "f64", "help": "Element 2" },
+            { "name": "q3", "type": "f64", "help": "Element 3 (scalar)" },
+            { "name": "angle_of_rotation_deg", "type": "f64", "help": "Rotation angle (deg)" },
+            { "name": "axis", "type": "u8", "enum": { "x": 1, "y": 2, "z": 3 },
+              "help": "Rotation axis" },
+            { "name": "sun_pointing", "type": "u8", "enum": { "no": 0, "yes": 1 },
+              "help": "Sun pointing" },
+            { "type": "padding", "size": 6 }
+          ]
+        }
+      ]
+    },
+    {
+      "mid": "0x1903",
+      "commands": [
+        {
+          "name": "noop",
+          "cc": 0,
+          "help": "No-op: increments CmdCounter and reports the MAIN version"
+        }
+      ]
+    },
+    {
+      "mid": "0x1904",
+      "commands": [
+        {
+          "name": "prop_init",
+          "cc": 0,
+          "help": "Orbit transfer: ask AOCS to make the thruster ready (after thruster pointing)"
+        },
+        {
+          "name": "prop_activate",
+          "cc": 1,
+          "help": "Orbit transfer: activate the propulsion system (after prop_init)"
+        },
+        {
+          "name": "prop_deactivate",
+          "cc": 2,
+          "help": "Orbit transfer: deactivate the propulsion system (after prop_activate)"
+        }
+      ]
+    },
+    {
+      "mid": "0x1905",
+      "commands": [
+        { "name": "dump_devmap", "cc": 0,
+          "help": "Dump the device mapping table to /cf/main_devmap.tbl (its load file)" },
+        { "name": "update_devmap", "cc": 1,
+          "help": "Reload the device mapping table from /cf/main_devmap.tbl" },
+        { "name": "manage_devmap", "cc": 2,
+          "help": "Let Table Services apply a pending device mapping table update" },
+        { "name": "dump_modecfg", "cc": 3,
+          "help": "Dump the mode config table to /cf/main_modecfg.tbl (its load file)" },
+        { "name": "update_modecfg", "cc": 4,
+          "help": "Reload the mode config table from /cf/main_modecfg.tbl" },
+        { "name": "manage_modecfg", "cc": 5,
+          "help": "Let Table Services apply a pending mode config table update" },
+        { "name": "dump_epscfg", "cc": 6,
+          "help": "Dump the EPS config table to /cf/main_epscfg.tbl (its load file)" },
+        { "name": "update_epscfg", "cc": 7,
+          "help": "Reload the EPS config table from /cf/main_epscfg.tbl" },
+        { "name": "manage_epscfg", "cc": 8,
+          "help": "Let Table Services apply a pending EPS config table update" },
+        { "name": "dump_dtbcfg", "cc": 9,
+          "help": "Dump the detumble config table to /cf/main_dtbcfg.tbl (its load file)" },
+        { "name": "update_dtbcfg", "cc": 10,
+          "help": "Reload the detumble config table from /cf/main_dtbcfg.tbl" },
+        { "name": "manage_dtbcfg", "cc": 11,
+          "help": "Let Table Services apply a pending detumble config table update" },
+        { "name": "dump_tevcfg", "cc": 12,
+          "help": "Dump the transition event table to /cf/main_tevcfg.tbl (its load file)" },
+        { "name": "update_tevcfg", "cc": 13,
+          "help": "Reload the transition event table from /cf/main_tevcfg.tbl" },
+        { "name": "manage_tevcfg", "cc": 14,
+          "help": "Let Table Services apply a pending transition event table update" }
+      ]
+    },
+    {
+      "mid": "0x1906",
+      "commands": [
+        {
+          "name": "hk",
+          "cc": 0,
+          "help": "Request housekeeping (EPS hk, MAIN hk and the current mode's packet)"
+        }
+      ]
+    },
+    {
+      "mid": "0x1907",
+      "commands": [
+        {
+          "name": "capture",
+          "cc": 0,
+          "help": "Capture mode only: send a spot capture command to PL"
+        }
+      ]
+    }
+  ]
+}

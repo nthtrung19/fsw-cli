@@ -70,6 +70,10 @@ mcs_smoke(NAME dryrun_fdir_hk EXIT 0
     ARGS ${BASE} -n -c "fsw fdir hk"
     EXPECT "\\[dry-run\\] fsw fdir hk  \\(8 bytes, apid=0x084 seq=0\\)\n  18 84 C0 00 00 01 A2 00")
 
+mcs_smoke(NAME dryrun_main_hk EXIT 0
+    ARGS ${BASE} -n -c "fsw main hk"
+    EXPECT "\\[dry-run\\] fsw main hk  \\(8 bytes, apid=0x106 seq=0\\)\n  19 06 C0 00 00 01 21 00")
+
 mcs_smoke(NAME dryrun_ds_hk EXIT 0
     ARGS ${BASE} -n -c "fsw ds hk"
     EXPECT "\\[dry-run\\] fsw ds hk  \\(8 bytes, apid=0x14C seq=0\\)\n  19 4C C0 00 00 01 6B 00")
@@ -102,6 +106,10 @@ mcs_smoke(NAME sc_rts_out_of_range EXIT 1
 mcs_smoke(NAME fdir_app_name_too_long EXIT 1
     ARGS ${BASE} -n -c "fsw fdir trigger_event_watchpoint ABCDEFGHIJKLMNOPQRSTU 1 on"
     EXPECT "too long" REJECT "dry-run")
+
+mcs_smoke(NAME main_switch_mask_out_of_range EXIT 1
+    ARGS ${BASE} -n -c "fsw main set_switch_state 0x400"
+    EXPECT "above maximum 1023" REJECT "dry-run")
 
 mcs_smoke(NAME unknown_command EXIT 1
     ARGS ${BASE} -n -c "fsw ds nope"

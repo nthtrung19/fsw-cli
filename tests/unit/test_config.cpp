@@ -231,6 +231,51 @@ TEST(ShippedConfig, FdirCatalogMatchesFdirPlatformMsgH)
     }
 }
 
+TEST(ShippedConfig, MainCatalogMatchesMainMsgdefsH)
+{
+    const CommandCatalog catalog = loadCatalog({kSourceDir + "/config/telecommand/main.json"});
+    const AppDef* mainApp = catalog.findApp("main");
+    ASSERT_NE(mainApp, nullptr);
+    EXPECT_EQ(mainApp->mids(), (std::vector<std::uint16_t>{0x1900, 0x1901, 0x1903, 0x1904, 0x1905,
+                                                           0x1906, 0x1907}));   // main_msgids.h
+
+    // Command code and payload = sizeof(command struct) - 8 (main_msgdefs.h, labsat build, x86-64).
+    struct Expected {
+        const char* name;
+        std::uint16_t mid;
+        int cc;
+        std::size_t payload;
+    };
+    const Expected expected[] = {
+        {"set_switch_state", 0x1900, 0, 4},         {"set_charging_state", 0x1900, 1, 2},
+        {"to_hibernate", 0x1901, 0, 0},             {"to_detumble", 0x1901, 1, 0},
+        {"to_coarse_sun_pointing", 0x1901, 3, 0},   {"to_fine_nadir_pointing", 0x1901, 4, 0},
+        {"to_fine_sun_pointing", 0x1901, 5, 0},     {"to_capture_spot", 0x1901, 6, 24},
+        {"to_downlink", 0x1901, 7, 32},             {"to_orbit_transfer", 0x1901, 8, 56},
+        {"to_capture_strip", 0x1901, 9, 24},        {"to_inertial_pointing", 0x1901, 10, 48},
+        {"noop", 0x1903, 0, 0},                     {"prop_init", 0x1904, 0, 0},
+        {"prop_activate", 0x1904, 1, 0},            {"prop_deactivate", 0x1904, 2, 0},
+        {"dump_devmap", 0x1905, 0, 0},              {"update_devmap", 0x1905, 1, 0},
+        {"manage_devmap", 0x1905, 2, 0},            {"dump_modecfg", 0x1905, 3, 0},
+        {"update_modecfg", 0x1905, 4, 0},           {"manage_modecfg", 0x1905, 5, 0},
+        {"dump_epscfg", 0x1905, 6, 0},              {"update_epscfg", 0x1905, 7, 0},
+        {"manage_epscfg", 0x1905, 8, 0},            {"dump_dtbcfg", 0x1905, 9, 0},
+        {"update_dtbcfg", 0x1905, 10, 0},           {"manage_dtbcfg", 0x1905, 11, 0},
+        {"dump_tevcfg", 0x1905, 12, 0},             {"update_tevcfg", 0x1905, 13, 0},
+        {"manage_tevcfg", 0x1905, 14, 0},           {"hk", 0x1906, 0, 0},
+        {"capture", 0x1907, 0, 0},
+    };
+    ASSERT_EQ(mainApp->commands.size(), std::size(expected));
+    for (const auto& e : expected) {
+        const CommandDef* def = catalog.findCommand("main", e.name);
+        ASSERT_NE(def, nullptr) << e.name;
+        EXPECT_EQ(def->mid, e.mid) << e.name;
+        EXPECT_EQ(def->cc, e.cc) << e.name;
+        EXPECT_EQ(def->payloadSize(), e.payload) << e.name;
+        EXPECT_FALSE(def->critical) << e.name;
+    }
+}
+
 TEST(ShippedConfig, TargetsFileLoadsAndBuilds)
 {
     const TargetsFile targets = loadTargetsFile(kSourceDir + "/config/targets.json");
@@ -241,7 +286,7 @@ TEST(ShippedConfig, TargetsFileLoadsAndBuilds)
     EXPECT_EQ(sil.format.type, "ccsds_v1");
     EXPECT_EQ(sil.transport.type, "udp");
     EXPECT_EQ(sil.transport.options.at("port"), "1234");   // JSON number -> option text
-    ASSERT_EQ(sil.catalogFiles.size(), 15U);
+    ASSERT_EQ(sil.catalogFiles.size(), 16U);
     EXPECT_TRUE(std::filesystem::exists(sil.catalogFiles[0]));
 
     for (const auto& t : targets.targets) {
