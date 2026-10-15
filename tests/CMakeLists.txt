@@ -32,7 +32,9 @@ add_executable(mcs_unit_tests
     unit/test_command_service.cpp
     unit/test_telemetry.cpp
     unit/test_completion.cpp
-    ${PROJECT_SOURCE_DIR}/src/ui/completion.cpp)   # pure logic, no UI library
+    unit/test_help_format.cpp
+    ${PROJECT_SOURCE_DIR}/src/ui/completion.cpp
+    ${PROJECT_SOURCE_DIR}/src/ui/help_format.cpp)   # pure logic, no UI library
 target_include_directories(mcs_unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(mcs_unit_tests PRIVATE mcs_core GTest::gtest_main)
 target_compile_definitions(mcs_unit_tests PRIVATE ${mcs_TEST_DEFINES})

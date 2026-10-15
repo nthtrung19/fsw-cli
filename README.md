@@ -32,14 +32,14 @@ Moved or copied the project? Delete `build/` and configure again (CMake caches
 absolute paths).
 
 Third-party code lives in `external/` as git submodules pinned to release tags,
-so the build needs no network once the repository is checked out. The only local
-change is `external/patches/cli-tab-completion.patch` (tab completion lists just
-the word being completed, one per line, with its description), which CMake applies to `external/cli` when
-configuring:
+so the build needs no network once the repository is checked out. `external/cli`
+points to a fork (github.com/nthtrung19/cli) that carries the mcs changes:
+completions with descriptions and hints, and structured entries for the
+two-column `help`:
 
 | Library | Version | Used by |
 |---|---|---|
-| [daniele77/cli](https://github.com/daniele77/cli) | v2.2.0 | interactive menu (`src/ui`, `src/app`) |
+| [daniele77/cli](https://github.com/daniele77/cli) (fork) | v2.2.0 + mcs changes | interactive menu (`src/ui`, `src/app`) |
 | [nlohmann/json](https://github.com/nlohmann/json) | v3.12.0 | config files (`src/config` only) |
 | [googletest](https://github.com/google/googletest) | v1.17.0 | tests only |
 | [FTXUI](https://github.com/ArthurSonzogni/FTXUI) | v7.0.3 | full-screen session (`src/ui/tui_session.cpp`) |
@@ -62,48 +62,77 @@ Exit codes: `0` ok, `1` a command failed, `2` bad options, `3` configuration err
 
 ### Full-screen session
 
-On a terminal, the interactive session fills the screen. The **top** part shows
-telemetry received from the flight software; the **bottom** part is for
-commanding: the output of your commands, the `mcs>` input line and key hints.
+On a terminal, the interactive session fills the screen and has two screens.
+A header line (target, screen tabs, telemetry link status) and a key-hint line
+are always visible.
+
+**F1 Console**: flight software events on top, the output of your commands
+below, then the `mcs>` input line and the Tab-completion list.
 
 ```
-┌ TLM udp://0.0.0.0:5011 ● 1532 pkts · 3 unknown · last 0.2 s ago   F1 dash  F2 monitor  F4 stats ⠙ ┐
-│╭ packets (F6) ──────╮╭ ds.hk 0x08B8 seq 412 · ×412 · 0.4 s ┐╭ ? 0x0899 seq 9 · 42 B · ×9 ──────╮ │
-││ [x] ds.hk        ● ││ cmd_accepted                12 ▲   ││ 0000: 08 99 C0 09 00 23 ...      │ │
-││ [ ] evs.hk       ● ││ app_state               enable     ││ no definition: bytes 0-11 header │ │
-││ [x] ? 0x0899     ● │╰────────────────────────────────────╯╰──────────────────────────────────╯ │
-│╰────────────────────╯                                                                             │
-│─ events ──────────────────────────────────────────────────────────────────────────────────────────│
-│ 11:23:26.081  INFO   DS     12  No-op command, Version 2.5.0.0                                    │
-╞═══════════════════════════════════════════════════════════════════════════════════════════════════╡
-│ > fsw ds noop                                                                                     │
-│ sent fsw ds noop -> udp://127.0.0.1:1234  (8 bytes, apid=0x14B seq=0)                             │
-│ mcs> █                                                                                            │
-└ Enter run · Tab complete · ↑↓ history · PgUp/PgDn output · F1/F2/F4 views · F5 pause ────────────┘
+ mcs · sil   F1 Console   F2 Telemetry          TLM udp://0.0.0.0:5011 ● 1532 pkts · last 0.2 s ⠙
+╭ EVENTS 37 ─────────────────────────────────────────────────────────────────────────────────────╮
+│ time          type   app         id    message                                                 │
+│ 09:00:19.414  INFO   TO          3     ENABLE OUTPUT CMD Succesful for Routes:0x0001           │
+│ 09:00:20.002  ERROR  DS          7     Invalid command length: expected 8, got 12              │
+╰────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭ COMMAND OUTPUT ────────────────────────────────────────────────────────────────────────────────╮
+│ > fsw ds noop                                                                                  │
+│ sent fsw ds noop -> udp://127.0.0.1:1234  (8 bytes, apid=0x14B seq=0)                          │
+╰────────────────────────────────────────────────────────────────────────────────────────────────╯
+ mcs> █
+ Enter run · Tab complete · ↑↓ history · PgUp/PgDn output · Ctrl+↑↓ events · F2 telemetry · F5 pause
 ```
+
+**F2 Telemetry**: the packet checklist on the left (every catalog packet,
+● received / ○ not yet, then MIDs received without a definition) and a card for
+each ticked packet on the right. Nothing is ticked at start.
+
+```
+╭ PACKETS 2/5 ──────────────╮ ╭ DS  hk 0x08B8  ⚠ 1 gap   seq 412 · ×412 · 0.4 s ╮ ╭ ?  unknown 0x0899  seq 9 · 42 B ╮
+│ ◉ ds.hk                 ● │ │ cmd_accepted ······················· 12 ▲     │ │ 0000  08 99 C0 09 00 23 …  ...#  │
+│ ○ evs.hk                ● │ │ app_state ························ enable       │ ╰──────────────────────────────────╯
+│ ◉ ? 0x0899              ● │ ╰───────────────────────────────────────────────╯
+╰───────────────────────────╯
+ ↑↓ move · Space tick · PgUp/PgDn scroll cards · F5 pause · F1 console (or just type) · Ctrl-C quit
+```
+
+Cards have a border in the app's colour (grey when the packet is stale, > 30 s),
+the packet's sequence count, number received and age, and ⚠ markers for sequence
+gaps and length errors. Values that changed in the last second are highlighted
+with ▲/▼; enum values are coloured (enabled green, disabled grey, errors red).
+Large packets spread over several columns. A MID without a definition is shown
+as a hexdump (header bytes in cyan, with an ASCII column).
 
 | Key | Effect |
 |---|---|
-| F1 | Dashboard: packet checklist on the left (every catalog packet, ● received / ○ not yet, then MIDs received without a definition); the ticked packets on the right (latest values, changes highlighted with ▲/▼, age turns yellow/red when stale; unknown MIDs as a hexdump); EVS event log below. Nothing is ticked at start. |
-| F6 | Move the keys to the checklist: ↑↓ move, Space/Enter tick, PgUp/PgDn page; Esc or F6 returns to the command line, and so does typing any character |
-| F2 | Packet monitor: every received and sent packet, with sequence-gap, length, unknown-MID and malformed checks |
-| F4 | Statistics per MID: count, rate, gaps, length errors, last seen |
+| F1 / F2 | Console / Telemetry screen |
 | F5 | Pause/resume the display (receiving continues) |
-| Ctrl+↑/↓ (or Alt+↑/↓) | Scroll the ticked packets / packet monitor |
-| PgUp/PgDn | Scroll the command output |
 | Ctrl-C | Clear the input line; on an empty line, quit (as do Ctrl-D and `exit`) |
+| **Console** | |
+| PgUp/PgDn | Scroll the command output |
+| Ctrl+↑/↓ (or Alt+↑/↓) | Scroll the events |
+| **Telemetry** | |
+| ↑/↓, Home/End | Move in the checklist |
+| Space or Enter | Tick/untick the packet under the cursor |
+| PgUp/PgDn, Ctrl+↑/↓ | Scroll the cards |
+| Esc, or typing any character | Back to the console (the character is typed into the input line) |
 
 Telemetry is configured per target (`"telemetry"` in `config/targets.json`): a
 receiver (UDP port 5011 by default, TO's default destination) and telemetry
 definition files in `config/telemetry/`. Start the stream from the session, e.g.
 `fsw to enable_output 127.0.0.1 5011`. Packets without a definition still show
-up (unknown MIDs, monitor, statistics). When stdin or stdout is not a terminal,
+up in the checklist and the header counters. When stdin or stdout is not a terminal,
 or with `--plain`, the session is the line-mode prompt, without telemetry.
 
-In an interactive session TAB completes command names (listed with their
-descriptions) and enum arguments (`fsw ds set_app_state <TAB>` → `disable`,
-`enable`); for other arguments it shows what is expected, e.g.
+In an interactive session TAB completes command names and enum arguments
+(`fsw ds set_app_state <TAB>` → `disable`, `enable`); in the full-screen console
+the candidates are listed by name in a grid of columns. For other arguments it
+shows what is expected, e.g.
 `<file_table_index: u16 ..15>   FileTableIndex  (argument 1 of 2)`.
+`help` lists the commands of the current menu with their descriptions in two
+columns (one on narrow terminals), names in colour; long descriptions wrap under
+their column.
 
 ### Commands in a session
 
@@ -111,15 +140,14 @@ descriptions) and enum arguments (`fsw ds set_app_state <TAB>` → `disable`,
 |---|---|
 | `fsw <app> <cmd> [args]` | Send a command, e.g. `fsw ds set_app_state disable` |
 | `fsw`, `ds`, `..` | Navigate menus; inside `ds>` type just `noop` |
-| `help` | List commands of the current menu, with parameters |
+| `help` | List commands of the current menu with their descriptions (parameters: TAB after the command) |
 | `target` | Show the active target, protocol stack and catalog |
 | `verbose on\|off` | Hexdump every sent packet |
 | `raw <hex bytes>` | Send pre-built bytes, e.g. `raw 19 4B C0 00 00 01 6C 00` |
 | `arm` | Allow the next command marked `critical` |
-| `tlm view dash\|monitor\|stats` | Switch the telemetry view (same as F1/F2/F4) |
-| `tlm show <packet>\|<mid>\|all`, `tlm hide ...` | Tick/untick packets in the dashboard checklist, e.g. `tlm show ds.hk`, `tlm show 0x0899` |
-| `tlm monitor <app>\|<mid>\|all` | Packet monitor: only one app (sent and received) or MID, e.g. `tlm monitor 0x0808` |
-| `tlm pause [on\|off]`, `tlm clear`, `tlm status` | Freeze the display; forget values and statistics; show receiver and counters |
+| `tlm view console\|telemetry` | Switch screen (same as F1/F2) |
+| `tlm show <packet>\|<mid>\|all`, `tlm hide ...` | Tick/untick packets in the telemetry checklist, e.g. `tlm show ds.hk`, `tlm show 0x0899` |
+| `tlm pause [on\|off]`, `tlm clear`, `tlm status` | Freeze the display; forget values, events and counters; show receiver and counters |
 | `history`, `exit` | Library built-ins |
 
 Session commands (`target`, `verbose`, `raw`, `arm`, `tlm ...`) are typed at the
@@ -168,7 +196,7 @@ messages) is shipped; housekeeping definitions are written from each app's
 ```
 config/         targets.json, telecommand/*.json, telemetry/*.json (shipped configuration)
 docs/DESIGN.md  design specification
-external/       third-party submodules (do not edit; local fixes go in external/patches/)
+external/       third-party submodules (do not edit; cli changes go in its fork, other fixes in external/patches/)
 src/core        bytes, byte order, hex, plug-in options, errors
 src/catalog     app/command/field definitions + validation
 src/encode      arguments -> payload bytes
@@ -196,8 +224,8 @@ With cFS running and `ci_lab` listening on 127.0.0.1:1234:
 2. `mcs -c "fsw ds set_app_state disable"` then `enable` → DS state changes in events / housekeeping.
 3. `mcs -c "fsw ds set_app_state maybe"` → rejected locally, nothing sent (exit 1).
 4. In `mcs` (full screen): `fsw to enable_output 127.0.0.1 5011`, then `fsw ds noop` →
-   the DS no-op event appears in the event log; the packet monitor (F2) shows
-   the TX command and the received packets.
+   the DS no-op event appears in the console's event pane; after `fsw ds hk`, the
+   DS housekeeping card (F2, tick `ds.hk`) shows the command counter +1.
 
 UDP is fire-and-forget: "sent" means the datagram left this machine. Confirm
 reception in the cFS event log.

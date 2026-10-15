@@ -67,10 +67,11 @@ function(mcs_apply_patch dep patch)
 endfunction()
 find_package(Git QUIET)
 
-# daniele77/cli v2.2.0 (header-only). No Asio: the built-in LoopScheduler is enough.
-# Patched: tab completion lists only the word being completed, one per line, with
-# its description (Command::Description(), used by src/ui/fsw_command.hpp).
-mcs_apply_patch(cli cli-tab-completion.patch)
+# daniele77/cli v2.2.0 (header-only), from the fork github.com/nthtrung19/cli,
+# which carries the mcs changes: completions with descriptions and hints
+# (Command::Description(), src/ui/fsw_command.hpp) and structured help entries
+# for a custom "help" (Cli::HelpHandler, src/ui/help_format.hpp).
+# No Asio: the built-in LoopScheduler is enough.
 add_subdirectory(external/cli EXCLUDE_FROM_ALL)
 mcs_as_system_headers(cli)
 

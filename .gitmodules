@@ -1,7 +1,7 @@
 [submodule "external/cli"]
 	path = external/cli
 	url = https://github.com/nthtrung19/cli.git
-	# external/patches/cli-tab-completion.patch is applied at configure time
+	# fork of daniele77/cli v2.2.0 with the mcs changes (completion descriptions, help entries)
 	ignore = dirty
 [submodule "external/json"]
 	path = external/json

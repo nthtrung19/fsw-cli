@@ -29,7 +29,7 @@ public:
     bool Exec(const std::vector<std::string>& cmdLine, cli::CliSession& session) override;
     void Help(std::ostream& out) const override;
     // Shown next to the command in the tab-completion list
-    // (external/patches/cli-tab-completion.patch).
+    // (cli fork in external/cli).
     std::string Description() const override { return help_; }
     // The command name, or (once it is typed) its arguments via the completer.
     std::vector<std::string> GetCompletionRecursive(const std::string& line) const override;

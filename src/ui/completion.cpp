@@ -53,4 +53,35 @@ CompletionResult applyCompletion(const std::string& line, const std::vector<std:
     return result;
 }
 
+std::vector<std::string> gridRows(const std::vector<std::string>& words, int width)
+{
+    if (words.empty()) {
+        return {};
+    }
+    std::size_t longest = 0;
+    for (const auto& w : words) {
+        longest = std::max(longest, w.size());
+    }
+    const std::size_t column = longest + 3;
+    const std::size_t room = width > 3 ? static_cast<std::size_t>(width) - 3 : 0;
+    const std::size_t columns = std::max<std::size_t>(1, (room + 3) / column);   // the last one needs no gap
+    const std::size_t rows = (words.size() + columns - 1) / columns;
+
+    std::vector<std::string> out;
+    for (std::size_t r = 0; r < rows; ++r) {
+        std::string line = "   ";
+        for (std::size_t c = 0; c < columns; ++c) {
+            const std::size_t i = c * rows + r;
+            if (i >= words.size()) {
+                break;
+            }
+            line += words[i];
+            line.append(column - words[i].size(), ' ');
+        }
+        line.erase(line.find_last_not_of(' ') + 1);
+        out.push_back(line);
+    }
+    return out;
+}
+
 } // namespace mcs::ui

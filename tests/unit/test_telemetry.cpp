@@ -419,7 +419,7 @@ TEST(TlmShipped, DecodesTheToDataTypePattern)
     EXPECT_EQ(valueOf(p, "df1"), "99.9");
     EXPECT_EQ(valueOf(p, "str"), "ABCDEFGHIJ");
     EXPECT_EQ(s.counters.received, 1U);
-    EXPECT_EQ(store.monitorTail({}, 1).front().status, PacketStatus::Ok);
+    EXPECT_EQ(s.counters.lengthErrors, 0U);
 }
 
 // ---- decoder -------------------------------------------------------------------
@@ -489,7 +489,7 @@ TEST(TlmStore, LatestValuesAndChanges)
     store.ingest(tlmPacket(0x08B8, 1, dsHkPayload(1)), at(0));
     store.ingest(tlmPacket(0x08B8, 2, dsHkPayload(2, 0)), at(1000));
 
-    const TlmSnapshot s = store.snapshot(at(1000));
+    const TlmSnapshot s = store.snapshot();
     ASSERT_EQ(s.packets.size(), 1U);
     const PacketState& p = s.packets[0];
     EXPECT_EQ(p.def->fullName(), "ds.hk");
@@ -534,13 +534,7 @@ TEST(TlmStore, EventsUnknownAndMalformed)
     EXPECT_EQ(s.counters.unknown, 2U);
     EXPECT_EQ(s.counters.malformed, 1U);
     EXPECT_EQ(s.counters.received, 4U);
-
-    const auto all = store.monitorTail({}, 100);
-    ASSERT_EQ(all.size(), 4U);
-    EXPECT_EQ(all[0].name, "evs.long_event");
-    EXPECT_EQ(all[1].status, PacketStatus::Unknown);
-    EXPECT_EQ(all[3].status, PacketStatus::Malformed);
-    EXPECT_NE(all[3].detail.find("too short"), std::string::npos);
+    EXPECT_EQ(s.counters.gaps, 0U);
 }
 
 TEST(TlmStore, SequenceGapsIncludingWrap)
@@ -553,16 +547,15 @@ TEST(TlmStore, SequenceGapsIncludingWrap)
     store.ingest(tlmPacket(0x08B8, 0, dsHkPayload(0)));   // wrap: not a gap
     store.ingest(tlmPacket(0x08B8, 3, dsHkPayload(0)));   // 1 and 2 lost
 
-    const auto records = store.monitorTail({}, 10);
-    ASSERT_EQ(records.size(), 4U);
-    EXPECT_EQ(records[2].status, PacketStatus::Ok);
-    EXPECT_EQ(records[3].status, PacketStatus::SeqGap);
-    EXPECT_EQ(records[3].detail, "expected seq 1, got 3");
-
     const TlmSnapshot s = store.snapshot();
-    ASSERT_EQ(s.stats.size(), 1U);
-    EXPECT_EQ(s.stats[0].gaps, 1U);
+    ASSERT_EQ(s.packets.size(), 1U);
+    EXPECT_EQ(s.packets[0].gaps, 1U);
     EXPECT_EQ(s.counters.gaps, 1U);
+
+    store.ingest(tlmPacket(0x0899, 5, {}));
+    store.ingest(tlmPacket(0x0899, 7, {}));   // unknown MIDs are checked too
+    EXPECT_EQ(store.snapshot().unknown[0].gaps, 1U);
+    EXPECT_EQ(store.counters().gaps, 2U);
 }
 
 TEST(TlmStore, LengthMismatchStillDecodes)
@@ -571,13 +564,10 @@ TEST(TlmStore, LengthMismatchStillDecodes)
     TlmStore store(c, Endian::Little);
     store.ingest(tlmPacket(0x08B8, 0, {9, 0}));
 
-    const auto records = store.monitorTail({}, 10);
-    ASSERT_EQ(records.size(), 1U);
-    EXPECT_EQ(records[0].status, PacketStatus::LengthMismatch);
-    EXPECT_EQ(records[0].detail, "payload 2 bytes, definition 12");
     const TlmSnapshot s = store.snapshot();
     EXPECT_EQ(valueOf(s.packets[0], "cmd_accepted"), "9");
-    EXPECT_EQ(s.stats[0].lengthErrors, 1U);
+    EXPECT_EQ(s.packets[0].lengthErrors, 1U);
+    EXPECT_EQ(s.counters.lengthErrors, 1U);
 }
 
 TEST(TlmStore, VariableLengthPackets)
@@ -593,56 +583,10 @@ TEST(TlmStore, VariableLengthPackets)
     TlmStore store(c, Endian::Little);
 
     store.ingest(tlmPacket(0x092D, 0, Bytes(40, 0x24)));   // longer than the fields: fine
+    EXPECT_EQ(store.counters().lengthErrors, 0U);
     store.ingest(tlmPacket(0x092D, 1, {}));                 // shorter: length error
-
-    const auto records = store.monitorTail({}, 10);
-    ASSERT_EQ(records.size(), 2U);
-    EXPECT_EQ(records[0].status, PacketStatus::Ok);
-    EXPECT_EQ(records[1].status, PacketStatus::LengthMismatch);
-    EXPECT_EQ(store.snapshot().stats[0].lengthErrors, 1U);
-}
-
-TEST(TlmStore, RateOverWindow)
-{
-    const TelemetryCatalog c = catalogWithDsAndEvs();
-    TlmStore store(c, Endian::Little);
-    for (int i = 0; i < 10; ++i) {
-        store.ingest(tlmPacket(0x08B8, static_cast<std::uint16_t>(i), dsHkPayload(0)), at(i * 1000));
-    }
-    // At t=9.5 s the 5-second window holds the packets of 5..9 s.
-    EXPECT_DOUBLE_EQ(store.snapshot(at(9500)).stats[0].rateHz, 1.0);
-    EXPECT_DOUBLE_EQ(store.snapshot(at(60000)).stats[0].rateHz, 0.0);
-}
-
-TEST(TlmStore, TxRecordsAndFilters)
-{
-    const TelemetryCatalog c = catalogWithDsAndEvs();
-    TlmStore store(c, Endian::Little);
-
-    store.recordTx({0x19, 0x4B, 0xC0, 0x07, 0x00, 0x01, 0x6C, 0x00}, "fsw ds noop");
-    store.ingest(tlmPacket(0x08B8, 0, dsHkPayload(1)));
-    store.ingest(tlmPacket(0x0808, 0, evsLongEventPayload("DS", 1, 2, "x")));
-
-    const auto tx = store.monitorTail({}, 10).front();
-    EXPECT_EQ(tx.dir, PacketDir::Tx);
-    EXPECT_EQ(tx.mid, 0x194B);
-    EXPECT_EQ(tx.sequence, 7);
-    EXPECT_EQ(tx.app, "ds");
-    EXPECT_EQ(tx.name, "fsw ds noop");
-
-    MonitorFilter byApp;
-    byApp.app = "ds";
-    EXPECT_EQ(store.monitorTail(byApp, 10).size(), 2U);   // TX + ds.hk, not the evs event
-    EXPECT_EQ(byApp.describe(), "app ds");
-
-    MonitorFilter byMid;
-    byMid.mid = 0x0808;
-    ASSERT_EQ(store.monitorTail(byMid, 10).size(), 1U);
-    EXPECT_EQ(byMid.describe(), "mid 0x0808");
-
-    EXPECT_EQ(store.monitorTail({}, 2).size(), 2U);   // limited to the newest rows
-    EXPECT_EQ(store.monitorTail({}, 2).back().mid, 0x0808);
-    EXPECT_EQ(store.counters().sent, 1U);
+    EXPECT_EQ(store.counters().lengthErrors, 1U);
+    EXPECT_EQ(store.snapshot().packets[0].lengthErrors, 1U);
 }
 
 TEST(TlmStore, BoundedBuffersAndClear)
@@ -655,15 +599,10 @@ TEST(TlmStore, BoundedBuffersAndClear)
     }
     EXPECT_EQ(store.snapshot().events.size(), TlmStore::kMaxEvents);
 
-    for (std::size_t i = 0; i < TlmStore::kMaxMonitor; ++i) {
-        store.ingest({0x00});
-    }
-    EXPECT_EQ(store.monitorTail({}, TlmStore::kMaxMonitor * 2).size(), TlmStore::kMaxMonitor);
-
     store.clear();
     const TlmSnapshot s = store.snapshot();
     EXPECT_TRUE(s.packets.empty());
     EXPECT_TRUE(s.events.empty());
     EXPECT_EQ(s.counters.received, 0U);
-    EXPECT_TRUE(store.monitorTail({}, 10).empty());
+    EXPECT_EQ(s.counters.gaps, 0U);
 }

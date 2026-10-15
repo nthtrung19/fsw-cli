@@ -2,6 +2,7 @@
 
 #include "core/text.hpp"
 #include "ui/fsw_command.hpp"
+#include "ui/help_format.hpp"
 
 #include <cli/cli.h>
 
@@ -126,15 +127,6 @@ FswCommand::ArgCompleter wordsCompleter(std::vector<std::pair<std::string, std::
     };
 }
 
-std::vector<std::pair<std::string, std::string>> tlmAppWords(const TlmStore& store, const char* what)
-{
-    std::vector<std::pair<std::string, std::string>> words{{"all", std::string("all ") + what}};
-    for (const auto& app : store.catalog().apps()) {
-        words.emplace_back(app, std::string("only ") + app);
-    }
-    return words;
-}
-
 // Packets that can be ticked: "all", then every non-event packet of the catalog.
 std::vector<std::pair<std::string, std::string>> tlmPacketWords(const TlmStore& store, const char* all)
 {
@@ -178,50 +170,43 @@ void printTlmStatus(const TlmContext& tlm, std::ostream& out)
     }
     out << "catalog:   " << tlm.store->catalog().packets().size() << " packet definition(s)\n"
         << "received:  " << c.received << " (unknown " << c.unknown << ", malformed " << c.malformed
-        << ", seq gaps " << c.gaps << ")\n"
-        << "sent:      " << c.sent << '\n'
-        << "view:      " << toString(tlm.view.view) << (tlm.view.paused ? " (paused)" : "")
-        << ", " << tlm.view.shown.size() << " packet(s) shown"
-        << ", monitor " << tlm.view.monitorFilter.describe() << '\n';
+        << ", seq gaps " << c.gaps << ", length errors " << c.lengthErrors << ")\n"
+        << "screen:    " << toString(tlm.view.view) << (tlm.view.paused ? " (paused)" : "")
+        << ", " << tlm.view.shown.size() << " packet(s) shown on the telemetry screen\n";
 }
 
 std::unique_ptr<cli::Menu> buildTlmMenu(TlmContext& tlm, std::size_t& sessionErrors)
 {
-    auto menu = std::make_unique<cli::Menu>("tlm", "Telemetry display (F1 dashboard, F2 monitor, F4 stats)");
+    auto menu = std::make_unique<cli::Menu>("tlm", "Telemetry display (F1 console, F2 telemetry)");
     const auto usage = [&sessionErrors](std::ostream& out, const std::string& text) {
         ++sessionErrors;
         out << "error: usage: tlm " << text << '\n';
     };
 
     menu->Insert(std::make_unique<FswCommand>(
-        "view", "Switch the telemetry view", std::vector<std::string>{"dash|monitor|stats"},
+        "view", "Switch screen: console (F1) or telemetry (F2)",
+        std::vector<std::string>{"console|telemetry"},
         [&tlm, usage](std::ostream& out, const std::vector<std::string>& args) {
-            if (args.size() != 1) {
-                return usage(out, "view dash|monitor|stats");
-            }
-            const std::string v = toLower(args[0]);
-            if (v == "dash" || v == "dashboard") {
-                tlm.view.view = TlmView::Dashboard;
-            } else if (v == "monitor") {
-                tlm.view.view = TlmView::Monitor;
-            } else if (v == "stats") {
-                tlm.view.view = TlmView::Stats;
+            const std::string v = args.size() == 1 ? toLower(args[0]) : "";
+            if (v == "console") {
+                tlm.view.view = TlmView::Console;
+            } else if (v == "telemetry" || v == "tlm") {
+                tlm.view.view = TlmView::Telemetry;
             } else {
-                return usage(out, "view dash|monitor|stats");
+                return usage(out, "view console|telemetry");
             }
-            out << "view: " << toString(tlm.view.view) << '\n';
+            out << "screen: " << toString(tlm.view.view) << '\n';
         },
-        wordsCompleter({{"dash", "packet panels and events (F1)"},
-                        {"monitor", "every sent/received packet (F2)"},
-                        {"stats", "per-MID link statistics (F4)"}})));
+        wordsCompleter({{"console", "commands and events (F1)"},
+                        {"telemetry", "packet checklist and cards (F2)"}})));
 
-    // show/hide: the same as ticking/unticking in the dashboard checklist (F6).
+    // show/hide: the same as ticking/unticking in the telemetry screen's checklist (F2).
     for (const bool show : {true, false}) {
         const std::string name = show ? "show" : "hide";
         menu->Insert(std::make_unique<FswCommand>(
             name,
-            show ? "Show a packet on the dashboard (tick it in the checklist)"
-                 : "Remove a packet from the dashboard (untick it)",
+            show ? "Show a packet on the telemetry screen (tick it in the F2 checklist)"
+                 : "Remove a packet from the telemetry screen (untick it)",
             std::vector<std::string>{"packet|mid|all"},
             [&tlm, usage, show, name](std::ostream& out, const std::vector<std::string>& args) {
                 if (args.size() != 1) {
@@ -250,39 +235,14 @@ std::unique_ptr<cli::Menu> buildTlmMenu(TlmContext& tlm, std::size_t& sessionErr
                     return usage(out, name + " <packet>|<mid>|all  ('" + arg
                                           + "' is not a telemetry packet; Tab lists them)");
                 }
-                tlm.view.view = TlmView::Dashboard;
-                out << "dashboard: " << tlm.view.shown.size() << " packet(s) shown\n";
+                out << "telemetry screen (F2): " << tlm.view.shown.size() << " packet(s) shown\n";
             },
             wordsCompleter(tlmPacketWords(*tlm.store, show ? "every packet in the checklist"
-                                                           : "clear the dashboard"))));
+                                                           : "clear the telemetry screen"))));
     }
 
     menu->Insert(std::make_unique<FswCommand>(
-        "monitor", "Filter the packet monitor by app (sent and received) or MID",
-        std::vector<std::string>{"app|mid|all"},
-        [&tlm, usage](std::ostream& out, const std::vector<std::string>& args) {
-            if (args.size() != 1) {
-                return usage(out, "monitor <app>|<mid>|all");
-            }
-            MonitorFilter f;
-            const std::string arg = toLower(args[0]);
-            if (arg.rfind("0x", 0) == 0) {
-                const auto mid = parseUnsigned(arg);
-                if (!mid || *mid > 0xFFFF) {
-                    return usage(out, "monitor <app>|<mid>|all  (mid like 0x0808)");
-                }
-                f.mid = static_cast<std::uint16_t>(*mid);
-            } else if (arg != "all") {
-                f.app = arg;
-            }
-            tlm.view.monitorFilter = f;
-            tlm.view.view = TlmView::Monitor;
-            out << "monitor: " << f.describe() << '\n';
-        },
-        wordsCompleter(tlmAppWords(*tlm.store, "packets"))));
-
-    menu->Insert(std::make_unique<FswCommand>(
-        "pause", "Freeze or resume the telemetry display (F5); receiving continues",
+        "pause", "Freeze or resume the telemetry and event display (F5); receiving continues",
         std::vector<std::string>{"on|off"},
         [&tlm, usage](std::ostream& out, const std::vector<std::string>& args) {
             if (args.empty()) {
@@ -297,7 +257,7 @@ std::unique_ptr<cli::Menu> buildTlmMenu(TlmContext& tlm, std::size_t& sessionErr
         wordsCompleter({{"on", "freeze the display"}, {"off", "back to live"}})));
 
     menu->Insert(std::make_unique<FswCommand>(
-        "clear", "Forget telemetry values, events, statistics and the packet monitor",
+        "clear", "Forget telemetry values, events and counters",
         std::vector<std::string>{},
         [&tlm](std::ostream& out, const std::vector<std::string>&) {
             tlm.store->clear();
@@ -316,9 +276,8 @@ std::unique_ptr<cli::Menu> buildTlmMenu(TlmContext& tlm, std::size_t& sessionErr
 const char* toString(TlmView view)
 {
     switch (view) {
-    case TlmView::Dashboard: return "dashboard";
-    case TlmView::Monitor: return "monitor";
-    case TlmView::Stats: return "stats";
+    case TlmView::Console: return "console";
+    case TlmView::Telemetry: return "telemetry";
     }
     return "?";
 }
@@ -333,6 +292,28 @@ std::unique_ptr<cli::Menu> buildRootMenu(CommandService& service, std::size_t& s
         root->Insert(buildTlmMenu(*tlm, sessionErrors));
     }
     return root;
+}
+
+void installHelp(cli::Cli& cli, HelpPrinter print)
+{
+    cli.HelpHandler([print = std::move(print)](std::ostream& out, const std::vector<std::string>&,
+                                               const std::vector<cli::HelpEntry>& entries) {
+        // Name and description only: parameters show up in the Tab hints.
+        std::vector<HelpItem> items;
+        for (const auto& e : entries) {
+            items.push_back({e.usage.substr(0, e.usage.find(' ')), e.description});
+        }
+        print(out, items);
+    });
+}
+
+HelpPrinter terminalHelp(std::function<int()> width, bool color)
+{
+    return [width = std::move(width), color](std::ostream& out, const std::vector<HelpItem>& items) {
+        for (const auto& line : formatHelp(items, width())) {
+            out << (color ? toAnsi(line) : line.text) << '\n';
+        }
+    };
 }
 
 } // namespace mcs::ui

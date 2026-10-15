@@ -64,6 +64,7 @@ add_executable(mcs
     ui/fsw_command.cpp
     ui/menu_builder.cpp
     ui/completion.cpp
+    ui/help_format.cpp
     ui/tui_session.cpp
     app/options.cpp
     app/main.cpp)

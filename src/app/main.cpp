@@ -26,6 +26,7 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <sys/ioctl.h>
 #include <unistd.h>
 
 using namespace mcs;
@@ -74,6 +75,16 @@ void printTargets(const TargetsFile& targets, std::ostream& out)
     }
 }
 
+// Columns of the terminal on stdout, for laying out "help"; 100 when not a terminal.
+int terminalWidth()
+{
+    winsize ws{};
+    if (::ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0) {
+        return ws.ws_col;
+    }
+    return 100;
+}
+
 // Runs command lines without prompts. Returns the exit code.
 int runBatch(cli::Cli& cli, CommandService& service, const std::size_t& sessionErrors,
              const std::vector<std::string>& lines)
@@ -88,6 +99,7 @@ int runBatch(cli::Cli& cli, CommandService& service, const std::size_t& sessionE
         ++cliErrors;
         out << "error: " << cmd << ": " << e.what() << '\n';
     });
+    ui::installHelp(cli, ui::terminalHelp(terminalWidth, ::isatty(STDOUT_FILENO) != 0));
 
     std::istringstream unusedInput;   // the session requires a valid istream
     cli::CliFileSession session(cli, unusedInput, std::cout);
@@ -106,6 +118,8 @@ void setInteractiveHandlers(cli::Cli& cli)
     cli.StdExceptionHandler([](std::ostream& out, const std::string& cmd, const std::exception& e) {
         out << "error: " << cmd << ": " << e.what() << '\n';
     });
+    // The full-screen session installs its own (names coloured in the output pane).
+    ui::installHelp(cli, ui::terminalHelp(terminalWidth, ::isatty(STDOUT_FILENO) != 0));
 }
 
 std::vector<std::string> bannerLines(const CommandService& service)
@@ -214,9 +228,6 @@ int main(int argc, char* argv[])
                 tlmService = std::make_unique<TelemetryService>(std::move(tlmReceiver), *tlmStore);
                 tlm.service = tlmService.get();
             }
-            service.setPacketTap([store = tlmStore.get()](const Bytes& packet, const std::string& line) {
-                store->recordTx(packet, line);
-            });
         }
 
         std::size_t sessionErrors = 0;

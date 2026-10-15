@@ -12,14 +12,13 @@
 
 namespace mcs::ui {
 
-enum class TlmView { Dashboard, Monitor, Stats };
+enum class TlmView { Console, Telemetry };   // F1, F2
 
 const char* toString(TlmView view);
 
 struct TlmViewState {
-    TlmView view = TlmView::Dashboard;
-    std::set<std::uint16_t> shown; // dashboard: MIDs ticked in the packet checklist
-    MonitorFilter monitorFilter;   // packet monitor
+    TlmView view = TlmView::Console;
+    std::set<std::uint16_t> shown; // telemetry screen: MIDs ticked in the packet checklist
     bool paused = false;           // display frozen; receiving continues
 };
 

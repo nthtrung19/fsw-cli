@@ -30,7 +30,7 @@ and sends it to the configured target.
 | Interactive, one-shot (`-c`) and script (`-f`) modes | Telemetry inspector, RX log, replay |
 | Argument validation, help, tab-completion of commands | GUI, remote (telnet) sessions |
 | Packet log (audit trail), hexdump, verbose mode | Command verification via telemetry |
-| Full-screen session: telemetry receive/decode (dashboard, EVS events, packet monitor, statistics) | |
+| Full-screen session: telemetry receive/decode (F1 console with EVS events, F2 telemetry checklist and packet cards) | |
 
 ### 1.2 Requirements
 
@@ -315,9 +315,8 @@ public:
 
 ```
 UdpReceiver -> TelemetryService (thread) -> TlmStore::ingest -> parse -> decode -> latest values,
-                                                                                    events, monitor, stats
-CommandService --packet tap--> TlmStore::recordTx (sent packets in the monitor)
-UI thread (FTXUI) --snapshot()/monitorTail()--> render
+                                                                                    events, link counters
+UI thread (FTXUI) --snapshot()--> render
 ```
 
 - Two threads: the UI thread runs commands and renders; the receiver thread
@@ -335,7 +334,7 @@ UI thread (FTXUI) --snapshot()/monitorTail()--> render
   payload size vs. definition (at least the definition for `"variable": true`
   packets such as CF PDUs), unknown MID. All are counted and shown; none
   stops decoding.
-- Memory is bounded: latest values per MID, 500 events, 10 000 monitor records.
+- Memory is bounded: latest values per MID, 500 events.
 
 ### 4.6 `registry/` — names to factories
 
