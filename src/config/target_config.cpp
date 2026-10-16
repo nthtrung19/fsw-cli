@@ -5,6 +5,7 @@
 #include "core/text.hpp"
 
 #include <cctype>
+#include <type_traits>
 
 namespace mcs {
 
@@ -41,6 +42,77 @@ std::vector<std::filesystem::path> parsePaths(const Json& array, const std::file
     return out;
 }
 
+// "0.24": two decimal bytes (CF accepts only 2-byte entity IDs).
+bool isEntityId(const std::string& text)
+{
+    const auto dot = text.find('.');
+    if (dot == std::string::npos || text.find('.', dot + 1) != std::string::npos) {
+        return false;
+    }
+    for (const std::string& part : {text.substr(0, dot), text.substr(dot + 1)}) {
+        if (part.empty() || part.size() > 3 || part.find_first_not_of("0123456789") != std::string::npos
+            || std::stoul(part) > 255) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Optional "cfdp" block of a target: file transfer with CF.
+cfdp::Config parseCfdp(const Json& j, const std::string& ctx)
+{
+    jsonutil::requireObject(j, ctx);
+    jsonutil::checkKeys(j, {"local_entity", "remote_entity", "uplink_mid", "downlink_mid", "chunk_size",
+                            "pdus_per_second", "downlink_dir", "ack_timeout", "ack_limit", "nak_timeout",
+                            "nak_limit", "inactivity_timeout", "save_incomplete"}, ctx);
+    cfdp::Config c;
+    const auto entity = [&](const char* key, std::string& field) {
+        field = jsonutil::optString(j, key, ctx, field);
+        if (!isEntityId(field)) {
+            throw ConfigError(ctx + ": '" + key + "' must be a 2-byte dotted-decimal entity ID such as 0.23, got '"
+                              + field + "'");
+        }
+    };
+    entity("local_entity", c.localEntity);
+    entity("remote_entity", c.remoteEntity);
+    if (c.localEntity == c.remoteEntity) {
+        throw ConfigError(ctx + ": 'local_entity' and 'remote_entity' must differ");
+    }
+    // CCSDS v1 type bit 0x1000: PDUs go up as commands and come down as telemetry.
+    c.uplinkMid = static_cast<std::uint16_t>(jsonutil::optUInt(j, "uplink_mid", ctx, 0xFFFF).value_or(c.uplinkMid));
+    c.downlinkMid =
+        static_cast<std::uint16_t>(jsonutil::optUInt(j, "downlink_mid", ctx, 0xFFFF).value_or(c.downlinkMid));
+    if ((c.uplinkMid & 0x1000) == 0) {
+        throw ConfigError(ctx + ": 'uplink_mid' " + toHexString(c.uplinkMid, 4)
+                          + " is not a command MID (CF receives PDUs as commands, e.g. 0x192D)");
+    }
+    if ((c.downlinkMid & 0x1000) != 0) {
+        throw ConfigError(ctx + ": 'downlink_mid' " + toHexString(c.downlinkMid, 4)
+                          + " is not a telemetry MID (CF sends PDUs as telemetry, e.g. 0x092D)");
+    }
+    const auto number = [&](const char* key, auto& field, std::uint64_t min, std::uint64_t max) {
+        if (const auto v = jsonutil::optUInt(j, key, ctx, max)) {
+            if (*v < min) {
+                throw ConfigError(ctx + ": '" + key + "' must be at least " + std::to_string(min));
+            }
+            field = static_cast<std::remove_reference_t<decltype(field)>>(*v);
+        }
+    };
+    number("chunk_size", c.chunkSize, 1, 4000);   // CF's incoming buffer; CI limits it further
+    number("pdus_per_second", c.pdusPerSecond, 1, 100000);
+    number("ack_timeout", c.ackTimeout, 1, 3600);
+    number("ack_limit", c.ackLimit, 1, 100);
+    number("nak_timeout", c.nakTimeout, 1, 3600);
+    number("nak_limit", c.nakLimit, 1, 100);
+    number("inactivity_timeout", c.inactivityTimeout, 1, 86400);
+    c.downlinkDir = jsonutil::optString(j, "downlink_dir", ctx, c.downlinkDir.string());
+    if (c.downlinkDir.empty()) {
+        throw ConfigError(ctx + ": 'downlink_dir' must not be empty");
+    }
+    c.saveIncomplete = jsonutil::optBool(j, "save_incomplete", ctx, c.saveIncomplete);
+    return c;
+}
+
 PluginSpec parsePlugin(const Json& j, const std::string& ctx)
 {
     jsonutil::requireObject(j, ctx);
@@ -58,7 +130,7 @@ TargetConfig parseTarget(const std::string& name, const Json& j, const std::file
         throw ConfigError(ctx + ": target names may contain letters, digits, '_', '-' and '.'");
     }
     jsonutil::checkKeys(j, {"description", "endian", "catalog", "format", "layers", "transport",
-                            "telemetry"}, ctx);
+                            "telemetry", "cfdp"}, ctx);
 
     TargetConfig t;
     t.name = name;
@@ -100,6 +172,12 @@ TargetConfig parseTarget(const std::string& name, const Json& j, const std::file
             tlm.catalogFiles = parsePaths(*files, baseDir, where + ": 'catalog'");
         }
         t.telemetry = std::move(tlm);
+    }
+    if (const auto it = j.find("cfdp"); it != j.end()) {
+        if (!t.telemetry) {
+            throw ConfigError(ctx + ": 'cfdp' needs a 'telemetry' block (CF's PDUs arrive as telemetry)");
+        }
+        t.cfdp = parseCfdp(*it, ctx + ": cfdp");
     }
     return t;
 }

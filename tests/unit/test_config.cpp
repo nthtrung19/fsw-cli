@@ -302,6 +302,14 @@ TEST(ShippedConfig, TargetsFileLoadsAndBuilds)
     EXPECT_EQ(sil.telemetry->receiver.options.at("port"), "5011");
     ASSERT_FALSE(sil.telemetry->catalogFiles.empty());
     EXPECT_TRUE(std::filesystem::exists(sil.telemetry->catalogFiles[0]));
+
+    // File transfer with CF 2.2.1 (cf_msgids.h, cf_cfgtable.c).
+    ASSERT_TRUE(sil.cfdp);
+    EXPECT_EQ(sil.cfdp->localEntity, "0.23");
+    EXPECT_EQ(sil.cfdp->remoteEntity, "0.24");
+    EXPECT_EQ(sil.cfdp->uplinkMid, 0x192D);
+    EXPECT_EQ(sil.cfdp->downlinkMid, 0x092D);
+    EXPECT_EQ(sil.cfdp->chunkSize, 512U);
 }
 
 // ---- catalog loader errors --------------------------------------------------------------
@@ -540,6 +548,62 @@ TEST(TargetsFile, TelemetryBlock)
         none.telemetry.reset();
         buildReceiver(none, builtinPlugins(), std::nullopt);
     }), "has no telemetry block"));
+}
+
+TEST(TargetsFile, CfdpBlock)
+{
+    test::TempDir dir;
+    const auto target = [](const std::string& cfdp, bool withTelemetry = true) {
+        return R"({ "targets": { "t": { "endian": "little", "catalog": ["x.json"],
+            "format": { "type": "ccsds_v1" }, "transport": { "type": "dryrun" })"
+               + std::string(withTelemetry ? R"(, "telemetry": { "receiver": { "type": "udp" } })" : "")
+               + R"(, "cfdp": )" + cfdp + " } } }";
+    };
+
+    // Every key is optional: the defaults are CF on the SIL.
+    const TargetsFile defaults = loadTargetsFile(dir.write("d.json", target("{}")));
+    ASSERT_TRUE(defaults.targets[0].cfdp);
+    const cfdp::Config& d = *defaults.targets[0].cfdp;
+    EXPECT_EQ(d.localEntity, "0.23");
+    EXPECT_EQ(d.uplinkMid, 0x192D);
+    EXPECT_EQ(d.pdusPerSecond, 100U);
+    EXPECT_EQ(d.downlinkDir, "downlink");
+    EXPECT_FALSE(d.saveIncomplete);
+
+    const TargetsFile custom = loadTargetsFile(dir.write("c.json", target(R"({
+        "local_entity": "0.21", "remote_entity": "0.42", "uplink_mid": 6445, "downlink_mid": "0x0930",
+        "chunk_size": 256, "pdus_per_second": 20, "downlink_dir": "files/in",
+        "ack_timeout": 3, "ack_limit": 4, "nak_timeout": 2, "nak_limit": 5, "inactivity_timeout": 60,
+        "save_incomplete": true })")));
+    const cfdp::Config& c = *custom.targets[0].cfdp;
+    EXPECT_EQ(c.localEntity, "0.21");
+    EXPECT_EQ(c.remoteEntity, "0.42");
+    EXPECT_EQ(c.uplinkMid, 6445);
+    EXPECT_EQ(c.downlinkMid, 0x0930);
+    EXPECT_EQ(c.chunkSize, 256U);
+    EXPECT_EQ(c.pdusPerSecond, 20U);
+    EXPECT_EQ(c.downlinkDir, "files/in");
+    EXPECT_EQ(c.ackTimeout, 3U);
+    EXPECT_EQ(c.ackLimit, 4U);
+    EXPECT_EQ(c.nakTimeout, 2U);
+    EXPECT_EQ(c.nakLimit, 5U);
+    EXPECT_EQ(c.inactivityTimeout, 60U);
+    EXPECT_TRUE(c.saveIncomplete);
+
+    const auto error = [&](const std::string& name, const std::string& cfdp, bool withTelemetry = true) {
+        return configErrorOf([&] { loadTargetsFile(dir.write(name, target(cfdp, withTelemetry))); });
+    };
+    EXPECT_TRUE(contains(error("e1.json", "{}", false), "'cfdp' needs a 'telemetry' block"));
+    EXPECT_TRUE(contains(error("e2.json", R"({ "local_entity": "23" })"), "2-byte dotted-decimal"));
+    EXPECT_TRUE(contains(error("e3.json", R"({ "remote_entity": "0.256" })"), "2-byte dotted-decimal"));
+    EXPECT_TRUE(contains(error("e4.json", R"({ "remote_entity": "0.23" })"), "must differ"));
+    EXPECT_TRUE(contains(error("e5.json", R"({ "uplink_mid": "0x092D" })"), "not a command MID"));
+    EXPECT_TRUE(contains(error("e6.json", R"({ "downlink_mid": "0x192D" })"), "not a telemetry MID"));
+    EXPECT_TRUE(contains(error("e7.json", R"({ "chunk_size": 5000 })"), "chunk_size"));
+    EXPECT_TRUE(contains(error("e8.json", R"({ "chunk_size": 0 })"), "at least 1"));
+    EXPECT_TRUE(contains(error("e9.json", R"({ "pdus_per_second": 0 })"), "at least 1"));
+    EXPECT_TRUE(contains(error("e10.json", R"({ "chunk": 512 })"), "unknown key 'chunk'"));
+    EXPECT_TRUE(contains(error("e11.json", R"({ "downlink_dir": "" })"), "must not be empty"));
 }
 
 TEST(TargetsFile, SelectTarget)

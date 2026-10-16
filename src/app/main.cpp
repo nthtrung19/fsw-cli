@@ -13,6 +13,7 @@
 #include "core/errors.hpp"
 #include "registry/plugin_registry.hpp"
 #include "service/command_service.hpp"
+#include "service/file_transfer_service.hpp"
 #include "telemetry/telemetry_service.hpp"
 #include "ui/menu_builder.hpp"
 #include "ui/tui_session.hpp"
@@ -176,8 +177,9 @@ int main(int argc, char* argv[])
     std::unique_ptr<CommandCatalog> catalog;
     std::unique_ptr<Pipeline> pipeline;
     const TargetConfig* target = nullptr;
-    // Telemetry: full-screen session only. A receiver that cannot be opened
-    // (port in use, ...) is shown in the session, not a setup error.
+    // Telemetry: full-screen session, and any session of a target with file
+    // transfer ("cfdp": CF's PDUs arrive as telemetry). A receiver that cannot
+    // be opened (port in use, ...) is reported, not a setup error.
     std::unique_ptr<TelemetryCatalog> tlmCatalog;
     std::unique_ptr<IReceiver> tlmReceiver;
     std::string tlmReceiverError;
@@ -190,7 +192,7 @@ int main(int argc, char* argv[])
         target = &selectTarget(targets, opts.target);
         catalog = std::make_unique<CommandCatalog>(loadCatalog(target->catalogFiles));
         pipeline = buildPipeline(*target, builtinPlugins(), opts.dryRun);
-        if (fullScreen && target->telemetry) {
+        if ((fullScreen || target->cfdp) && target->telemetry) {
             tlmCatalog = std::make_unique<TelemetryCatalog>(
                 loadTelemetryCatalog(target->telemetry->catalogFiles));
             try {
@@ -230,8 +232,47 @@ int main(int argc, char* argv[])
             }
         }
 
+        // File transfer: one worker owns the CFDP engine; CF's PDUs reach it
+        // through a telemetry sink.
+        std::unique_ptr<FileTransferService> files;
+        if (target->cfdp) {
+            files = std::make_unique<FileTransferService>(*target->cfdp, *pipeline, service, log.get(),
+                                                          target->name);
+            files->setReceiving(tlmService != nullptr, tlmReceiverError);
+            if (tlmService) {
+                tlmService->addSink([f = files.get()](const Bytes& datagram) { f->onDatagram(datagram); });
+            }
+            try {
+                files->start();
+            } catch (const mcsError& e) {
+                std::cerr << kProgram << ": " << e.what() << '\n';
+                return app::kExitConfigError;
+            }
+            tlm.files = files.get();
+        }
+        // The receiver's sink points into `files`: stop the receiver first.
+        struct StopReceiverFirst {
+            TelemetryService* service;
+            ~StopReceiverFirst()
+            {
+                if (service != nullptr) {
+                    service->stop();
+                }
+            }
+        } stopReceiverFirst{tlmService.get()};
+        if (files && tlmService && !fullScreen) {
+            tlmService->start({});   // the full-screen session starts it itself
+        }
+        if (files && !tlmService && !batch) {
+            std::cerr << "warning: telemetry is not received (" << tlmReceiverError
+                      << "): file get and class 2 file put are unavailable\n";
+        }
+
         std::size_t sessionErrors = 0;
-        cli::Cli cli(ui::buildRootMenu(service, sessionErrors, fullScreen ? &tlm : nullptr));
+        const ui::FileMenuMode fileMode = batch        ? ui::FileMenuMode::Batch
+                                        : fullScreen   ? ui::FileMenuMode::FullScreen
+                                                       : ui::FileMenuMode::Plain;
+        cli::Cli cli(ui::buildRootMenu(service, sessionErrors, fullScreen ? &tlm : nullptr, files.get(), fileMode));
 
         if (!opts.commands.empty()) {
             return runBatch(cli, service, sessionErrors, opts.commands);

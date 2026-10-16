@@ -138,9 +138,12 @@ ds set_app_state disable 19 4B C0 00 00 05 6A 02 00 00 00 00
    They never know about each other's internals, about JSON, or about the CLI.
 3. `config/` is the **only** module that parses JSON. It turns files into plain
    C++ structs and uses the registries to create objects.
-4. `service/` wires catalog + encoder + pipeline + log together.
-5. `ui/` and `app/` are the only modules that include `<cli/...>`.
-6. Everything except `ui/` and `app/` is the static library `mcs_core`.
+4. `service/` wires catalog + encoder + pipeline + log together;
+   `FileTransferService` also wires `cfdp/` and the telemetry parser.
+5. `cfdp/` depends only on `core/` and the GSFC CFDP library, which only
+   `cfdp/gsfc_bridge.c` and `cfdp/gsfc_engine.cpp` see (§4.12).
+6. `ui/` and `app/` are the only modules that include `<cli/...>`.
+7. Everything except `ui/` and `app/` is the static library `mcs_core`.
 
 Breaking any of these rules is a design defect, not a style issue.
 
@@ -512,6 +515,57 @@ mcs [--config FILE] [-t|--target NAME] [-n|--dry-run] [-v|--verbose]
 **Exit codes**: 0 success; 1 a command failed; 2 bad command-line options;
 3 configuration error (bad targets/catalog file).
 
+
+### 4.12 `cfdp/` and `FileTransferService` — file transfer with CF
+
+mcs is the ground CFDP entity `0.23` for CF (`0.24`). It runs the CFDP engine
+that CF 2.2.1 is built on (the GSFC library, `external/cfdp-gsfc`, unmodified
+except `config/cfdp_config.h`), so both ends produce and accept exactly the
+same PDUs.
+
+```
+ file put/get (ui, any thread)          telemetry receiver thread
+        │ queue                                 │ sink: MID 0x092D -> PDU (12-byte tlm header stripped)
+        ▼                                       ▼
+ FileTransferService ── worker thread: the ONLY caller of the engine (every 20 ms)
+        │  requests, PDUs ──► ICfdpEngine (GsfcEngine) ──► gsfc_bridge.c ──► GSFC library
+        │  ◄── PduOut: CommandMessage{0x192D, cc 0, pdu} ──► Pipeline (mutex) ──► CI ──► CF
+        │  ◄── Notify: started/finished ──► notices, packet log, expectation matching
+        ▼
+ snapshots (transfers, counts, notices) ──► file list, F1 TRANSFERS strip, batch waitFor
+```
+
+- **One owner thread.** The library keeps its state in globals and is not
+  thread-safe: one `GsfcEngine` per process (the constructor refuses a second),
+  created and used only on the worker. Callers queue requests and read
+  snapshots under one mutex; nothing holds that mutex while the engine runs.
+- **C bridge.** The library's headers use C++ keywords as parameter names, so
+  C++ includes only `cfdp_data_structures.h` and calls through
+  `gsfc_bridge.c`, which the C compiler checks against the real prototypes.
+- **Types.** `config/cfdp_config.h` gives every library type its size in the
+  32-bit flight build (`u_int_4` is `uint32_t`, not `unsigned long`); the file
+  checksum reads data through `u_int_4*`.
+- **Uplink.** The PUT names the file by a short alias (its sanitized base
+  name), so the Metadata stays within CF's 63-character limit; the file
+  callbacks map the alias back. FileData is paced by a token bucket in
+  `pdu_output_ready`; directives (MD, EOF, ACK, NAK, FIN) are never held back.
+  One library cycle sends at most one FileData PDU per transaction, so the
+  worker cycles until pacing holds data back.
+- **Downlink.** `file get` sends `cf playback_file` through `CommandService`
+  and waits for a Metadata whose source name is the requested path
+  (an *expectation*; 30 s start timeout, paused while another downlink from
+  CF runs). Data goes to `downlink_dir/.part/`; on success the library's rename
+  callback moves it to `downlink_dir/<destination name>`, refusing `..` and
+  never overwriting (`name(1).ext`). Unrequested downlinks are stored too.
+- **Library quirks found while integrating**: `pdu_output_open` has no default
+  (a NULL call when a transfer starts); a reused transaction slot keeps the
+  previous `temp_file_name` until a new temp file is opened; sequence numbers
+  start at 1 in every process (mcs starts them at the Unix time).
+- **Batch and sessions.** In `-c`/`-f`, `file put/get` block in `waitFor`
+  (gives up after `inactivity_timeout + 10 s` without progress) and failures
+  count for the exit code. In sessions they return at once; the full-screen
+  session drains notices on the UI thread and shows the TRANSFERS strip.
+
 ---
 
 ## 5. Directory layout
@@ -527,7 +581,8 @@ mcs/
 ├── external/                         git submodules, pinned
 │   ├── cli/                          daniele77/cli v2.2.0
 │   ├── json/                         nlohmann/json (latest release tag)
-│   └── googletest/                   googletest (latest release tag)
+│   ├── googletest/                   googletest (latest release tag)
+│   └── cfdp-gsfc/                    GSFC CFDP library of CF 2.2.1 (vendored)
 ├── src/
 │   ├── core/       bytes.*, byte_writer.*, hex.*, text.*, options.*, errors.hpp
 │   ├── catalog/    field_def.hpp, command_def.hpp, catalog.*
@@ -538,14 +593,17 @@ mcs/
 │   ├── pipeline/   pipeline.*
 │   ├── config/     json_util.*, target_config.*, catalog_loader.*, config_paths.*, pipeline_factory.*
 │   ├── log/        packet_log.*
-│   ├── service/    command_service.*
-│   ├── ui/         menu_builder.*, fsw_command.*
+│   ├── service/    command_service.*, file_transfer_service.*
+│   ├── cfdp/       engine.hpp, gsfc_engine.*, gsfc_bridge.*, pdu_info.*, transfer.*, cfdp_config.hpp
+│   ├── ui/         menu_builder.*, fsw_command.*, tui_session.*, transfer_format.*
 │   └── app/        main.cpp, options.*
 └── tests/
     ├── unit/       one test file per module
     ├── oracle/     cFE ccsds.h/ccsds.c + stubs, compares against our packets
     ├── integration/ UDP loopback: real socket receives what mcs sends
-    └── smoke/      CTest runs of the executable (-c, -f, exit codes)
+    ├── smoke/      CTest runs of the executable (-c, -f, exit codes)
+    ├── tools/      cfdp_peer.cpp: a CF stand-in (same CFDP engine) for file transfer tests
+    └── e2e/        file_transfer.sh: mcs file put/get against the stand-in over UDP
 ```
 
 ---
@@ -583,6 +641,9 @@ Example: CSP over UDP later is just a new class plus this target entry:
 | Oracle | Build the same packets with cFE's own `ccsds.h`/`ccsds.c` macros on the host; must equal ours byte for byte | GoogleTest + C stubs |
 | Integration | Bind a UDP socket on loopback, run the pipeline with `udp` transport, compare received datagram | GoogleTest |
 | Smoke | Run the executable: `-c`, `-f`, `--dry-run`, wrong command / wrong args → exit codes | CTest |
+| CFDP | Engine: PDU layout, checksum (independent implementation), round trip, path rules, pacing; two engines in two processes (class 1/2, loss, cancel, put and get at once); the service (CF command packets, playback, expectations); formatter | GoogleTest |
+| End to end | The executable's `file put/get` against `mcs_cfdp_peer` over UDP, class 1/2, with loss | CTest + bash |
+| Threads | Service, pipeline, log, telemetry sinks, engine under ThreadSanitizer (clang) | manual build |
 | Manual acceptance | Against real cFS (§8) | operator |
 
 ## 8. Prototype acceptance criteria
@@ -613,6 +674,7 @@ filter commands once `ds_msg.h` is provided.
 | D5 | Target selection | At startup (`--target`), not switchable at runtime |
 | D6 | Packet log | On by default, daily file in current directory |
 | D7 | Third-party fetching | Git submodules (offline-friendly), not CMake FetchContent |
+| D8 | CFDP engine | The GSFC library of CF 2.2.1, vendored, behind `ICfdpEngine` (same engine on both ends) |
 
 ## 11. Implementation notes
 

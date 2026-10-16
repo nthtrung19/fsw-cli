@@ -8,6 +8,16 @@
 //   transport  transport plug-in        { "type": "udp", "host": ..., "port": ... }
 //   telemetry  optional: where telemetry arrives and how to decode it (interactive session)
 //              { "receiver": { "type": "udp", "port": ... }, "catalog": [ telemetry files ] }
+//   cfdp       optional: file transfer with CF ("file put/get"); needs "telemetry".
+//              Every key is optional; the defaults are CF 2.2.1 on the SIL:
+//                local_entity "0.23"   this ground entity      remote_entity "0.24"  CF
+//                uplink_mid "0x192D"   PDUs sent as commands (CF_INCOMING_PDU_MID)
+//                downlink_mid "0x092D" PDUs received as telemetry (CF_SPACE_TO_GND_PDU_MID)
+//                chunk_size 512        file bytes per uplink PDU (CI's datagram buffer)
+//                pdus_per_second 100   uplink pacing of file data (CF's pipe holds 40)
+//                downlink_dir "downlink"  where received files go (relative to the current dir)
+//                ack_timeout 10, ack_limit 2, nak_timeout 5, nak_limit 3 (class 2), inactivity_timeout 30
+//                save_incomplete false  keep partial downlinks in <downlink_dir>/.part
 //
 // Built-in plug-ins and their options:
 //   format    ccsds_v1   checksum: true|false (default true)
@@ -36,6 +46,11 @@
                      "telemetry/sc.json", "telemetry/hs.json", "telemetry/cf.json", "telemetry/fm.json",
                      "telemetry/ds.json", "telemetry/lc.json", "telemetry/aocs.json", "telemetry/main.json",
                      "telemetry/pl.json", "telemetry/fdir.json"]
+      },
+      "cfdp": {
+        "local_entity": "0.23", "remote_entity": "0.24",
+        "uplink_mid": "0x192D", "downlink_mid": "0x092D",
+        "chunk_size": 512, "pdus_per_second": 100, "downlink_dir": "downlink"
       }
     },
 
@@ -52,6 +67,11 @@
                      "telemetry/sc.json", "telemetry/hs.json", "telemetry/cf.json", "telemetry/fm.json",
                      "telemetry/ds.json", "telemetry/lc.json", "telemetry/aocs.json", "telemetry/main.json",
                      "telemetry/pl.json", "telemetry/fdir.json"]
+      },
+      "cfdp": {
+        "local_entity": "0.23", "remote_entity": "0.24",
+        "uplink_mid": "0x192D", "downlink_mid": "0x092D",
+        "chunk_size": 512, "pdus_per_second": 100, "downlink_dir": "downlink"
       }
     }
 

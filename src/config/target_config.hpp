@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cfdp/cfdp_config.hpp"
 #include "core/bytes.hpp"
 #include "core/options.hpp"
 
@@ -34,6 +35,7 @@ struct TargetConfig {
     std::vector<PluginSpec> layers;
     PluginSpec transport;
     std::optional<TelemetryConfig> telemetry;
+    std::optional<cfdp::Config> cfdp;   // file transfer with CF; needs `telemetry`
 };
 
 struct TargetsFile {

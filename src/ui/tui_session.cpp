@@ -4,6 +4,7 @@
 #include "ui/completion.hpp"
 #include "ui/help_format.hpp"
 #include "ui/menu_builder.hpp"
+#include "ui/transfer_format.hpp"
 
 #include <cli/cli.h>
 
@@ -285,7 +286,13 @@ public:
         if (tlm_.service != nullptr) {
             tlm_.service->start([this](bool arrived) { onTelemetry(arrived); });
         }
+        if (tlm_.files != nullptr) {
+            tlm_.files->setOnChange([this] { requestRedraw(); });   // progress, notices
+        }
         screen.Loop(root);
+        if (tlm_.files != nullptr) {
+            tlm_.files->setOnChange({});
+        }
         if (tlm_.service != nullptr) {
             tlm_.service->stop();
         }
@@ -304,9 +311,16 @@ private:
         const TlmPacketDef* def = nullptr;    // defined (received or not)
     };
 
-    // Receiver thread: ask for a redraw, at most ~20 per second. A skipped
-    // packet is drawn by the next call (the receiver calls at least every 100 ms).
+    // Receiver thread: ask for a redraw. A skipped packet is drawn by the
+    // next call (the receiver calls at least every 100 ms).
     void onTelemetry(bool /*arrived*/)
+    {
+        requestRedraw();
+    }
+
+    // Any thread (telemetry receiver, file transfer worker): ask for a
+    // redraw, at most ~20 per second.
+    void requestRedraw()
     {
         constexpr auto kMinGap = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                                      std::chrono::milliseconds(50)).count();
@@ -465,6 +479,18 @@ private:
 
     void quit()
     {
+        // Quitting abandons running transfers: say so once, quit on the next try.
+        if (tlm_.files != nullptr && !quitWarned_) {
+            const auto c = tlm_.files->activeCounts();
+            if (c.total() != 0) {
+                quitWarned_ = true;
+                exitRequested_ = false;
+                output_.addLine("warning: " + std::to_string(c.total()) + " transfer"
+                                + (c.total() == 1 ? " is" : "s are")
+                                + " still running: quit again to abandon (or 'file list', 'file cancel <id>')");
+                return;
+            }
+        }
         if (App* s = screen_.load()) {
             s->Exit();
         }
@@ -486,6 +512,13 @@ private:
 
     void refreshSnapshot()
     {
+        if (tlm_.files != nullptr) {
+            transfers_ = tlm_.files->transfers();
+            fileCounts_ = tlm_.files->activeCounts();
+            for (auto& line : tlm_.files->takeNotices()) {   // on the UI thread: output_ stays single-threaded
+                output_.addLine(std::move(line));
+            }
+        }
         if (tlm_.store == nullptr || (tlm_.view.paused && frozen_)) {
             return;
         }
@@ -509,6 +542,10 @@ private:
         Elements parts{text(" mcs ") | bold | color(Color::Cyan), text("· " + service_.targetName() + "  ") | dim,
                        tab(" F1 Console ", TlmView::Console), text(" "),
                        tab(" F2 Telemetry ", TlmView::Telemetry), text("  ")};
+        if (const std::string badge = transferBadge(fileCounts_); !badge.empty()) {
+            parts.push_back(text(" " + badge + " ") | bold | color(Color::Cyan));
+            parts.push_back(text(" "));
+        }
         if (frozen_) {
             parts.push_back(text(" PAUSED · F5 ") | bold | inverted | color(Color::Yellow));
         }
@@ -576,10 +613,13 @@ private:
                                  "F1 console (or just type) · Ctrl-C quit")
                  | dim;
         }
-        return text(narrow ? " Tab complete · ↑↓ history · PgUp/PgDn output · Ctrl+↑↓ events · F2 telemetry"
-                           : " Enter run · Tab complete · ↑↓ history · PgUp/PgDn output · Ctrl+↑↓ events · "
-                             "F2 telemetry · F5 pause · Ctrl-C clear/quit")
-             | dim;
+        std::string hint = narrow ? " Tab complete · ↑↓ history · PgUp/PgDn output · Ctrl+↑↓ events · F2 telemetry"
+                                  : " Enter run · Tab complete · ↑↓ history · PgUp/PgDn output · Ctrl+↑↓ events · "
+                                    "F2 telemetry · F5 pause · Ctrl-C clear/quit";
+        if (width_ >= 160 && fileCounts_.total() != 0) {
+            hint += " · 'file cancel <id>' stops a transfer";
+        }
+        return text(hint) | dim;
     }
 
     // ---- F1 console -------------------------------------------------------------
@@ -593,15 +633,98 @@ private:
     Element consoleScreen(int rows, const Component& input)
     {
         const int listRows = completionRows(rows);
-        const int paneRows = std::max(8, rows - 1 - listRows);
+        const int stripBox = transfersRows();   // 0 when nothing is being transferred
+        const int paneRows = std::max(8, rows - 1 - listRows - stripBox);
         const int eventsRows = std::max(4, paneRows * 2 / 5);
         const int outputBox = std::max(4, paneRows - eventsRows);
         outputRows_ = outputBox - 2;
         outputWidth_ = std::max(20, width_ - 3);   // border + leading space
 
-        return vbox({eventsPane(eventsRows) | size(HEIGHT, EQUAL, eventsRows),
-                     outputPane() | size(HEIGHT, EQUAL, outputBox), inputLine(input),
-                     completionArea(listRows)});
+        Elements panes{eventsPane(eventsRows) | size(HEIGHT, EQUAL, eventsRows)};
+        if (stripBox > 0) {
+            panes.push_back(transfersPane() | size(HEIGHT, EQUAL, stripBox));
+        }
+        panes.push_back(outputPane() | size(HEIGHT, EQUAL, outputBox));
+        panes.push_back(inputLine(input));
+        panes.push_back(completionArea(listRows));
+        return vbox(std::move(panes));
+    }
+
+    // ---- F1 TRANSFERS strip: running and waiting file transfers ----------------------
+    //
+    //   ╭ TRANSFERS 2 active ───────────────────────────────── 'file list' ╮
+    //   │ ↑ put 0.23_1729061234  test.bin → /cf/test.bin   c2  ████░░ 76%  48.2 KB/s  5 s │
+    //   ╰──────────────────────────────────────────────────────────────────╯
+
+    static constexpr int kMaxStripRows = 3;
+
+    int activeTransfers() const
+    {
+        int n = 0;
+        for (const auto& s : transfers_) {
+            n += cfdp::isFinished(s.state) ? 0 : 1;
+        }
+        return n;
+    }
+
+    // Height of the strip with its border; 0 hides it.
+    int transfersRows() const
+    {
+        const int n = activeTransfers();
+        if (n == 0) {
+            return 0;
+        }
+        return std::min(n, kMaxStripRows) + (n > kMaxStripRows ? 1 : 0) + 2;
+    }
+
+    Element stripRow(const StripRow& r)
+    {
+        const Color c = r.uplink ? Color::Cyan : Color::Green;
+        Elements parts{text(" " + r.arrow + " ") | bold | color(c), text(r.kind + " ")};
+        if (!r.id.empty()) {
+            parts.push_back(text(r.id + "  ") | dim);
+        }
+        parts.push_back(text(r.files));
+        parts.push_back(filler());
+        parts.push_back(text("  " + r.cls + "  ") | dim);
+        if (r.waiting) {
+            parts.push_back(text(r.note + " ") | dim);
+            return hbox(std::move(parts));
+        }
+        parts.push_back(text(r.bar) | color(c));
+        parts.push_back(text(" " + r.percent) | bold);
+        parts.push_back(text("  " + r.rate) | size(WIDTH, GREATER_THAN, 12));
+        if (!r.eta.empty()) {
+            parts.push_back(text("  " + r.eta) | dim | size(WIDTH, GREATER_THAN, 9));
+        }
+        if (r.suspended) {
+            parts.push_back(text("  SUSPENDED") | bold | color(Color::Yellow));
+        }
+        parts.push_back(text(" "));
+        return hbox(std::move(parts));
+    }
+
+    Element transfersPane()
+    {
+        const bool compact = width_ < 120;
+        // Border (2), the leading/trailing space and the rate/ETA columns'
+        // minimum widths (stripRow) take a few columns more than toText().
+        const int rowWidth = std::max(40, width_ - 10);
+        Elements rows;
+        int shown = 0;
+        for (const auto& s : transfers_) {
+            if (cfdp::isFinished(s.state) || shown == kMaxStripRows) {
+                continue;
+            }
+            ++shown;
+            rows.push_back(stripRow(formatStripRow(s, rowWidth, compact)));
+        }
+        const int total = activeTransfers();
+        if (total > kMaxStripRows) {
+            rows.push_back(text(" +" + std::to_string(total - kMaxStripRows) + " more · 'file list'") | dim);
+        }
+        return window(paneTitle("TRANSFERS", std::to_string(total) + " active", ""), vbox(std::move(rows)))
+             | color(Color::Default);
     }
 
     Element paneTitle(const std::string& name, const std::string& count, const std::string& note)
@@ -673,6 +796,22 @@ private:
         }
         if (t.rfind("warning", 0) == 0) {
             return e | color(Color::Yellow);
+        }
+        // File transfer notices (FileTransferService).
+        if (t.rfind("✔", 0) == 0) {
+            return e | color(Color::Green);
+        }
+        if (t.rfind("✘", 0) == 0) {
+            return e | bold | color(Color::Red);
+        }
+        if (t.rfind("⊘", 0) == 0) {
+            return e | color(Color::Yellow);
+        }
+        if (t.rfind("started ", 0) == 0 || t.rfind("waiting for CF", 0) == 0 || t.rfind("↓ ", 0) == 0) {
+            return e | color(Color::Cyan);
+        }
+        if (t.rfind("[dry-run] cfdp", 0) == 0) {
+            return e | dim;
         }
         return e;
     }
@@ -1149,6 +1288,9 @@ private:
     std::string prompt_ = "> ";
     CompletionResult completion_;
     bool exitRequested_ = false;
+    bool quitWarned_ = false;                       // quit asked once while transfers ran
+    std::vector<cfdp::TransferStatus> transfers_;   // file transfers of the last frame
+    FileTransferService::Counts fileCounts_;
 
     int width_ = 80;
     int outputRows_ = 5;                 // console: visible output lines

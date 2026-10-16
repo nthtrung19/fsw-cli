@@ -165,3 +165,33 @@ mcs_smoke(NAME menu_navigation EXIT 0
 mcs_smoke(NAME packet_log_written EXIT 0
     ARGS --config ${SHIPPED_CONFIG} -n --log-dir ${CMAKE_CURRENT_BINARY_DIR}/logs -c "fsw ds noop"
     FILE ${CMAKE_CURRENT_BINARY_DIR}/logs/mcs-*.log)
+
+# ---- file transfer (CFDP) ------------------------------------------------------------
+# A dry-run class 1 put: the directive PDUs are shown as CF_INCOMING_PDU_MID
+# (0x192D) command packets, and the transfer completes.
+mcs_smoke(NAME file_put_dryrun EXIT 0
+    ARGS ${BASE} -n -c "file put ${DATA}/script.txt /cf/script.txt"
+    EXPECT "started 0\\.23_[0-9]+ .*\\[dry-run\\] cfdp MD 0\\.23_[0-9]+ -> 0\\.24  19 2D C0 00 .*\\[dry-run\\] cfdp EOF 0\\.23_[0-9]+ -> 0\\.24  19 2D .*done: /cf/script\\.txt")
+
+mcs_smoke(NAME file_put_missing_file EXIT 1
+    ARGS ${BASE} -n -c "file put no-such-file.bin /cf/x.bin"
+    EXPECT "error: file put: no such file: no-such-file\\.bin"
+    REJECT "cfdp MD")
+
+mcs_smoke(NAME file_put_bad_remote_path EXIT 1
+    ARGS ${BASE} -n -c "file put ${DATA}/script.txt cf/x.bin"
+    EXPECT "remote path must start with '/'"
+    REJECT "cfdp MD")
+
+mcs_smoke(NAME file_get_needs_a_live_target EXIT 1
+    ARGS ${BASE} -n -c "file get /cf/x.bin"
+    EXPECT "error: file get: needs a live target"
+    REJECT "playback_file")
+
+mcs_smoke(NAME file_put_class2_needs_a_live_target EXIT 1
+    ARGS ${BASE} -n -c "file put ${DATA}/script.txt /cf/x.bin class2"
+    EXPECT "class 2 needs a live target")
+
+mcs_smoke(NAME file_list_empty EXIT 0
+    ARGS ${BASE} -n -c "file list"
+    EXPECT "no transfers yet")

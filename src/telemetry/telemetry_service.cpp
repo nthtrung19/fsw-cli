@@ -2,6 +2,8 @@
 
 #include "core/errors.hpp"
 
+#include <stdexcept>
+
 namespace mcs {
 
 TelemetryService::TelemetryService(std::unique_ptr<IReceiver> receiver, TlmStore& store)
@@ -15,6 +17,14 @@ TelemetryService::TelemetryService(std::unique_ptr<IReceiver> receiver, TlmStore
 TelemetryService::~TelemetryService()
 {
     stop();
+}
+
+void TelemetryService::addSink(Sink sink)
+{
+    if (thread_.joinable()) {
+        throw std::logic_error("TelemetryService::addSink after start");
+    }
+    sinks_.push_back(std::move(sink));
 }
 
 void TelemetryService::start(UpdateCallback onUpdate)
@@ -49,6 +59,9 @@ void TelemetryService::run()
             if (auto packet = receiver_->receive(kPollInterval)) {
                 store_.ingest(*packet);
                 arrived = true;
+                for (const auto& sink : sinks_) {
+                    sink(*packet);
+                }
             }
             std::lock_guard<std::mutex> lock(errorMutex_);
             lastError_.clear();

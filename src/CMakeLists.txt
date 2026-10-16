@@ -4,8 +4,10 @@
 #   core      <- nothing
 #   catalog, encode, protocol, transport, registry, pipeline, log <- core
 #   config    <- the above + nlohmann/json (the ONLY JSON-aware module)
-#   service   <- catalog, encode, pipeline, log
+#   service   <- catalog, encode, pipeline, log, cfdp, telemetry (parser only)
 #   telemetry <- core, catalog (field types), transport (IReceiver)
+#   cfdp      <- core + the GSFC CFDP library (external/cfdp-gsfc), reached
+#                only through cfdp/gsfc_bridge.c (C) and cfdp/gsfc_engine.cpp
 # ----------------------------------------------------------------------------
 add_library(mcs_core STATIC
     core/bytes.cpp
@@ -42,20 +44,29 @@ add_library(mcs_core STATIC
     log/packet_log.cpp
 
     service/command_service.cpp
+    service/file_transfer_service.cpp
 
     telemetry/tlm_def.cpp
     telemetry/tlm_catalog.cpp
     telemetry/ccsds_tlm_parser.cpp
     telemetry/tlm_decoder.cpp
     telemetry/tlm_store.cpp
-    telemetry/telemetry_service.cpp)
+    telemetry/telemetry_service.cpp
+
+    cfdp/transfer.cpp
+    cfdp/pdu_info.cpp
+    cfdp/gsfc_engine.cpp
+    cfdp/gsfc_bridge.c)
+
+# The bridge is our C code: same strictness as the C++ code.
+set_source_files_properties(cfdp/gsfc_bridge.c PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Wpedantic")
 
 find_package(Threads REQUIRED)
 
 target_include_directories(mcs_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(mcs_core
     PUBLIC  mcs_warnings Threads::Threads
-    PRIVATE nlohmann_json::nlohmann_json)
+    PRIVATE nlohmann_json::nlohmann_json cfdp_gsfc)
 
 # ----------------------------------------------------------------------------
 # mcs: the executable. Only ui/ and app/ may include <cli/...> or <ftxui/...>.
@@ -65,6 +76,7 @@ add_executable(mcs
     ui/menu_builder.cpp
     ui/completion.cpp
     ui/help_format.cpp
+    ui/transfer_format.cpp
     ui/tui_session.cpp
     app/options.cpp
     app/main.cpp)

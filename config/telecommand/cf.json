@@ -74,7 +74,7 @@
             { "name": "preserve", "type": "u8", "enum": { "delete": 0, "keep": 1 },
               "help": "Delete or keep the source file after a successful transfer" },
             { "name": "peer_entity_id", "type": "string", "size": 16,
-              "help": "Destination entity ID, dotted decimal (e.g. 0.24)" },
+              "help": "Receiving entity ID, dotted decimal: the ground is 0.23 (CF itself is 0.24)" },
             { "name": "src_filename", "type": "string", "size": 64, "help": "Source file" },
             { "name": "dst_filename", "type": "string", "size": 64, "help": "Destination file" }
           ]
@@ -91,7 +91,7 @@
             { "name": "preserve", "type": "u8", "enum": { "delete": 0, "keep": 1 },
               "help": "Delete or keep the source files after a successful transfer" },
             { "name": "peer_entity_id", "type": "string", "size": 16,
-              "help": "Destination entity ID, dotted decimal (e.g. 0.24)" },
+              "help": "Receiving entity ID, dotted decimal: the ground is 0.23 (CF itself is 0.24)" },
             { "name": "src_path", "type": "string", "size": 64,
               "help": "Source directory (must end with '/')" },
             { "name": "dst_path", "type": "string", "size": 64, "help": "Destination directory" }
@@ -184,7 +184,7 @@
               "help": "Delete or keep the source files after a successful transfer" },
             { "type": "padding", "size": 3 },
             { "name": "peer_entity_id", "type": "string", "size": 16,
-              "help": "Destination entity ID, dotted decimal (e.g. 0.24)" },
+              "help": "Receiving entity ID, dotted decimal: the ground is 0.23 (CF itself is 0.24)" },
             { "name": "src_path", "type": "string", "size": 64,
               "help": "Source directory (must end with '/')" },
             { "name": "dst_path", "type": "string", "size": 64, "help": "Destination directory" }

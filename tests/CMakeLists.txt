@@ -33,10 +33,15 @@ add_executable(mcs_unit_tests
     unit/test_telemetry.cpp
     unit/test_completion.cpp
     unit/test_help_format.cpp
+    unit/test_gsfc_engine.cpp
+    unit/test_cfdp_two_entities.cpp
+    unit/test_file_transfer_service.cpp
+    unit/test_transfer_format.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/completion.cpp
-    ${PROJECT_SOURCE_DIR}/src/ui/help_format.cpp)   # pure logic, no UI library
+    ${PROJECT_SOURCE_DIR}/src/ui/help_format.cpp
+    ${PROJECT_SOURCE_DIR}/src/ui/transfer_format.cpp)   # pure logic, no UI library
 target_include_directories(mcs_unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(mcs_unit_tests PRIVATE mcs_core GTest::gtest_main)
+target_link_libraries(mcs_unit_tests PRIVATE mcs_core cfdp_gsfc GTest::gtest_main)
 target_compile_definitions(mcs_unit_tests PRIVATE ${mcs_TEST_DEFINES})
 gtest_discover_tests(mcs_unit_tests TEST_PREFIX "unit." DISCOVERY_TIMEOUT 30)
 
@@ -61,3 +66,17 @@ gtest_discover_tests(mcs_integration_tests TEST_PREFIX "integration." DISCOVERY_
 
 # ---- smoke ------------------------------------------------------------------
 add_subdirectory(smoke)
+
+# ---- end-to-end file transfer -----------------------------------------------------
+# mcs_cfdp_peer stands in for CF (same CFDP engine); the script drives the
+# mcs executable against it over UDP on loopback (private random ports).
+add_executable(mcs_cfdp_peer tools/cfdp_peer.cpp)
+target_link_libraries(mcs_cfdp_peer PRIVATE mcs_core)
+
+add_test(NAME e2e.file_transfer
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e/file_transfer.sh
+                 $<TARGET_FILE:mcs> $<TARGET_FILE:mcs_cfdp_peer> ${PROJECT_SOURCE_DIR})
+add_test(NAME e2e.file_transfer_with_loss
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e/file_transfer.sh
+                 $<TARGET_FILE:mcs> $<TARGET_FILE:mcs_cfdp_peer> ${PROJECT_SOURCE_DIR} 5)
+set_tests_properties(e2e.file_transfer e2e.file_transfer_with_loss PROPERTIES TIMEOUT 120)

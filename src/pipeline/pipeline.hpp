@@ -5,12 +5,16 @@
 #include "transport/transport.hpp"
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
 namespace mcs {
 
 // The protocol stack of one target:  format -> layer 1 -> ... -> layer N -> transport.
+//
+// send() and sendRaw() are thread-safe: commands (UI thread) and CFDP PDUs
+// (file transfer worker) share the format's sequence counters and the transport.
 class Pipeline {
 public:
     struct Result {
@@ -45,6 +49,7 @@ private:
     std::unique_ptr<IPacketFormat> format_;
     std::vector<std::unique_ptr<IFramingLayer>> layers_;
     std::unique_ptr<ITransport> transport_;
+    std::mutex sendMutex_;
 };
 
 } // namespace mcs

@@ -6,6 +6,7 @@
 #include <fstream>
 #include <regex>
 #include <sstream>
+#include <thread>
 
 using namespace mcs;
 
@@ -53,4 +54,36 @@ TEST(PacketLog, WarnsOnceWhenUnwritable)
     ASSERT_TRUE(first.has_value());
     EXPECT_NE(first->find("cannot write packet log"), std::string::npos);
     EXPECT_FALSE(log.record({"t", "c", "n", {1}, false}).has_value());   // only once
+}
+
+TEST(PacketLog, RecordsEventLines)
+{
+    test::TempDir dir;
+    PacketLog log(dir.path());
+    EXPECT_FALSE(log.recordEvent("sil", "cfdp=done id=0.23_7 result=SUCCESS"));
+    EXPECT_NE(readAll(log.currentFile()).find(" target=sil cfdp=done id=0.23_7 result=SUCCESS\n"),
+              std::string::npos);
+}
+
+TEST(PacketLog, LinesFromTwoThreadsDoNotMix)
+{
+    test::TempDir dir;
+    PacketLog log(dir.path());
+    const auto writer = [&log](const std::string& who) {
+        for (int i = 0; i < 200; ++i) {
+            log.recordEvent("sil", who + "=" + std::string(100, 'x'));
+        }
+    };
+    std::thread a(writer, "a");
+    std::thread b(writer, "b");
+    a.join();
+    b.join();
+    std::istringstream lines(readAll(log.currentFile()));
+    std::string line;
+    int count = 0;
+    while (std::getline(lines, line)) {
+        ++count;
+        EXPECT_TRUE(std::regex_search(line, std::regex(R"( target=sil [ab]=x{100}$)"))) << line;
+    }
+    EXPECT_EQ(count, 400);
 }

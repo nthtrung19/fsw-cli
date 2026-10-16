@@ -63,15 +63,26 @@ std::string PacketLog::timestamp()
 
 std::optional<std::string> PacketLog::record(const LogEntry& entry)
 {
+    return append(timestamp() + " target=" + entry.target + " cmd=\"" + escapeQuotes(entry.commandLine) + "\" "
+                  + entry.note + " bytes=" + std::to_string(entry.wire.size())
+                  + (entry.dryRun ? " dryrun=true" : "") + " wire=" + toHex(entry.wire));
+}
+
+std::optional<std::string> PacketLog::recordEvent(const std::string& target, const std::string& fields)
+{
+    return append(timestamp() + " target=" + target + " " + fields);
+}
+
+std::optional<std::string> PacketLog::append(const std::string& line)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
     const auto file = currentFile();
     std::error_code ec;
     std::filesystem::create_directories(directory_, ec);
 
     std::ofstream out(file, std::ios::app);
     if (out) {
-        out << timestamp() << " target=" << entry.target << " cmd=\"" << escapeQuotes(entry.commandLine)
-            << "\" " << entry.note << " bytes=" << entry.wire.size()
-            << (entry.dryRun ? " dryrun=true" : "") << " wire=" << toHex(entry.wire) << '\n';
+        out << line << '\n';
         out.flush();
     }
     if (out) {

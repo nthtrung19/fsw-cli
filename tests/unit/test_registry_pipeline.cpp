@@ -7,6 +7,9 @@
 
 #include <gtest/gtest.h>
 
+#include <set>
+#include <thread>
+
 using namespace mcs;
 
 // ---- registry -------------------------------------------------------------------
@@ -115,4 +118,27 @@ TEST(Pipeline, RequiresFormatAndTransport)
     std::vector<Bytes> sent;
     EXPECT_THROW(Pipeline(nullptr, {}, std::make_unique<test::FakeTransport>(&sent)), ConfigError);
     EXPECT_THROW(Pipeline(std::make_unique<CcsdsV1Format>(Endian::Little), {}, nullptr), ConfigError);
+}
+
+TEST(Pipeline, ConcurrentSendersKeepSequenceCountsUnique)
+{
+    // Commands (UI thread) and CFDP PDUs (transfer worker) share one pipeline.
+    std::vector<Bytes> sent;
+    Pipeline p(std::make_unique<CcsdsV1Format>(Endian::Little), {},
+               std::make_unique<test::FakeTransport>(&sent));
+    const auto sender = [&p] {
+        for (int i = 0; i < 1000; ++i) {
+            p.send({0x192D, 0, {0x01, 0x02}});
+        }
+    };
+    std::thread a(sender);
+    std::thread b(sender);
+    a.join();
+    b.join();
+    ASSERT_EQ(sent.size(), 2000u);
+    std::set<unsigned> sequences;
+    for (const auto& packet : sent) {
+        sequences.insert(((packet[2] & 0x3Fu) << 8) | packet[3]);
+    }
+    EXPECT_EQ(sequences.size(), 2000u);   // 0..1999, none twice, none lost
 }

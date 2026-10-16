@@ -21,12 +21,14 @@ Pipeline::Pipeline(std::unique_ptr<IPacketFormat> format,
 
 Pipeline::Result Pipeline::send(const CommandMessage& message)
 {
+    std::lock_guard<std::mutex> lock(sendMutex_);
     BuiltPacket built = format_->build(message);
     return wrapAndSend(std::move(built.bytes), std::move(built.note));
 }
 
 Pipeline::Result Pipeline::sendRaw(const Bytes& packet)
 {
+    std::lock_guard<std::mutex> lock(sendMutex_);
     return wrapAndSend(packet, "raw");
 }
 

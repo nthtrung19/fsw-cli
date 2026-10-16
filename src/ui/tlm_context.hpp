@@ -3,6 +3,7 @@
 // Telemetry state shared by the full-screen session and the `tlm` menu
 // commands. Everything except the store is used on the UI thread only.
 
+#include "service/file_transfer_service.hpp"
 #include "telemetry/telemetry_service.hpp"
 #include "telemetry/tlm_store.hpp"
 
@@ -26,6 +27,7 @@ struct TlmContext {
     TlmStore* store = nullptr;               // null: no telemetry block for the target
     TelemetryService* service = nullptr;     // null: no receiver (see receiverError)
     std::string receiverError;               // why the receiver could not be opened
+    FileTransferService* files = nullptr;    // null: no "cfdp" block for the target
     TlmViewState view;
 };
 

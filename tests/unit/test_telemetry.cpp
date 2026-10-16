@@ -5,6 +5,7 @@
 #include "telemetry/ccsds_tlm_parser.hpp"
 #include "telemetry/tlm_catalog.hpp"
 #include "telemetry/tlm_decoder.hpp"
+#include "telemetry/telemetry_service.hpp"
 #include "telemetry/tlm_store.hpp"
 #include "unit/test_helpers.hpp"
 
@@ -12,6 +13,8 @@
 
 #include <cstring>
 #include <map>
+#include <mutex>
+#include <thread>
 
 using namespace mcs;
 using namespace mcs::test;
@@ -605,4 +608,63 @@ TEST(TlmStore, BoundedBuffersAndClear)
     EXPECT_TRUE(s.events.empty());
     EXPECT_EQ(s.counters.received, 0U);
     EXPECT_EQ(s.counters.gaps, 0U);
+}
+
+namespace {
+
+// Hands out queued datagrams, then times out.
+class QueueReceiver : public IReceiver {
+public:
+    explicit QueueReceiver(std::vector<Bytes> packets) : packets_(std::move(packets)) {}
+    std::optional<Bytes> receive(std::chrono::milliseconds timeout) override
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (next_ < packets_.size()) {
+            return packets_[next_++];
+        }
+        std::this_thread::sleep_for(std::min(timeout, std::chrono::milliseconds(5)));
+        return std::nullopt;
+    }
+    std::string describe() const override { return "queue://"; }
+
+private:
+    std::mutex mutex_;
+    std::vector<Bytes> packets_;
+    std::size_t next_ = 0;
+};
+
+} // namespace
+
+TEST(TelemetryService, SinksSeeEveryDatagramAfterTheStore)
+{
+    TelemetryCatalog catalog;
+    TlmStore store(catalog, Endian::Little);
+    const Bytes a = test::tlmPacket(0x092D, 1, {0x04, 0x00});
+    const Bytes b = test::tlmPacket(0x0899, 2, {0x01});
+    TelemetryService service(std::make_unique<QueueReceiver>(std::vector<Bytes>{a, b}), store);
+    std::mutex mutex;
+    std::vector<Bytes> seen;
+    std::size_t storedWhenSeen = 0;
+    service.addSink([&](const Bytes& d) {
+        std::lock_guard<std::mutex> lock(mutex);
+        seen.push_back(d);
+        storedWhenSeen = store.counters().received;
+    });
+    service.addSink([](const Bytes&) { throw std::runtime_error("sink failed"); });
+    service.start({});
+    EXPECT_THROW(service.addSink([](const Bytes&) {}), std::logic_error);
+    for (int i = 0; i < 200; ++i) {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (seen.size() == 2) {
+                break;
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    service.stop();
+    ASSERT_EQ(seen.size(), 2u);
+    EXPECT_EQ(seen[0], a);
+    EXPECT_EQ(seen[1], b);
+    EXPECT_EQ(storedWhenSeen, 2u);   // the store had the packet before the sink ran
 }

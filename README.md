@@ -24,7 +24,7 @@ git clone --recurse-submodules <repo-url> mcs      # or extract the archive
 cd mcs
 cmake -S . -B build
 cmake --build build -j
-ctest --test-dir build                                  # 184 tests
+ctest --test-dir build                                  # 288 tests
 ```
 
 Missing submodules: `git submodule update --init --recursive`.
@@ -148,10 +148,49 @@ their column.
 | `tlm view console\|telemetry` | Switch screen (same as F1/F2) |
 | `tlm show <packet>\|<mid>\|all`, `tlm hide ...` | Tick/untick packets in the telemetry checklist, e.g. `tlm show ds.hk`, `tlm show 0x0899` |
 | `tlm pause [on\|off]`, `tlm clear`, `tlm status` | Freeze the display; forget values, events and counters; show receiver and counters |
+| `file put <local> <remote> [class1\|class2]` | Send a ground file to the FSW, e.g. `file put test.bin /cf/test.bin class2` |
+| `file get <remote> [local] [class1\|class2]` | Ask CF to send a file and receive it, e.g. `file get /cf/log/hk_0001.dat` |
+| `file list`, `file status <id>` | Active and recent transfers; details of one (`0.24_7`) |
+| `file cancel\|abandon <id>\|all`, `file suspend\|resume <id>` | Control a transfer |
 | `history`, `exit` | Library built-ins |
 
-Session commands (`target`, `verbose`, `raw`, `arm`, `tlm ...`) are typed at the
-top level (`mcs>`). The `tlm` commands exist in the full-screen session only.
+Session commands (`target`, `verbose`, `raw`, `arm`, `tlm ...`, `file ...`) are typed at the
+top level (`mcs>`). The `tlm` commands exist in the full-screen session only; the
+`file` commands exist when the target has a `cfdp` block.
+
+### File transfer (CFDP)
+
+mcs is the ground CFDP entity (`0.23`) for CF (`0.24`). It runs the same CFDP
+engine as CF 2.2.1 (the GSFC library, `external/cfdp-gsfc`), so both sides speak
+exactly the same protocol.
+
+- **`file put`**: the file goes up as CFDP PDUs, each sent as a command on
+  `0x192D` (CF_INCOMING_PDU_MID) through the normal pipeline, paced to
+  `pdus_per_second`. Class 2: CF acknowledges and asks again for lost data.
+- **`file get`**: mcs sends `fsw cf playback_file <class> 0 0 keep 0.23 <remote> <remote>`;
+  CF's PDUs come back as telemetry on `0x092D` and the file is stored as
+  `<downlink_dir>/<remote path>` (e.g. `downlink/cf/log/hk_0001.dat`), or moved
+  to `[local]`. Files CF sends without a `file get` (polling directories,
+  playback commands typed by hand) are stored too.
+- **Batch mode** (`-c`, `-f`): `file put/get` wait until the transfer ends and
+  print progress; the exit code is 1 if it failed. In a session they return
+  at once.
+- **Full-screen session**: the header shows `FILES ↑1 ↓1` while transfers run,
+  and the F1 console shows a TRANSFERS strip (progress bar, rate, ETA per
+  transfer) between EVENTS and COMMAND OUTPUT; start and end notices go to the
+  command output (✔ done, ✘ failed, ⊘ cancelled). Quitting while transfers run
+  asks once more.
+- **Safety**: received files never leave `downlink_dir` (names with `..` are
+  refused), never overwrite a file (`name(1).ext`), and appear only after the
+  checksum is good (they are written to `downlink_dir/.part/` first).
+- Each transfer adds a `cfdp=start` and a `cfdp=end` line to the packet log;
+  directive PDUs (MD, EOF, ACK, NAK, FIN) are logged like commands, file data
+  is counted.
+
+Downlink speed is set by CF: one wakeup per second, 4 engine cycles, one
+4000-byte PDU per cycle, so about 16 KB/s and one file at a time. If a `file get`
+never starts, check CF's events and `cf.hk err_counter` (missing file, queue
+full), and that TO sends telemetry (`fsw ci enable_to`).
 
 Every sent packet is appended to `mcs-YYYYMMDD.log` in the current directory
 (`--log-dir DIR` to change, `--no-log` to disable).
@@ -173,6 +212,15 @@ types: `u8..u64`, `i8..i64`, `f32`, `f64`, `string` (with `size`), `padding`
 only their listed values, by name or number. Any non-padding field may have a
 `default` (string or number), used when its argument is omitted; only trailing
 arguments can be omitted, and defaults are validated at start-up.
+
+A target's optional `"cfdp"` block turns on file transfer (it needs the
+`telemetry` block: CF's PDUs arrive as telemetry). Every key is optional; the
+defaults are CF 2.2.1 on the SIL: `local_entity` `"0.23"`, `remote_entity`
+`"0.24"`, `uplink_mid` `"0x192D"`, `downlink_mid` `"0x092D"`, `chunk_size` 512
+(file bytes per uplink PDU, limited by CI's datagram buffer), `pdus_per_second`
+100, `downlink_dir` `"downlink"`, class 2 timers `ack_timeout` 10, `ack_limit` 2,
+`nak_timeout` 5, `nak_limit` 3, `inactivity_timeout` 30 (seconds),
+`save_incomplete` false.
 
 `config/telemetry/<app>.json` defines an app's telemetry packets, one per MID,
 with fields in payload order after the 12-byte telemetry header (same field
@@ -197,6 +245,7 @@ messages) is shipped; housekeeping definitions are written from each app's
 config/         targets.json, telecommand/*.json, telemetry/*.json (shipped configuration)
 docs/DESIGN.md  design specification
 external/       third-party submodules (do not edit; cli changes go in its fork, other fixes in external/patches/)
+external/cfdp-gsfc  the GSFC CFDP library of CF 2.2.1, vendored unmodified except config/cfdp_config.h
 src/core        bytes, byte order, hex, plug-in options, errors
 src/catalog     app/command/field definitions + validation
 src/encode      arguments -> payload bytes
@@ -206,14 +255,16 @@ src/registry    plug-in names -> factories (builtin_plugins.cpp)
 src/pipeline    format -> layers -> transport
 src/config      JSON files -> the objects above (only JSON-aware module)
 src/log         packet audit log
-src/service     CommandService: one command end to end
+src/service     CommandService: one command end to end; FileTransferService: file put/get
 src/telemetry   telemetry catalog, CCSDS telemetry parser, decoder, TlmStore, receiver thread
+src/cfdp        CFDP engine interface, adapter to the GSFC library (gsfc_engine, C bridge), PDU inspector
 src/ui          menu tree, full-screen session (only modules using the cli and FTXUI libraries)
 src/app         main, command-line options
 tests/unit        GoogleTest per module
 tests/oracle      mcs packets vs. cFE 6.7 ccsds.h/ccsds.c
 tests/integration real UDP on loopback
 tests/smoke       the executable, checked for output and exit codes
+tests/e2e         file put/get with the executable against tests/tools/cfdp_peer (a CF stand-in)
 ```
 
 ## Testing against cFS
@@ -226,6 +277,15 @@ With cFS running and `ci_lab` listening on 127.0.0.1:1234:
 4. In `mcs` (full screen): `fsw to enable_output 127.0.0.1 5011`, then `fsw ds noop` →
    the DS no-op event appears in the console's event pane; after `fsw ds hk`, the
    DS housekeeping card (F2, tick `ds.hk`) shows the command counter +1.
+
+5. File transfer, with TO sending telemetry (step 4):
+   - `mcs -c "file get /cf/<some file> class1"` → CF events "Outgoing trans started"
+     and "…success"; the file in `downlink/cf/...` matches the FSW's copy (`cmp`).
+   - `mcs -c "file put test.bin /cf/test.bin class1"`, then with `class2` → CF events
+     "Incoming trans started" and "…success"; `cf.hk up_success_counter` +1;
+     `cmp test.bin` with the SIL's `/cf/test.bin`.
+   - In the full-screen session, start a `file put` and a `file get` together and
+     watch both in the TRANSFERS strip.
 
 UDP is fire-and-forget: "sent" means the datagram left this machine. Confirm
 reception in the cFS event log.

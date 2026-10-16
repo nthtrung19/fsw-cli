@@ -91,6 +91,9 @@ foreach(_ftxui screen dom component)
     mcs_as_system_headers(${_ftxui})
 endforeach()
 
+# GSFC CFDP library from CF 2.2.1 (vendored, C). File transfer (src/cfdp).
+add_subdirectory(external/cfdp-gsfc)
+
 # ----------------------------------------------------------------------------
 # Our code
 # ----------------------------------------------------------------------------
