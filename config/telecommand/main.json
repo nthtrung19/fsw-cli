@@ -10,8 +10,10 @@
 //   default  value used when the argument is omitted (only trailing arguments may be omitted)
 // Numbers may be written as JSON integers or as "0x.." strings.
 // Fields are listed in payload order, after the 8-byte command header (CFE_SB_CmdHdr_t =
-// CCSDS_CommandPacket_t, 2-byte aligned). Layouts are the x86-64 build; compiler-inserted holes
-// and spare members are listed as padding (set_charging_state: 1 byte after the bool).
+// CCSDS_CommandPacket_t, 2-byte aligned). Layouts are the PC build (i386, 32-bit), checked
+// against its debug info; the structs carry explicit padding, so the layouts are the same on
+// 64-bit and ARM builds. Compiler-inserted holes and spare members are listed as padding
+// (set_charging_state: 1 byte after the bool).
 // MAIN checks the exact packet length (MAIN_VerifyMsgLength) of every command except the
 // prop_ commands and capture.
 //

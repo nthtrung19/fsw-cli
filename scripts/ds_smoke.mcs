@@ -1,0 +1,27 @@
+# DS smoke test against the FSW (PC build). Start the FSW first
+# (cd ~/SDE/fsw && sudo ./run_fsw.sh), then:
+#
+#   ./build/src/mcs -f scripts/ds_smoke.mcs           # run
+#   ./build/src/mcs --check -f scripts/ds_smoke.mcs   # check only, nothing sent
+#
+# Event IDs: ds_events.h (DS_NOOP_CMD_EID 31, DS_CMD_CODE_ERR_EID 21).
+# DS housekeeping (ds.hk) comes every second once TO sends telemetry.
+
+fsw to enable_output 127.0.0.1 5011
+wait 2
+
+test DS-001 "NOOP is accepted and reported" req DS-NOOP
+  save n ds.hk cmd_accepted_counter
+  fsw ds noop
+  expect-event DS id 31 type INFO text "NOOP command"
+  expect ds.hk cmd_accepted_counter == $n+1
+  expect-no-event DS type ERROR for 2
+end
+
+test DS-002 "An invalid command code is rejected" req DS-CC
+  save r ds.hk cmd_rejected_counter
+  # DS_CMD_MID with command code 99 (0x63); 0F is the checksum.
+  raw 19 4B C0 00 00 01 0F 63
+  expect-event DS id 21 type ERROR text "Invalid command code"
+  expect ds.hk cmd_rejected_counter == $r+1
+end

@@ -43,6 +43,8 @@ Options parseOptions(int argc, char* argv[])
                 throw std::invalid_argument("only one -f/--file may be given");
             }
             opts.script = value();
+        } else if (arg == "--check") {
+            opts.checkOnly = true;
         } else if (arg == "--list-targets") {
             opts.listTargets = true;
         } else if (arg == "--plain") {
@@ -61,6 +63,9 @@ Options parseOptions(int argc, char* argv[])
 
     if (opts.script && !opts.commands.empty()) {
         throw std::invalid_argument("-c and -f cannot be combined");
+    }
+    if (opts.checkOnly && !opts.script && opts.commands.empty()) {
+        throw std::invalid_argument("--check needs -f FILE or -c CMD");
     }
     return opts;
 }
@@ -91,18 +96,24 @@ std::string usageText(const std::string& programName)
            "\n"
            "Batch mode:\n"
            "  -c, --command CMD     Run one command and exit (repeatable, run in order)\n"
-           "  -f, --file FILE       Run commands from a file, one per line ('#' = comment)\n"
+           "  -f, --file FILE       Run a script, one command per line ('#' = comment); every\n"
+           "                        line is checked first, and nothing is sent if one is wrong\n"
+           "      --check           Only check the -f/-c lines (names, arguments); send nothing\n"
+           "\n"
+           "Script checks (batch mode): wait, timeout, expect, expect-event, expect-no-event,\n"
+           "save (then $name, $name+1), test ID ... end. See README, \"Testing with scripts\".\n"
            "\n"
            "  -h, --help            Show this help\n"
            "      --version         Show version\n"
            "\n"
-           "Exit codes: 0 ok, 1 a command failed, 2 bad options, 3 configuration error.\n"
+           "Exit codes: 0 ok, 1 a command or check failed, 2 bad options, 3 configuration error.\n"
            "\n"
            "Examples:\n"
            "  " + programName + "\n"
            "  " + programName + " -c \"fsw ds noop\"\n"
            "  " + programName + " --dry-run -c \"fsw ds set_app_state enable\"\n"
-           "  " + programName + " --target fsw -f commands.txt\n";
+           "  " + programName + " --target fsw -f commands.txt\n"
+           "  " + programName + " --check -f scripts/ds_smoke.mcs\n";
 }
 
 } // namespace mcs::app

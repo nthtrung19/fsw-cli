@@ -17,6 +17,7 @@ struct Options {
     bool noLog = false;                      // --no-log
     std::vector<std::string> commands;       // -c CMD (repeatable, in order)
     std::optional<std::string> script;       // -f FILE
+    bool checkOnly = false;                  // --check: check the -c/-f lines, run nothing
     bool listTargets = false;                // --list-targets
     bool plain = false;                      // --plain: line-mode session, no telemetry
     std::optional<std::uint16_t> tlmPort;    // --tlm-port N

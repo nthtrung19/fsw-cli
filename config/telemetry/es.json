@@ -3,7 +3,7 @@
 // ntpm_platform_cfg.h.
 //
 // Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
-// in targets.json. Layouts are the NTPM PC build (pc_linux, x86-64, 64-bit), checked
+// in targets.json. Layouts are the NTPM PC build (pc_linux, i386, 32-bit), checked
 // with offsetof against the FSW headers.
 //   packets  one entry per telemetry MID the app sends
 //   event    true for EVS event packets: shown in the event log
@@ -29,8 +29,8 @@
 //                        CFE_MISSION_MAX_API_LEN 20, CFE_MISSION_MAX_PATH_LEN 64,
 //                        CFE_MISSION_ES_MAX_SHELL_PKT 64
 //   cfe_es.h             CFE_ES_MAX_MEMPOOL_BLOCK_SIZES 17
-//   CFE_ES_MemHandle_t is a cpuaddr: 8 bytes on the PC build, so mem_stats starts with a
-//   4-byte hole (flight 32-bit ARM layouts differ).
+//   CFE_ES_MemHandle_t is a cpuaddr: 4 bytes on the 32-bit PC build (8 bytes, with a 4-byte
+//   hole before it, on a 64-bit build).
 {
   "app": "es",
   "help": "cFE Executive Services",
@@ -122,8 +122,7 @@
       "mid": "0x0810",
       "help": "Memory pool statistics, on CFE_ES_SEND_MEM_POOL_STATS_CC (CFE_ES_MemStatsTlm_t)",
       "fields": [
-        { "type": "padding", "size": 4 },
-        { "name": "pool_handle", "type": "u64", "hex": true },
+        { "name": "pool_handle", "type": "u32", "hex": true },
         { "name": "pool_size", "type": "u32", "units": "B" },
         { "name": "num_blocks_requested", "type": "u32" },
         { "name": "check_err_ctr", "type": "u32" },
@@ -132,8 +131,7 @@
             { "name": "block_size", "type": "u32", "units": "B" },
             { "name": "num_created", "type": "u32" },
             { "name": "num_free", "type": "u32" }
-          ] },
-        { "type": "padding", "size": 4 }
+          ] }
       ]
     },
     {

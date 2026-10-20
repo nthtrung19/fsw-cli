@@ -73,7 +73,24 @@ struct CI_EnableTOCmd_t {
 };
 static_assert(sizeof(CI_EnableTOCmd_t) == 26, "unexpected padding");
 
-// AOCS command structs, copied from aocs_cmds.h (layout as built for x86-64).
+// EVS command structs, copied from cfe_evs_msg.h (CFE_MISSION_MAX_API_LEN 20).
+struct CFE_EVS_BitMaskCmd_t {
+    uint8 CmdHeader[8];
+    uint8 BitMask;
+    uint8 Spare;
+};
+static_assert(sizeof(CFE_EVS_BitMaskCmd_t) == 10, "unexpected padding");
+
+struct CFE_EVS_AppNameBitMaskCmd_t {
+    uint8 CmdHeader[8];
+    char AppName[20];
+    uint8 BitMask;
+    uint8 Spare;
+};
+static_assert(sizeof(CFE_EVS_AppNameBitMaskCmd_t) == 30, "unexpected padding");
+
+// AOCS command structs, copied from aocs_cmds.h (explicit padding: the same layout on the
+// i386 PC build).
 struct AOCS_AttitudeCoordinateCmd_t {
     uint8 CmdHeader[8];
     double Coordinate[3];
@@ -129,6 +146,9 @@ struct AOCS_ChangeTestSolution_t {
 };
 static_assert(sizeof(AOCS_ChangeTestSolution_t) == 11, "unexpected padding");
 
+// The PC build (lib_simulation_udp) is i386: doubles are 4-byte aligned in structs.
+// pack(4) gives this host the same layout (sizeof and offsets read from aocs.so).
+#pragma pack(push, 4)
 struct AOCS_CalculateOrbitalStateTLE_t {
     uint8 CmdHdr[8];
     uint8 LineNumber;
@@ -143,9 +163,10 @@ struct AOCS_CalculateOrbitalStateTLE_t {
     double MeanMotion;
     double RevolutionNumberAtEpoch;
 };
-static_assert(sizeof(AOCS_CalculateOrbitalStateTLE_t) == 80, "unexpected padding");
+#pragma pack(pop)
+static_assert(sizeof(AOCS_CalculateOrbitalStateTLE_t) == 76, "unexpected padding");
 static_assert(offsetof(AOCS_CalculateOrbitalStateTLE_t, SatelliteCatologNumber) == 12, "hole");
-static_assert(offsetof(AOCS_CalculateOrbitalStateTLE_t, Inclination) == 24, "hole");
+static_assert(offsetof(AOCS_CalculateOrbitalStateTLE_t, Inclination) == 20, "hole");
 
 // SC command structs, copied from sc_msg.h.
 struct SC_StartAtsCmd_t {
@@ -309,7 +330,8 @@ protected:
                                 std::string(mcs_SOURCE_DIR) + "/config/telecommand/aocs.json",
                                 std::string(mcs_SOURCE_DIR) + "/config/telecommand/sc.json",
                                 std::string(mcs_SOURCE_DIR) + "/config/telecommand/fdir.json",
-                                std::string(mcs_SOURCE_DIR) + "/config/telecommand/main.json"});
+                                std::string(mcs_SOURCE_DIR) + "/config/telecommand/main.json",
+                                std::string(mcs_SOURCE_DIR) + "/config/telecommand/evs.json"});
     }
 
     // Full mcs path: catalog -> encoder -> CCSDS v1 format.
@@ -428,6 +450,21 @@ TEST_F(Oracle, SetDestSizeMatchesCfe)
     cmd.FileTableIndex = 7;
     cmd.MaxFileSize = 0x00123456;
     EXPECT_EQ(ours("set_dest_size", {"7", "0x123456"}), cfeBuild(0x194B, 11, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, EvsEnableAppEventTypeMatchesCfe)
+{
+    CFE_EVS_AppNameBitMaskCmd_t cmd{};
+    std::strcpy(cmd.AppName, "DS");
+    cmd.BitMask = 0x01;   // CFE_EVS_DEBUG_BIT
+    EXPECT_EQ(oursIn("evs", "enable_app_event_type", {"DS", "debug"}), cfeBuild(0x1801, 5, 0, &cmd, sizeof cmd));
+}
+
+TEST_F(Oracle, EvsEnableEventTypeMatchesCfe)
+{
+    CFE_EVS_BitMaskCmd_t cmd{};
+    cmd.BitMask = 0x0F;   // DEBUG | INFORMATION | ERROR | CRITICAL
+    EXPECT_EQ(oursIn("evs", "enable_event_type", {"all"}), cfeBuild(0x1801, 2, 0, &cmd, sizeof cmd));
 }
 
 TEST_F(Oracle, CiNoopMatchesCfe)

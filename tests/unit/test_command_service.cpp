@@ -174,3 +174,48 @@ TEST_F(ServiceTest, ArgumentsWithSpacesAreQuotedInReports)
     EXPECT_TRUE(service_->execute("fm", "delete", {"/cf/my file"}, out_));
     EXPECT_NE(out_.str().find("sent fsw fm delete \"/cf/my file\""), std::string::npos) << out_.str();
 }
+
+TEST_F(ServiceTest, RemembersWhenTheLastPacketWasSent)
+{
+    EXPECT_FALSE(service_->lastSentAt());
+    const auto before = std::chrono::system_clock::now();
+    ASSERT_TRUE(run("noop"));
+    ASSERT_TRUE(service_->lastSentAt());
+    EXPECT_GE(*service_->lastSentAt(), before);
+    const auto first = *service_->lastSentAt();
+    EXPECT_FALSE(run("set_app_state", {"maybe"}));   // nothing sent: unchanged
+    EXPECT_EQ(*service_->lastSentAt(), first);
+}
+
+TEST_F(ServiceTest, CheckValidatesWithoutSending)
+{
+    std::ostringstream out;
+    EXPECT_TRUE(service_->check("ds", "set_app_state", {"enable"}, true, out));
+    EXPECT_FALSE(service_->check("ds", "set_app_state", {"maybe"}, true, out));
+    EXPECT_FALSE(service_->check("ds", "nope", {}, true, out));
+    EXPECT_FALSE(service_->check("ds", "set_app_state", {}, true, out));
+    // Values from variables are not known yet: only the command and the count are checked.
+    EXPECT_TRUE(service_->check("ds", "set_app_state", {"maybe"}, false, out));
+    EXPECT_FALSE(service_->check("ds", "set_app_state", {"1", "2"}, false, out));
+    EXPECT_FALSE(service_->check("ds", "nope", {}, false, out));
+    EXPECT_TRUE(service_->checkRaw({"19", "4B"}, true, out));
+    EXPECT_FALSE(service_->checkRaw({"zz"}, true, out));
+    EXPECT_TRUE(service_->checkRaw({"$x"}, false, out));
+
+    EXPECT_TRUE(sent_.empty());
+    EXPECT_EQ(service_->packetsSent(), 0U);
+    EXPECT_FALSE(service_->lastSentAt());
+    EXPECT_EQ(service_->failures(), 6U);
+    EXPECT_NE(out.str().find("error: set_app_state: invalid value 'maybe'"), std::string::npos);
+    EXPECT_NE(out.str().find("expected 1 argument, got 2"), std::string::npos);
+}
+
+TEST_F(ServiceTest, CheckTracksArming)
+{
+    std::ostringstream out;
+    EXPECT_FALSE(service_->check("ds", "wipe", {}, true, out));
+    service_->arm();
+    EXPECT_TRUE(service_->check("ds", "wipe", {}, true, out));
+    EXPECT_FALSE(service_->check("ds", "wipe", {}, true, out));   // arming covers one command
+    EXPECT_TRUE(sent_.empty());
+}

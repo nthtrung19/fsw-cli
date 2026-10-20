@@ -92,6 +92,16 @@ const TlmPacketDef* TelemetryCatalog::find(std::uint16_t mid) const
     return it == byMid_.end() ? nullptr : &packets_[it->second];
 }
 
+const TlmPacketDef* TelemetryCatalog::findByName(std::string_view fullName) const
+{
+    for (const auto& p : packets_) {
+        if (iequals(p.fullName(), fullName)) {
+            return &p;
+        }
+    }
+    return nullptr;
+}
+
 std::vector<std::string> TelemetryCatalog::apps() const
 {
     std::vector<std::string> out;

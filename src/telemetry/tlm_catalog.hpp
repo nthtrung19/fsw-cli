@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -20,6 +21,9 @@ public:
     void add(TlmPacketDef packet);
 
     const TlmPacketDef* find(std::uint16_t mid) const;
+
+    // "ds.hk" (TlmPacketDef::fullName), case-insensitive.
+    const TlmPacketDef* findByName(std::string_view fullName) const;
 
     // In the order they were added (catalog file order).
     const std::vector<TlmPacketDef>& packets() const { return packets_; }

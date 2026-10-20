@@ -180,18 +180,23 @@ std::string argumentsText(std::size_t n) { return n == 1 ? " argument" : " argum
 
 } // namespace
 
-Bytes PayloadEncoder::encode(const CommandDef& command, const std::vector<std::string>& args) const
+void PayloadEncoder::checkArgumentCount(const CommandDef& command, std::size_t count)
 {
     const std::size_t required = command.requiredArgCount();
     const std::size_t total = command.argCount();
-    if (args.size() < required || args.size() > total) {
+    if (count < required || count > total) {
         const std::string expected = required == total
                                          ? std::to_string(total) + argumentsText(total)
                                          : std::to_string(required) + " to " + std::to_string(total)
                                                + argumentsText(total);
         throw ParseError(command.name + ": expected " + expected + ", got "
-                         + std::to_string(args.size()) + "\n  usage: " + command.usage());
+                         + std::to_string(count) + "\n  usage: " + command.usage());
     }
+}
+
+Bytes PayloadEncoder::encode(const CommandDef& command, const std::vector<std::string>& args) const
+{
+    checkArgumentCount(command, args.size());
 
     ByteWriter w(endian_);
     std::size_t next = 0;

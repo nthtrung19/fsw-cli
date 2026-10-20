@@ -3,18 +3,23 @@
 #include "core/text.hpp"
 #include "ui/fsw_command.hpp"
 #include "ui/help_format.hpp"
+#include "ui/script_runner.hpp"
 #include "ui/transfer_format.hpp"
 
 #include <cli/cli.h>
 
 #include <algorithm>
+#include <filesystem>
 #include <memory>
+#include <sys/ioctl.h>
+#include <unistd.h>
 
 namespace mcs::ui {
 
 namespace {
 
-std::unique_ptr<cli::Menu> buildFswMenu(CommandService& service)
+// `checkWith`: check-only session (the commands are checked, not sent).
+std::unique_ptr<cli::Menu> buildFswMenu(CommandService& service, const VerifyService* checkWith)
 {
     auto fsw = std::make_unique<cli::Menu>("fsw", "Send commands to flight software (target '"
                                                       + service.targetName() + "')");
@@ -34,9 +39,13 @@ std::unique_ptr<cli::Menu> buildFswMenu(CommandService& service)
             }
             appMenu->Insert(std::make_unique<FswCommand>(
                 cmd.name, help, cmd.paramDescriptions(),
-                [&service, appName = app.name, cmdName = cmd.name](
+                [&service, checkWith, appName = app.name, cmdName = cmd.name](
                     std::ostream& out, const std::vector<std::string>& args) {
-                    service.execute(appName, cmdName, args, out);
+                    if (checkWith != nullptr) {
+                        service.check(appName, cmdName, args, checkWith->valuesKnown(), out);
+                    } else {
+                        service.execute(appName, cmdName, args, out);
+                    }
                 },
                 // The catalog outlives the menu, so the definition can be held by pointer.
                 [def = &cmd](std::size_t index, const std::string& partial) {
@@ -48,7 +57,8 @@ std::unique_ptr<cli::Menu> buildFswMenu(CommandService& service)
     return fsw;
 }
 
-void insertSessionCommands(cli::Menu& root, CommandService& service, std::size_t& sessionErrors)
+void insertSessionCommands(cli::Menu& root, CommandService& service, std::size_t& sessionErrors,
+                           const VerifyService* checkWith)
 {
     root.Insert(std::make_unique<FswCommand>(
         "target", "Show the active target, its protocol stack and catalog", std::vector<std::string>{},
@@ -99,8 +109,12 @@ void insertSessionCommands(cli::Menu& root, CommandService& service, std::size_t
     root.Insert(std::make_unique<FswCommand>(
         "raw", "Send pre-built packet bytes, e.g. raw 19 4B C0 00 00 01 6C 00",
         std::vector<std::string>{"hex bytes..."},
-        [&service](std::ostream& out, const std::vector<std::string>& args) {
-            service.executeRaw(args, out);
+        [&service, checkWith](std::ostream& out, const std::vector<std::string>& args) {
+            if (checkWith != nullptr) {
+                service.checkRaw(args, checkWith->valuesKnown(), out);
+            } else {
+                service.executeRaw(args, out);
+            }
         }));
 
     root.Insert(std::make_unique<FswCommand>(
@@ -353,12 +367,13 @@ std::unique_ptr<cli::Menu> buildFileMenu(FileTransferService& files, std::size_t
     };
     const bool batch = mode == FileMenuMode::Batch;
     const bool plain = mode == FileMenuMode::Plain;
+    const bool check = mode == FileMenuMode::Check;
 
 
     menu->Insert(std::make_unique<FswCommand>(
         "put", "Send a ground file to the FSW, e.g. file put test.bin /cf/test.bin class2",
         std::vector<std::string>{"local", "remote", "class1|class2"},
-        [&files, failed, batch, plain, &sessionErrors](std::ostream& out, const std::vector<std::string>& args) {
+        [&files, failed, batch, plain, check, &sessionErrors](std::ostream& out, const std::vector<std::string>& args) {
             if (plain) {
                 printNotices(files, out);
             }
@@ -372,6 +387,9 @@ std::unique_ptr<cli::Menu> buildFileMenu(FileTransferService& files, std::size_t
                     return failed(out, "file put: '" + args[2] + "' is not class1 or class2");
                 }
                 cls = *c;
+            }
+            if (check) {
+                return;
             }
             std::string error;
             const auto id = files.put(args[0], args[1], cls, error);
@@ -416,7 +434,7 @@ std::unique_ptr<cli::Menu> buildFileMenu(FileTransferService& files, std::size_t
     menu->Insert(std::make_unique<FswCommand>(
         "get", "Ask CF to send a file and receive it, e.g. file get /cf/log/hk.dat",
         std::vector<std::string>{"remote", "local", "class1|class2"},
-        [&files, failed, batch, plain, &sessionErrors](std::ostream& out, const std::vector<std::string>& args) {
+        [&files, failed, batch, plain, check, &sessionErrors](std::ostream& out, const std::vector<std::string>& args) {
             if (plain) {
                 printNotices(files, out);
             }
@@ -433,6 +451,9 @@ std::unique_ptr<cli::Menu> buildFileMenu(FileTransferService& files, std::size_t
                 } else {
                     return failed(out, "usage: file get <remote path> [local path] [class1|class2]");
                 }
+            }
+            if (check) {
+                return;
             }
             const auto ticket = files.get(args[0], local, cls, out);
             if (!ticket) {
@@ -477,7 +498,10 @@ std::unique_ptr<cli::Menu> buildFileMenu(FileTransferService& files, std::size_t
 
     menu->Insert(std::make_unique<FswCommand>(
         "list", "List active and recent transfers", std::vector<std::string>{},
-        [&files](std::ostream& out, const std::vector<std::string>&) {
+        [&files, check](std::ostream& out, const std::vector<std::string>&) {
+            if (check) {
+                return;
+            }
             printNotices(files, out);
             for (const auto& line : listLines(files.transfers())) {
                 out << line << '\n';
@@ -486,9 +510,12 @@ std::unique_ptr<cli::Menu> buildFileMenu(FileTransferService& files, std::size_t
 
     menu->Insert(std::make_unique<FswCommand>(
         "status", "Details of one transfer", std::vector<std::string>{"id"},
-        [&files, failed](std::ostream& out, const std::vector<std::string>& args) {
+        [&files, failed, check](std::ostream& out, const std::vector<std::string>& args) {
             if (args.size() != 1) {
                 return failed(out, "usage: file status <id>   (e.g. 0.24_7; 'file list' shows them)");
+            }
+            if (check) {
+                return;
             }
             const auto id = cfdp::parseTransactionId(args[0]);
             for (const auto& s : files.transfers()) {
@@ -516,12 +543,15 @@ std::unique_ptr<cli::Menu> buildFileMenu(FileTransferService& files, std::size_t
                              Control{"resume", cfdp::RequestKind::Resume, "Continue a suspended transfer", false}}) {
         menu->Insert(std::make_unique<FswCommand>(
             c.name, c.help, std::vector<std::string>{c.all ? "id|all" : "id"},
-            [&files, failed, c](std::ostream& out, const std::vector<std::string>& args) {
+            [&files, failed, check, c](std::ostream& out, const std::vector<std::string>& args) {
                 if (args.size() != 1) {
                     return failed(out, std::string("usage: file ") + c.name + (c.all ? " <id>|all" : " <id>"));
                 }
                 if (!c.all && iequals(args[0], "all")) {
                     return failed(out, std::string("file ") + c.name + ": give one transfer id");
+                }
+                if (check) {
+                    return;
                 }
                 std::string error;
                 if (!files.control(c.kind, args[0], error)) {
@@ -534,7 +564,131 @@ std::unique_ptr<cli::Menu> buildFileMenu(FileTransferService& files, std::size_t
     return menu;
 }
 
+// ---- script checks ----------------------------------------------------------------------
+
+// Batch sessions only: the checks block while they wait.
+void insertVerifyCommands(cli::Menu& root, VerifyService& verify)
+{
+    using Method = bool (VerifyService::*)(const VerifyService::Args&, std::ostream&);
+    struct Entry {
+        const char* name;
+        Method method;
+        const char* help;
+        std::vector<std::string> params;
+    };
+    const Entry entries[] = {
+        {"wait", &VerifyService::wait, "Pause the script, e.g. wait 2 (seconds; 500ms)", {"seconds"}},
+        {"timeout", &VerifyService::setTimeout, "Time limit of the following checks (5 s at the start)",
+         {"seconds"}},
+        {"expect", &VerifyService::expect,
+         "Check telemetry, e.g. expect ds.hk cmd_accepted_counter == $n+1 within 5",
+         {"packet", "field op value", "within seconds"}},
+        {"expect-event", &VerifyService::expectEvent, "Check for an event, e.g. expect-event DS id 1 type INFO",
+         {"APP", "id n", "type T", "text \"...\"", "within seconds"}},
+        {"expect-no-event", &VerifyService::expectNoEvent,
+         "Fail if an event arrives, e.g. expect-no-event DS type ERROR for 2",
+         {"APP", "id n", "type T", "text \"...\"", "for seconds"}},
+        {"save", &VerifyService::save, "Save a telemetry value for $name, e.g. save n ds.hk cmd_accepted_counter",
+         {"name", "packet", "field", "within seconds"}},
+        {"test", &VerifyService::beginTest, "Start a test, e.g. test DS-001 \"NOOP works\" req DS-R1",
+         {"ID", "title", "req R1,R2"}},
+        {"end", &VerifyService::endTest, "End the current test", {}},
+    };
+    for (const Entry& e : entries) {
+        root.Insert(std::make_unique<FswCommand>(
+            e.name, e.help, e.params,
+            [&verify, method = e.method](std::ostream& out, const std::vector<std::string>& args) {
+                (verify.*method)(args, out);
+            }));
+    }
+}
+
+// ---- run <script> (full-screen session) --------------------------------------------------
+
+// "stop", then directories and *.mcs files that match what was typed of a path.
+ArgCompletion scriptCompletion(const std::string& partial)
+{
+    namespace fs = std::filesystem;
+    ArgCompletion c;
+    if (std::string("stop").rfind(toLower(partial), 0) == 0) {
+        c.values.emplace_back("stop", "stop the running script");
+    }
+    const auto slash = partial.find_last_of('/');
+    const std::string dirText = slash == std::string::npos ? "" : partial.substr(0, slash + 1);
+    const std::string prefix = slash == std::string::npos ? partial : partial.substr(slash + 1);
+    std::error_code ec;
+    std::vector<std::pair<std::string, std::string>> found;
+    for (const auto& entry : fs::directory_iterator(dirText.empty() ? "." : dirText, ec)) {
+        const std::string name = entry.path().filename().string();
+        if (name.rfind(prefix, 0) != 0 || (name.front() == '.' && prefix.empty())) {
+            continue;
+        }
+        if (entry.is_directory(ec)) {
+            found.emplace_back(dirText + name + "/", "directory");
+        } else if (entry.path().extension() == ".mcs") {
+            found.emplace_back(dirText + name, "test script");
+        }
+    }
+    std::sort(found.begin(), found.end());
+    c.values.insert(c.values.end(), found.begin(), found.end());
+    if (c.values.empty()) {
+        c.hint = "<script file>   a .mcs test script, e.g. scripts/ds_smoke.mcs, or 'stop'";
+    }
+    return c;
+}
+
+std::unique_ptr<FswCommand> buildRunCommand(ScriptRunner& runner, std::size_t& sessionErrors)
+{
+    return std::make_unique<FswCommand>(
+        "run", "Run a test script in the background, e.g. run scripts/ds_smoke.mcs ('run stop' ends it)",
+        std::vector<std::string>{"script|stop"},
+        [&runner, &sessionErrors](std::ostream& out, const std::vector<std::string>& args) {
+            const ScriptRunner::Status s = runner.status();
+            if (args.empty()) {
+                if (s.running) {
+                    out << s.name << ": line " << s.line << " of " << s.lines << " ('run stop' ends it)\n";
+                } else if (s.result) {
+                    out << s.name << ": finished, " << (*s.result == 0 ? "PASS" : "FAIL") << '\n';
+                } else {
+                    out << "no script has run ('run <script>' starts one)\n";
+                }
+            } else if (args.size() == 1 && iequals(args[0], "stop")) {
+                if (!s.running) {
+                    ++sessionErrors;
+                    out << "error: run stop: no script is running\n";
+                    return;
+                }
+                runner.stop();
+                out << "stopping " << s.name << '\n';
+            } else if (args.size() == 1) {
+                if (!runner.start(args[0], out)) {
+                    ++sessionErrors;
+                }
+            } else {
+                ++sessionErrors;
+                out << "error: usage: run <script> | run stop | run\n";
+            }
+        },
+        [](std::size_t index, const std::string& partial) {
+            if (index > 0) {
+                ArgCompletion c;
+                c.hint = "(no more arguments: press Enter)";
+                return c;
+            }
+            return scriptCompletion(partial);
+        });
+}
+
 } // namespace
+
+int terminalWidth()
+{
+    winsize ws{};
+    if (::ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0) {
+        return ws.ws_col;
+    }
+    return 100;
+}
 
 const char* toString(TlmView view)
 {
@@ -546,16 +700,24 @@ const char* toString(TlmView view)
 }
 
 std::unique_ptr<cli::Menu> buildRootMenu(CommandService& service, std::size_t& sessionErrors,
-                                         TlmContext* tlm, FileTransferService* files, FileMenuMode fileMode)
+                                         TlmContext* tlm, FileTransferService* files, FileMenuMode fileMode,
+                                         VerifyService* verify)
 {
+    const VerifyService* checkWith = verify != nullptr && verify->checkOnly() ? verify : nullptr;
     auto root = std::make_unique<cli::Menu>("mcs");
-    root->Insert(buildFswMenu(service));
-    insertSessionCommands(*root, service, sessionErrors);
+    root->Insert(buildFswMenu(service, checkWith));
+    insertSessionCommands(*root, service, sessionErrors, checkWith);
     if (tlm != nullptr && tlm->store != nullptr) {
         root->Insert(buildTlmMenu(*tlm, sessionErrors));
     }
+    if (tlm != nullptr && tlm->script != nullptr) {
+        root->Insert(buildRunCommand(*tlm->script, sessionErrors));
+    }
     if (files != nullptr) {
-        root->Insert(buildFileMenu(*files, sessionErrors, fileMode));
+        root->Insert(buildFileMenu(*files, sessionErrors, checkWith != nullptr ? FileMenuMode::Check : fileMode));
+    }
+    if (verify != nullptr) {
+        insertVerifyCommands(*root, *verify);
     }
     return root;
 }

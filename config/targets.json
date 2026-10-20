@@ -35,7 +35,7 @@
     "fsw": {
       "description": "cFS on this PC, ci_lab on UDP 1234",
       "endian": "little",
-      "catalog": ["telecommand/ds.json", "telecommand/ci.json", "telecommand/fm.json", "telecommand/cf.json", "telecommand/cs.json", "telecommand/gpsr.json", "telecommand/pl.json", "telecommand/sch.json", "telecommand/lc.json", "telecommand/pbm.json", "telecommand/hs.json", "telecommand/to.json", "telecommand/aocs.json", "telecommand/sc.json", "telecommand/fdir.json", "telecommand/main.json"],
+      "catalog": ["telecommand/ds.json", "telecommand/evs.json", "telecommand/ci.json", "telecommand/fm.json", "telecommand/cf.json", "telecommand/cs.json", "telecommand/gpsr.json", "telecommand/pl.json", "telecommand/sch.json", "telecommand/lc.json", "telecommand/pbm.json", "telecommand/hs.json", "telecommand/to.json", "telecommand/aocs.json", "telecommand/sc.json", "telecommand/fdir.json", "telecommand/main.json"],
       "format":    { "type": "ccsds_v1" },
       "layers":    [],
       "transport": { "type": "udp", "host": "127.0.0.1", "port": 1234 },
@@ -57,7 +57,7 @@
     "fsw-dry": {
       "description": "Same as fsw, but nothing is sent",
       "endian": "little",
-      "catalog": ["telecommand/ds.json", "telecommand/ci.json", "telecommand/fm.json", "telecommand/cf.json", "telecommand/cs.json", "telecommand/gpsr.json", "telecommand/pl.json", "telecommand/sch.json", "telecommand/lc.json", "telecommand/pbm.json", "telecommand/hs.json", "telecommand/to.json", "telecommand/aocs.json", "telecommand/sc.json", "telecommand/fdir.json", "telecommand/main.json"],
+      "catalog": ["telecommand/ds.json", "telecommand/evs.json", "telecommand/ci.json", "telecommand/fm.json", "telecommand/cf.json", "telecommand/cs.json", "telecommand/gpsr.json", "telecommand/pl.json", "telecommand/sch.json", "telecommand/lc.json", "telecommand/pbm.json", "telecommand/hs.json", "telecommand/to.json", "telecommand/aocs.json", "telecommand/sc.json", "telecommand/fdir.json", "telecommand/main.json"],
       "format":    { "type": "ccsds_v1" },
       "transport": { "type": "dryrun" },
       "telemetry": {
@@ -81,7 +81,7 @@
     // "lab-sat": {
     //   "description": "Lab satellite (RTEMS on the BBB), CI over UDP",
     //   "endian": "little",                            // BBB (ARM) is little-endian; "big" for e.g. PowerPC
-    //   "catalog": ["telecommand/ds.json", "telecommand/ci.json", "telecommand/fm.json", "telecommand/cf.json", "telecommand/cs.json", "telecommand/gpsr.json", "telecommand/pl.json", "telecommand/sch.json", "telecommand/lc.json", "telecommand/pbm.json", "telecommand/hs.json", "telecommand/to.json", "telecommand/aocs.json", "telecommand/sc.json", "telecommand/fdir.json", "telecommand/main.json"],
+    //   "catalog": ["telecommand/ds.json", "telecommand/evs.json", "telecommand/ci.json", "telecommand/fm.json", "telecommand/cf.json", "telecommand/cs.json", "telecommand/gpsr.json", "telecommand/pl.json", "telecommand/sch.json", "telecommand/lc.json", "telecommand/pbm.json", "telecommand/hs.json", "telecommand/to.json", "telecommand/aocs.json", "telecommand/sc.json", "telecommand/fdir.json", "telecommand/main.json"],
     //   "format":    { "type": "ccsds_v1" },
     //   "layers":    [],                               // e.g. [ { "type": "csp", "src": 10, "dst": 1, "dport": 10, "crc32": true } ] once a CSP layer exists
     //   "transport": { "type": "udp", "host": "192.168.1.50", "port": 1234 },  // board IP, CI port

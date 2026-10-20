@@ -1,0 +1,246 @@
+# DS (Data Storage) full test: every DS command, nominal and rejected. Repeatable.
+#
+#   ./build/src/mcs -f scripts/ds_full.mcs            run (FSW up: cd ~/SDE/fsw && sudo ./run_fsw.sh)
+#   ./build/src/mcs --check -f scripts/ds_full.mcs    check only, nothing sent
+#   mcs> run scripts/ds_full.mcs                      from the full-screen session
+#
+# What the FSW does that this script relies on (~/SDE/fsw/apps/ds, ntpm_defs):
+# - DEBUG events: CFE_PLATFORM_EVS_DEFAULT_TYPE_FLAG 0x1E has DEBUG off, and DS reports every
+#   successful command except NOOP with a DEBUG event. The script turns DEBUG on for DS only
+#   (fsw evs enable_app_event_type DS debug) and off again at the end (DS-99). An aborted run
+#   leaves them on until "fsw evs disable_app_event_type DS debug" or a restart: harmless.
+# - DS keeps its tables and app state in the CDS, so changes survive a DS restart. The script
+#   only changes spare entries and puts them back:
+#     destination file 15        unused in ds_file_tbl.c (left disabled, count 0; its path, base,
+#                                extension, type, size and age keep the test values: DS has no
+#                                way to clear them, and nothing writes to a disabled file)
+#     filter slot 2 of 0x0806    CFE_TIME_DIAG_TLM_MID, row 5 of ds_filter_tbl.c, slot unused
+#                                (left with N = X = O = 0: passes nothing)
+# - add_mid cannot be undone (no remove command): its positive test is scripts/ds_add_mid.mcs.
+# - mcs checks argument limits before sending (file index <= 15, size >= 1024, age >= 60,
+#   count <= 99999999, enum values), so DS's own checks of them are reached with "raw" packets
+#   (DS-11): 19 4B = DS_CMD_MID, C0 00 = sequence, then length - 7, checksum (0xFF XOR every other
+#   byte), command code, payload little-endian. Each was built by a helper that reproduces the
+#   packets mcs builds itself.
+# - Event IDs and texts: ds_events.h, ds_cmds.c. DS HK (ds.hk) comes every second.
+#
+# Requirement tags (req DS-...) name the DS function tested; map them to the mission's IDs.
+
+fsw to enable_output 127.0.0.1 5011
+wait 2
+timeout 5
+
+test DS-00 "Set-up: EVS answers, DS DEBUG events on, DS enabled" req DS-SETUP
+  fsw evs noop
+  expect-event CFE_EVS id 0 type INFO text "No-op command"
+  fsw evs enable_app_event_type DS debug
+  wait 1
+  fsw ds set_app_state enable
+  expect-event DS id 35 type DEBUG text "APP STATE command: state = 1"
+  expect ds.hk app_enable_state == ENABLED
+end
+
+test DS-01 "NOOP is accepted and reports the version" req DS-NOOP
+  save a ds.hk cmd_accepted_counter
+  fsw ds noop
+  expect-event DS id 31 type INFO text "NOOP command, Version"
+  expect ds.hk cmd_accepted_counter == $a+1
+  expect-no-event DS type ERROR for 1
+end
+
+test DS-02 "Housekeeping request sends ds.hk" req DS-HK
+  save a ds.hk cmd_accepted_counter
+  fsw ds hk
+  expect ds.hk within 2
+  # not a counted command
+  expect ds.hk cmd_accepted_counter == $a
+end
+
+test DS-03 "Reset clears the command counters" req DS-RESET
+  # make both counters non-zero first: an unknown command code is rejected
+  raw 19 4B C0 00 00 01 0F 63
+  expect-event DS id 21 type ERROR text "Invalid command code"
+  expect ds.hk cmd_rejected_counter > 0
+  fsw ds noop
+  expect ds.hk cmd_accepted_counter > 0
+  fsw ds reset
+  expect-event DS id 33 type DEBUG text "Reset counters command"
+  expect ds.hk cmd_accepted_counter == 0
+  expect ds.hk cmd_rejected_counter == 0
+end
+
+test DS-04 "Disable and enable DS" req DS-APP-STATE
+  save a ds.hk cmd_accepted_counter
+  fsw ds set_app_state disable
+  expect-event DS id 35 type DEBUG text "APP STATE command: state = 0"
+  expect ds.hk app_enable_state == DISABLED
+  # packets DS receives while disabled are counted, not stored
+  save d ds.hk disabled_pkt_counter
+  expect ds.hk disabled_pkt_counter > $d
+  fsw ds set_app_state enable
+  expect-event DS id 35 type DEBUG text "APP STATE command: state = 1"
+  expect ds.hk app_enable_state == ENABLED
+  expect ds.hk cmd_accepted_counter == $a+2
+end
+
+test DS-05 "Configure destination file 15, then put it back" req DS-DEST-FILE
+  save a ds.hk cmd_accepted_counter
+  fsw ds set_dest_path 15 /cf/data0
+  expect-event DS id 47 type DEBUG text "file table index = 15, pathname = '/cf/data0'"
+  fsw ds set_dest_base 15 mcs_test
+  expect-event DS id 49 type DEBUG text "file table index = 15, base filename = 'mcs_test'"
+  fsw ds set_dest_ext 15 .dat
+  expect-event DS id 51 type DEBUG text "file table index = 15, extension = '.dat'"
+  fsw ds set_dest_type 15 count
+  expect-event DS id 43 type DEBUG text "file table index = 15, filename type = 1"
+  fsw ds set_dest_size 15 1024
+  expect-event DS id 53 type DEBUG text "file table index = 15, size limit = 1024"
+  fsw ds set_dest_age 15 60
+  expect-event DS id 55 type DEBUG text "file table index = 15, age limit = 60"
+  fsw ds set_dest_count 15 1234
+  expect-event DS id 57 type DEBUG text "file table index = 15, sequence count = 1234"
+  fsw ds set_dest_state 15 enable
+  expect-event DS id 45 type DEBUG text "file table index = 15, file state = 1"
+  expect ds.hk cmd_accepted_counter == $a+8
+  fsw ds get_file_info
+  expect-event DS id 62 type DEBUG text "GET FILE INFO command"
+  expect ds.file_info file_15_sequence_count == 1234
+  expect ds.file_info file_15_enable_state == ENABLED
+  # put it back: disabled, count 0
+  fsw ds set_dest_state 15 disable
+  expect-event DS id 45 type DEBUG text "file table index = 15, file state = 0"
+  fsw ds set_dest_count 15 0
+  expect-event DS id 57 type DEBUG text "file table index = 15, sequence count = 0"
+  fsw ds get_file_info
+  expect ds.file_info file_15_enable_state == DISABLED
+  expect ds.file_info file_15_sequence_count == 0
+  expect ds.hk cmd_accepted_counter == $a+12
+end
+
+test DS-06 "Configure filter slot 2 of 0x0806, then put it back" req DS-FILTER
+  save a ds.hk cmd_accepted_counter
+  fsw ds set_filter_file 0x0806 2 15
+  expect-event DS id 37 type DEBUG text "filter = 2, file = 15"
+  fsw ds set_filter_type 0x0806 2 time
+  expect-event DS id 39 type DEBUG text "filter = 2, type = 2"
+  fsw ds set_filter_parms 0x0806 2 1 4 0
+  expect-event DS id 41 type DEBUG text "filter = 2, N = 1, X = 4, O = 0"
+  expect ds.hk cmd_accepted_counter == $a+3
+  # put it back: N = X = O = 0 passes nothing
+  fsw ds set_filter_parms 0x0806 2 0 0 0
+  expect-event DS id 41 type DEBUG text "filter = 2, N = 0, X = 0, O = 0"
+  fsw ds set_filter_file 0x0806 2 0
+  expect-event DS id 37 type DEBUG text "filter = 2, file = 0"
+  fsw ds set_filter_type 0x0806 2 count
+  expect-event DS id 39 type DEBUG text "filter = 2, type = 1"
+  expect ds.hk cmd_accepted_counter == $a+6
+end
+
+test DS-07 "Close one file and all files" req DS-CLOSE
+  save a ds.hk cmd_accepted_counter
+  fsw ds close_file 3
+  expect-event DS id 59 type DEBUG text "DEST CLOSE command: file table index = 3"
+  fsw ds close_all
+  expect-event DS id 66 type DEBUG text "DEST CLOSE ALL command"
+  fsw ds get_file_info
+  # file 3 is disabled in ds_file_tbl.c, so nothing reopens it
+  expect ds.file_info file_3_open_state == CLOSED
+  expect ds.hk cmd_accepted_counter == $a+3
+end
+
+test DS-08 "File info packet" req DS-FILE-INFO
+  save a ds.hk cmd_accepted_counter
+  fsw ds get_file_info
+  expect-event DS id 62 type DEBUG text "GET FILE INFO command"
+  expect ds.file_info within 2
+  expect ds.hk cmd_accepted_counter == $a+1
+end
+
+# ---- rejected by DS: valid command packets that DS's tables or rules refuse ------------------
+
+test DS-10 "Commands DS refuses from its tables and rules" req DS-CMD-REJECT
+  save a ds.hk cmd_accepted_counter
+  save r ds.hk cmd_rejected_counter
+  # 0x0123 is not in the filter table
+  fsw ds set_filter_file 0x0123 0 0
+  expect-event DS id 38 type ERROR text "Message ID 0x0123 is not in filter table"
+  fsw ds set_filter_type 0x0123 0 count
+  expect-event DS id 40 type ERROR text "Message ID 0x0123 is not in filter table"
+  fsw ds set_filter_parms 0x0123 0 1 1 0
+  expect-event DS id 42 type ERROR text "Message ID 0x0123 is not in filter table"
+  # N must not exceed X, and O must be below X
+  fsw ds set_filter_parms 0x0806 2 3 2 0
+  expect-event DS id 42 type ERROR text "N = 3, X = 2, O = 0"
+  fsw ds set_filter_parms 0x0806 2 1 2 2
+  expect-event DS id 42 type ERROR text "N = 1, X = 2, O = 2"
+  # 0x0800 (ES HK) is already in the filter table
+  fsw ds add_mid 0x0800
+  expect-event DS id 65 type ERROR text "is already in filter table"
+  # '*' is not a filename character (CFS_IsValidFilename)
+  fsw ds set_dest_path 15 /cf/bad*path
+  expect-event DS id 48 type ERROR text "Invalid DEST PATH command arg: pathname"
+  fsw ds set_dest_base 15 bad*base
+  expect-event DS id 50 type ERROR text "Invalid DEST BASE command arg: base filename"
+  fsw ds set_dest_ext 15 b*d
+  expect-event DS id 52 type ERROR text "Invalid DEST EXT command arg: extension"
+  expect ds.hk cmd_rejected_counter == $r+9
+  expect ds.hk cmd_accepted_counter == $a
+end
+
+# ---- rejected by DS: limits mcs would not let through, sent as raw packets --------------------
+
+test DS-11 "Malformed commands DS refuses" req DS-CMD-VERIFY
+  save a ds.hk cmd_accepted_counter
+  save r ds.hk cmd_rejected_counter
+  # command code 99 does not exist
+  raw 19 4B C0 00 00 01 0F 63
+  expect-event DS id 21 type ERROR text "Invalid command code: MID = 0x194B, CC = 99"
+  # noop with one byte too many
+  raw 19 4B C0 00 00 02 6F 00 00
+  expect-event DS id 32 type ERROR text "Invalid NOOP command length: expected = 8, actual = 9"
+  # set_app_state, state 2
+  raw 19 4B C0 00 00 05 68 02 02 00 00 00
+  expect-event DS id 36 type ERROR text "app state = 2"
+  # set_dest_state, file index 16 (enable)
+  raw 19 4B C0 00 00 05 7E 07 10 00 01 00
+  expect-event DS id 46 type ERROR text "file table index = 16"
+  # set_dest_type 15, filename type 0
+  raw 19 4B C0 00 00 05 61 06 0F 00 00 00
+  expect-event DS id 44 type ERROR text "filename type = 0"
+  # set_dest_size 15, 512 bytes (minimum 1024)
+  raw 19 4B C0 00 00 09 62 0B 0F 00 00 00 00 02 00 00
+  expect-event DS id 54 type ERROR text "size limit = 512"
+  # set_dest_age 15, 30 s (minimum 60)
+  raw 19 4B C0 00 00 09 79 0C 0F 00 00 00 1E 00 00 00
+  expect-event DS id 56 type ERROR text "age limit = 30"
+  # set_dest_count 15, 100000000 (maximum 99999999)
+  raw 19 4B C0 00 00 09 77 0D 0F 00 00 00 00 E1 F5 05
+  expect-event DS id 58 type ERROR text "sequence count = 100000000"
+  # set_filter_type 0x0806 slot 2, type 3
+  raw 19 4B C0 00 00 09 6F 04 06 08 02 00 03 00 00 00
+  expect-event DS id 40 type ERROR text "filter type = 3"
+  # set_filter_file 0x0806, filter index 4 (slots 0..3), file 15
+  raw 19 4B C0 00 00 09 62 03 06 08 04 00 0F 00 00 00
+  expect-event DS id 38 type ERROR text "filter parameters index = 4"
+  # add_mid, MID 0
+  raw 19 4B C0 00 00 05 78 10 00 00 00 00
+  expect-event DS id 65 type ERROR text "invalid MID"
+  expect ds.hk cmd_rejected_counter == $r+11
+  # HK request (0x194C) with one byte too many: an event, but not counted as rejected
+  raw 19 4C C0 00 00 02 68 00 00
+  expect-event DS id 22 type ERROR text "Invalid HK request length: expected = 8, actual = 9"
+  expect ds.hk cmd_rejected_counter == $r+11
+  expect ds.hk cmd_accepted_counter == $a
+end
+
+test DS-99 "Tear-down: DS DEBUG events off, DS enabled" req DS-SETUP
+  fsw evs disable_app_event_type DS debug
+  wait 1
+  save a ds.hk cmd_accepted_counter
+  fsw ds get_file_info
+  expect ds.file_info within 2
+  # accepted, but its DEBUG event no longer reaches the ground
+  expect-no-event DS id 62 for 2
+  expect ds.hk cmd_accepted_counter == $a+1
+  expect ds.hk app_enable_state == ENABLED
+end

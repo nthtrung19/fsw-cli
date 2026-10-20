@@ -151,7 +151,7 @@ TEST(TlmParser, GoldenBytes)
 
 TEST(TlmParser, LittleEndianHeaderTime)
 {
-    // cFE 6.7 memcpy's the time in CPU order: little-endian on the x86-64 PC build.
+    // cFE 6.7 memcpy's the time in CPU order: little-endian on the i386 PC build.
     const Bytes packet = tlmPacket(0x0800, 1, {}, 0x01020304, 0x8001, Endian::Little);
     EXPECT_EQ(packet[6], 0x04);
     const auto r = parseTelemetry(packet, Endian::Little);
@@ -310,15 +310,16 @@ TEST(TlmCatalogLoader, RejectsBadCountsAndGroups)
 
 TEST(TlmShipped, SizesMatchTheFsw)
 {
-    // sizeof() of each FSW telemetry struct, header included (NTPM PC build,
-    // mcs_tlm_reference.md Part 2). The CF PDU (0x092D) has variable length.
+    // sizeof() of each FSW telemetry struct, header included (NTPM PC build, i386,
+    // read from the debug info of core-ntpm and cf/*.so). The CF PDU (0x092D) has
+    // variable length.
     const std::map<std::uint16_t, std::size_t> fswSizeof{
-        {0x0800, 156}, {0x080B, 200}, {0x0810, 248}, {0x080F, 76},                    // es
+        {0x0800, 156}, {0x080B, 200}, {0x0810, 236}, {0x080F, 76},                    // es
         {0x0801, 156}, {0x0808, 168}, {0x0809, 44},                                   // evs
-        {0x0803, 48},  {0x080A, 584}, {0x080D, 144}, {0x080E, 20},                    // sb
-        {0x0804, 304}, {0x080C, 200},                                                 // tbl
+        {0x0803, 40},  {0x080A, 584}, {0x080D, 144}, {0x080E, 20},                    // sb
+        {0x0804, 296}, {0x080C, 180},                                                 // tbl
         {0x0805, 44},  {0x0806, 212},                                                 // time
-        {0x09A0, 28},  {0x09A2, 80},  {0x09A3, 30},                                   // to
+        {0x09A0, 28},  {0x09A2, 72},  {0x09A3, 30},                                   // to
         {0x0934, 16},                                                                 // ci
         {0x0997, 64},  {0x0998, 126},                                                 // sch
         {0x098A, 88},                                                                 // sc
@@ -331,7 +332,7 @@ TEST(TlmShipped, SizesMatchTheFsw)
         {0x0911, 16},  {0x0912, 408}, {0x0913, 80},  {0x0916, 48},  {0x0917, 144},    // aocs
         {0x0918, 40},  {0x0919, 416},
         {0x0909, 28},  {0x090A, 416}, {0x0901, 24},  {0x0903, 24},  {0x0904, 24},     // main
-        {0x0905, 24},  {0x0906, 56},  {0x0907, 64},  {0x0908, 88},
+        {0x0905, 24},  {0x0906, 52},  {0x0907, 60},  {0x0908, 84},
         {0x09F1, 24},                                                                 // pl
         {0x0883, 32},                                                                 // fdir
     };
@@ -356,17 +357,17 @@ TEST(TlmShipped, OffsetsAfterCompilerHoles)
         const TlmFieldDef* f = c.find(mid)->findField(name);
         return f != nullptr ? f->offset : 9999;
     };
-    EXPECT_EQ(offset(0x0810, "pool_handle"), 4U);
-    EXPECT_EQ(offset(0x0810, "block_stats_16_num_free"), 228U);
-    EXPECT_EQ(offset(0x0803, "mem_pool_handle"), 20U);
-    EXPECT_EQ(offset(0x0804, "mem_pool_handle"), 68U);
-    EXPECT_EQ(offset(0x080C, "owner_app_name"), 160U);
+    EXPECT_EQ(offset(0x0810, "pool_handle"), 0U);
+    EXPECT_EQ(offset(0x0810, "block_stats_16_num_free"), 220U);
+    EXPECT_EQ(offset(0x0803, "mem_pool_handle"), 16U);
+    EXPECT_EQ(offset(0x0804, "mem_pool_handle"), 64U);
+    EXPECT_EQ(offset(0x080C, "owner_app_name"), 144U);
     EXPECT_EQ(offset(0x0801, "app_data_15_enable_status"), 142U);
-    EXPECT_EQ(offset(0x0906, "mode_stage"), 8U);
-    EXPECT_EQ(offset(0x0907, "ats_table_handler"), 50U);
-    EXPECT_EQ(offset(0x0908, "time_deactive_prop"), 68U);
+    EXPECT_EQ(offset(0x0906, "mode_stage"), 4U);
+    EXPECT_EQ(offset(0x0907, "ats_table_handler"), 46U);
+    EXPECT_EQ(offset(0x0908, "time_deactive_prop"), 64U);
     EXPECT_EQ(offset(0x09A2, "dw1"), 16U);
-    EXPECT_EQ(offset(0x09A2, "df1"), 36U);
+    EXPECT_EQ(offset(0x09A2, "df1"), 32U);
     EXPECT_EQ(offset(0x0912, "qbn_1_3"), 132U);
     EXPECT_EQ(offset(0x0912, "rw_status_3"), 393U);
     EXPECT_EQ(offset(0x0920, "chan_1_sem_value"), 352U);
@@ -381,8 +382,8 @@ TEST(TlmShipped, OffsetsAfterCompilerHoles)
 TEST(TlmShipped, DecodesTheToDataTypePattern)
 {
     // TO_SendDataTypePktCmd fills TO_TypeDefPacket_t with constants to check
-    // byte order and packing (x86-64 little-endian, gcc bitfields LSB first).
-    Bytes payload(68, 0);
+    // byte order and packing (i386 little-endian, gcc bitfields LSB first).
+    Bytes payload(60, 0);
     const auto put = [&](std::size_t at, const void* v, std::size_t n) { std::memcpy(&payload[at], v, n); };
     const std::uint16_t synch = 0x6969, bits = 0x4A79;
     const std::int16_t w1 = 0x2468, w2 = 0x7FFF;
@@ -399,8 +400,8 @@ TEST(TlmShipped, DecodesTheToDataTypePattern)
     put(16, &dw1, 4);
     put(20, &dw2, 4);
     put(24, &f1, 4);
-    put(36, &df1, 8);
-    std::memcpy(&payload[52], "ABCDEFGHIJ", 10);
+    put(32, &df1, 8);
+    std::memcpy(&payload[48], "ABCDEFGHIJ", 10);
 
     const TelemetryCatalog c = shippedCatalog();
     TlmStore store(c, Endian::Little);

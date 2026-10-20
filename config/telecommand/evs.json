@@ -1,0 +1,124 @@
+// EVS (cFE Event Services) ground commands: the ones that turn event types on and off.
+// Source: cFE 6.7 cfe_evs_msg.h, cfe_evs_task.c, ntpm_msgids.h, ntpm_mission_cfg.h.
+//
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   enum     { "name": value, ... }  names accepted as arguments, shown in help
+//   min/max  inclusive range for integer fields
+//   default  value used when the argument is omitted (only trailing arguments may be omitted)
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 8-byte command header (CFE_SB_CMD_HDR_SIZE).
+// EVS checks the exact packet length (CFE_EVS_VerifyCmdLength). Layouts checked against the
+// debug info of the PC build: CFE_EVS_NoArgsCmd_t 8, CFE_EVS_BitMaskCmd_t 10,
+// CFE_EVS_AppNameCmd_t 28, CFE_EVS_AppNameBitMaskCmd_t 30 bytes.
+//
+//   ntpm_msgids.h  CFE_EVS_CMD_MID 0x1801  CFE_EVS_ProcessGroundCommand, dispatched by command code
+//
+// Event types: every event has a type, and EVS only sends (and logs) the types that are on
+// for its app. ntpm_platform_cfg.h CFE_PLATFORM_EVS_DEFAULT_TYPE_FLAG 0x1E turns on INFO 0x02,
+// ERROR 0x04, CRITICAL 0x08 and the mission's WARNING 0x10 for every app at start: DEBUG 0x01
+// is OFF, so DEBUG events go nowhere until e.g. "fsw evs enable_app_event_type DS debug".
+// The commands accept masks 0x01..0x0F only (cfe_evs_task.c): WARNING cannot be switched here.
+// EVS's own events (app CFE_EVS) are DEBUG for these commands, except noop (INFO) and errors.
+//
+// Not listed: SET_EVENT_FORMAT_MODE 4, SET_FILTER 10, ENABLE/DISABLE_PORTS 11/12, filter
+// commands 13-16, WRITE_APP_DATA_FILE 17, WRITE_LOG_DATA_FILE 18, SET_LOG_MODE 19.
+{
+  "app": "evs",
+  "help": "cFE Event Services: event types on/off per app or for all apps",
+  "mid": "0x1801",
+  "commands": [
+    {
+      "name": "noop",
+      "cc": 0,
+      "help": "No-op: increments the EVS command counter and reports the cFE version (INFO event 0)"
+    },
+    {
+      "name": "reset",
+      "cc": 1,
+      "help": "Reset EVS housekeeping counters"
+    },
+    {
+      "name": "enable_event_type",
+      "cc": 2,
+      "help": "Turn an event type on for every registered app",
+      "fields": [
+        { "name": "type", "type": "u8",
+          "enum": { "debug": 1, "info": 2, "error": 4, "critical": 8, "all": 15 },
+          "help": "BitMask: the event type(s)" },
+        { "type": "padding", "size": 1 }
+      ]
+    },
+    {
+      "name": "disable_event_type",
+      "cc": 3,
+      "critical": true,
+      "help": "Turn an event type off for every registered app (the ground stops seeing it)",
+      "fields": [
+        { "name": "type", "type": "u8",
+          "enum": { "debug": 1, "info": 2, "error": 4, "critical": 8, "all": 15 },
+          "help": "BitMask: the event type(s)" },
+        { "type": "padding", "size": 1 }
+      ]
+    },
+    {
+      "name": "enable_app_event_type",
+      "cc": 5,
+      "help": "Turn an event type on for one app, e.g. enable_app_event_type DS debug",
+      "fields": [
+        { "name": "app_name", "type": "string", "size": 20,
+          "help": "AppName as registered with cFE (upper case, e.g. DS, CF, TO)" },
+        { "name": "type", "type": "u8",
+          "enum": { "debug": 1, "info": 2, "error": 4, "critical": 8, "all": 15 },
+          "help": "BitMask: the event type(s)" },
+        { "type": "padding", "size": 1 }
+      ]
+    },
+    {
+      "name": "disable_app_event_type",
+      "cc": 6,
+      "help": "Turn an event type off for one app, e.g. disable_app_event_type DS debug",
+      "fields": [
+        { "name": "app_name", "type": "string", "size": 20,
+          "help": "AppName as registered with cFE (upper case, e.g. DS, CF, TO)" },
+        { "name": "type", "type": "u8",
+          "enum": { "debug": 1, "info": 2, "error": 4, "critical": 8, "all": 15 },
+          "help": "BitMask: the event type(s)" },
+        { "type": "padding", "size": 1 }
+      ]
+    },
+    {
+      "name": "enable_app_events",
+      "cc": 7,
+      "help": "Turn all events of one app back on (its type settings apply again)",
+      "fields": [
+        { "name": "app_name", "type": "string", "size": 20,
+          "help": "AppName as registered with cFE" }
+      ]
+    },
+    {
+      "name": "disable_app_events",
+      "cc": 8,
+      "critical": true,
+      "help": "Turn off every event of one app (the ground stops seeing them)",
+      "fields": [
+        { "name": "app_name", "type": "string", "size": 20,
+          "help": "AppName as registered with cFE" }
+      ]
+    },
+    {
+      "name": "reset_app_counter",
+      "cc": 9,
+      "help": "Reset the event message counter of one app (evs.hk app_data)",
+      "fields": [
+        { "name": "app_name", "type": "string", "size": 20,
+          "help": "AppName as registered with cFE" }
+      ]
+    },
+    {
+      "name": "clear_log",
+      "cc": 20,
+      "help": "Clear the EVS local event log"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+# A test script: every line is checked (smoke test runs it with --check only).
+fsw to enable_output 127.0.0.1 5011
+wait 1
+timeout 3
+
+test DS-001 "NOOP increments the command counter" req DS-R1
+  save n ds.hk cmd_accepted_counter
+  fsw ds noop
+  expect-event DS id 31 type INFO
+  expect ds.hk cmd_accepted_counter == $n+1 within 5
+  expect-no-event DS type ERROR for 2
+end

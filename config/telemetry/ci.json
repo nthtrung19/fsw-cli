@@ -1,7 +1,7 @@
 // CI (Command Ingest) telemetry. Source: ci_hktlm.h, ci_msgids.h.
 //
 // Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
-// in targets.json. Layouts are the NTPM PC build (pc_linux, x86-64, 64-bit), checked
+// in targets.json. Layouts are the NTPM PC build (pc_linux, i386, 32-bit), checked
 // with offsetof against the FSW headers.
 //   packets  one entry per telemetry MID the app sends
 //   event    true for EVS event packets: shown in the event log

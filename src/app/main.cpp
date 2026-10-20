@@ -1,8 +1,9 @@
 // mcs: command-line tool for commanding cFS flight software.
 //
 // Start-up: options -> targets file -> target -> catalog -> pipeline -> service -> menu.
-// The full-screen session also loads the target's telemetry catalog and opens
-// its receiver. Everything except the menu and the sessions lives in mcs_core.
+// The full-screen session and batch runs also load the target's telemetry
+// catalog and open its receiver (batch: for script checks). Everything except
+// the menu and the sessions lives in mcs_core.
 
 #include "app/options.hpp"
 #include "config/catalog_loader.hpp"
@@ -16,18 +17,17 @@
 #include "service/file_transfer_service.hpp"
 #include "telemetry/telemetry_service.hpp"
 #include "ui/menu_builder.hpp"
+#include "ui/script_runner.hpp"
 #include "ui/tui_session.hpp"
+#include "verify/tlm_history.hpp"
 
 #include <cli/cli.h>
-#include <cli/clifilesession.h>
 #include <cli/clilocalsession.h>
 #include <cli/loopscheduler.h>
 
-#include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <sstream>
-#include <sys/ioctl.h>
+#include <optional>
 #include <unistd.h>
 
 using namespace mcs;
@@ -35,27 +35,6 @@ using namespace mcs;
 namespace {
 
 const std::string kProgram = "mcs";
-
-std::vector<std::string> readScript(const std::string& path)
-{
-    std::ifstream file(path);
-    if (!file) {
-        throw std::runtime_error("cannot open script file: " + path);
-    }
-    std::vector<std::string> lines;
-    std::string line;
-    while (std::getline(file, line)) {
-        const auto first = line.find_first_not_of(" \t\r");
-        if (first == std::string::npos || line[first] == '#') {
-            continue;
-        }
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();   // tolerate Windows line endings
-        }
-        lines.push_back(line);
-    }
-    return lines;
-}
 
 void printTargets(const TargetsFile& targets, std::ostream& out)
 {
@@ -76,41 +55,6 @@ void printTargets(const TargetsFile& targets, std::ostream& out)
     }
 }
 
-// Columns of the terminal on stdout, for laying out "help"; 100 when not a terminal.
-int terminalWidth()
-{
-    winsize ws{};
-    if (::ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0) {
-        return ws.ws_col;
-    }
-    return 100;
-}
-
-// Runs command lines without prompts. Returns the exit code.
-int runBatch(cli::Cli& cli, CommandService& service, const std::size_t& sessionErrors,
-             const std::vector<std::string>& lines)
-{
-    std::size_t cliErrors = 0;
-    cli.WrongCommandHandler([&cliErrors](std::ostream& out, const std::string& cmd) {
-        ++cliErrors;
-        out << "error: unknown command: " << cmd << '\n';
-    });
-    cli.StdExceptionHandler([&cliErrors](std::ostream& out, const std::string& cmd,
-                                         const std::exception& e) {
-        ++cliErrors;
-        out << "error: " << cmd << ": " << e.what() << '\n';
-    });
-    ui::installHelp(cli, ui::terminalHelp(terminalWidth, ::isatty(STDOUT_FILENO) != 0));
-
-    std::istringstream unusedInput;   // the session requires a valid istream
-    cli::CliFileSession session(cli, unusedInput, std::cout);
-    for (const auto& line : lines) {
-        session.Feed(line);
-    }
-    const bool ok = cliErrors == 0 && sessionErrors == 0 && service.failures() == 0;
-    return ok ? app::kExitOk : app::kExitCommandFailed;
-}
-
 void setInteractiveHandlers(cli::Cli& cli)
 {
     cli.WrongCommandHandler([](std::ostream& out, const std::string& cmd) {
@@ -120,7 +64,7 @@ void setInteractiveHandlers(cli::Cli& cli)
         out << "error: " << cmd << ": " << e.what() << '\n';
     });
     // The full-screen session installs its own (names coloured in the output pane).
-    ui::installHelp(cli, ui::terminalHelp(terminalWidth, ::isatty(STDOUT_FILENO) != 0));
+    ui::installHelp(cli, ui::terminalHelp(ui::terminalWidth, ::isatty(STDOUT_FILENO) != 0));
 }
 
 std::vector<std::string> bannerLines(const CommandService& service)
@@ -177,9 +121,10 @@ int main(int argc, char* argv[])
     std::unique_ptr<CommandCatalog> catalog;
     std::unique_ptr<Pipeline> pipeline;
     const TargetConfig* target = nullptr;
-    // Telemetry: full-screen session, and any session of a target with file
-    // transfer ("cfdp": CF's PDUs arrive as telemetry). A receiver that cannot
-    // be opened (port in use, ...) is reported, not a setup error.
+    // Telemetry: full-screen session, batch runs (script checks), and any
+    // session of a target with file transfer ("cfdp": CF's PDUs arrive as
+    // telemetry). A receiver that cannot be opened (port in use, ...) is
+    // reported, not a setup error. --check needs the definitions only.
     std::unique_ptr<TelemetryCatalog> tlmCatalog;
     std::unique_ptr<IReceiver> tlmReceiver;
     std::string tlmReceiverError;
@@ -192,13 +137,17 @@ int main(int argc, char* argv[])
         target = &selectTarget(targets, opts.target);
         catalog = std::make_unique<CommandCatalog>(loadCatalog(target->catalogFiles));
         pipeline = buildPipeline(*target, builtinPlugins(), opts.dryRun);
-        if ((fullScreen || target->cfdp) && target->telemetry) {
+        if ((fullScreen || batch || target->cfdp) && target->telemetry) {
             tlmCatalog = std::make_unique<TelemetryCatalog>(
                 loadTelemetryCatalog(target->telemetry->catalogFiles));
-            try {
-                tlmReceiver = buildReceiver(*target, builtinPlugins(), opts.tlmPort);
-            } catch (const TransportError& e) {
-                tlmReceiverError = e.what();
+            if (opts.checkOnly) {
+                tlmReceiverError = "--check: telemetry is not received";
+            } else {
+                try {
+                    tlmReceiver = buildReceiver(*target, builtinPlugins(), opts.tlmPort);
+                } catch (const TransportError& e) {
+                    tlmReceiverError = e.what();
+                }
             }
         }
     } catch (const mcsError& e) {
@@ -221,6 +170,7 @@ int main(int argc, char* argv[])
 
         ui::TlmContext tlm;
         std::unique_ptr<TlmStore> tlmStore;
+        std::unique_ptr<TlmHistory> history;   // recent telemetry for script checks
         std::unique_ptr<TelemetryService> tlmService;
         if (tlmCatalog) {
             tlmStore = std::make_unique<TlmStore>(*tlmCatalog, target->endian);
@@ -229,6 +179,10 @@ int main(int argc, char* argv[])
             if (tlmReceiver) {
                 tlmService = std::make_unique<TelemetryService>(std::move(tlmReceiver), *tlmStore);
                 tlm.service = tlmService.get();
+                if (batch || fullScreen) {
+                    history = std::make_unique<TlmHistory>(*tlmCatalog, target->endian);
+                    tlmService->addSink([h = history.get()](const Bytes& datagram) { h->ingest(datagram); });
+                }
             }
         }
 
@@ -250,7 +204,7 @@ int main(int argc, char* argv[])
             }
             tlm.files = files.get();
         }
-        // The receiver's sink points into `files`: stop the receiver first.
+        // The receiver's sinks point into `files` and `history`: stop the receiver first.
         struct StopReceiverFirst {
             TelemetryService* service;
             ~StopReceiverFirst()
@@ -260,7 +214,7 @@ int main(int argc, char* argv[])
                 }
             }
         } stopReceiverFirst{tlmService.get()};
-        if (files && tlmService && !fullScreen) {
+        if (tlmService && !fullScreen) {
             tlmService->start({});   // the full-screen session starts it itself
         }
         if (files && !tlmService && !batch) {
@@ -268,18 +222,45 @@ int main(int argc, char* argv[])
                       << "): file get and class 2 file put are unavailable\n";
         }
 
+        // Test scripts: batch runs (-f, -c) and "run <script>" in the full-screen session.
+        const TelemetryCatalog noTelemetryCatalog;
+        const ui::ScriptTarget scriptTarget{
+            *catalog, target->endian, target->name, *pipeline, log.get(), files.get(),
+            tlmCatalog ? *tlmCatalog : noTelemetryCatalog, history.get(),
+            !target->telemetry ? "target '" + target->name + "' has no \"telemetry\" block" : tlmReceiverError,
+            opts.verbose};
+
+        if (batch) {
+            const std::vector<ui::ScriptLine> lines = opts.script ? ui::readScript(*opts.script)
+                                                                  : ui::commandLines(opts.commands);
+            // A script is checked as a whole before anything is sent.
+            if (opts.script || opts.checkOnly) {
+                const std::string name = opts.script.value_or("");
+                const std::size_t errors = ui::checkScript(scriptTarget, lines, name, std::cout);
+                if (errors != 0) {
+                    std::cout << (name.empty() ? "" : name + ": ") << "not run: " << errors << " error(s)\n";
+                    return app::kExitCommandFailed;
+                }
+                if (opts.checkOnly) {
+                    std::cout << (name.empty() ? "" : name + ": ") << "ok, " << lines.size()
+                              << " line(s) checked, nothing sent\n";
+                    return app::kExitOk;
+                }
+            }
+            return ui::runScript(scriptTarget, lines, std::cout) == 0 ? app::kExitOk : app::kExitCommandFailed;
+        }
+
+        // Joined before the receiver stops and the services it uses go away.
+        std::optional<ui::ScriptRunner> scriptRunner;
+        if (fullScreen) {
+            scriptRunner.emplace(scriptTarget);
+            tlm.script = &*scriptRunner;
+        }
+
         std::size_t sessionErrors = 0;
-        const ui::FileMenuMode fileMode = batch        ? ui::FileMenuMode::Batch
-                                        : fullScreen   ? ui::FileMenuMode::FullScreen
-                                                       : ui::FileMenuMode::Plain;
+        const ui::FileMenuMode fileMode = fullScreen ? ui::FileMenuMode::FullScreen : ui::FileMenuMode::Plain;
         cli::Cli cli(ui::buildRootMenu(service, sessionErrors, fullScreen ? &tlm : nullptr, files.get(), fileMode));
 
-        if (!opts.commands.empty()) {
-            return runBatch(cli, service, sessionErrors, opts.commands);
-        }
-        if (opts.script) {
-            return runBatch(cli, service, sessionErrors, readScript(*opts.script));
-        }
         if (fullScreen) {
             setInteractiveHandlers(cli);
             return ui::runTui(cli, service, tlm);

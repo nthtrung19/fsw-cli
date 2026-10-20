@@ -4,6 +4,7 @@
 #include "ui/completion.hpp"
 #include "ui/help_format.hpp"
 #include "ui/menu_builder.hpp"
+#include "ui/script_runner.hpp"
 #include "ui/transfer_format.hpp"
 
 #include <cli/cli.h>
@@ -23,6 +24,8 @@
 #include <cctype>
 #include <deque>
 #include <optional>
+#include <set>
+#include <sstream>
 #include <streambuf>
 
 namespace mcs::ui {
@@ -238,6 +241,20 @@ std::optional<Color> enumColor(const std::string& value)
     return std::nullopt;
 }
 
+// While a script runs, typed lines may look and control, not command: the
+// script's commands must not interleave with typed ones.
+bool allowedWhileScriptRuns(const std::string& line)
+{
+    std::istringstream words(line);
+    std::string first;
+    std::string second;
+    words >> first >> second;
+    first = toLower(first);
+    static const std::set<std::string> kAlways{"run", "tlm", "help", "target", "history", "exit"};
+    static const std::set<std::string> kFileControl{"list", "status", "cancel", "abandon", "suspend", "resume"};
+    return kAlways.count(first) != 0 || (first == "file" && kFileControl.count(toLower(second)) != 0);
+}
+
 const char* const kSpinner[] = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
 constexpr int kListWidth = 30;   // telemetry screen: packet checklist
 
@@ -286,7 +303,16 @@ public:
         if (tlm_.files != nullptr) {
             tlm_.files->setOnChange([this] { requestRedraw(); });   // progress, notices
         }
+        if (tlm_.script != nullptr) {
+            tlm_.script->setOnChange([this] { requestRedraw(); });  // script output
+        }
         screen.Loop(root);
+        if (tlm_.script != nullptr) {
+            // Before this session's cli session goes away (see ScriptRunner).
+            tlm_.script->setOnChange({});
+            tlm_.script->stop();
+            tlm_.script->join();
+        }
         if (tlm_.files != nullptr) {
             tlm_.files->setOnChange({});
         }
@@ -445,6 +471,11 @@ private:
             return;
         }
         output_.addLine("> " + line);
+        if (tlm_.script != nullptr && tlm_.script->status().running && !allowedWhileScriptRuns(line)) {
+            output_.addLine("error: a script is running: only run, tlm, help, target and file "
+                            "list|status|cancel|abandon|suspend|resume now ('run stop' ends it)");
+            return;
+        }
         session_.Feed(line);
         out_.flush();
         updatePrompt();
@@ -476,6 +507,16 @@ private:
 
     void quit()
     {
+        // Quitting stops a running script: say so once, quit (and stop it) on the next try.
+        if (tlm_.script != nullptr && !scriptQuitWarned_) {
+            const ScriptRunner::Status st = tlm_.script->status();
+            if (st.running) {
+                scriptQuitWarned_ = true;
+                exitRequested_ = false;
+                output_.addLine("warning: " + st.name + " is still running: quit again to stop it (or 'run stop')");
+                return;
+            }
+        }
         // Quitting abandons running transfers: say so once, quit on the next try.
         if (tlm_.files != nullptr && !quitWarned_) {
             const auto c = tlm_.files->activeCounts();
@@ -516,6 +557,12 @@ private:
                 output_.addLine(std::move(line));
             }
         }
+        if (tlm_.script != nullptr) {
+            for (auto& line : tlm_.script->takeOutput()) {
+                output_.addLine(std::move(line));
+            }
+            script_ = tlm_.script->status();
+        }
         if (tlm_.store == nullptr || (tlm_.view.paused && frozen_)) {
             return;
         }
@@ -541,6 +588,12 @@ private:
                        tab(" F2 Telemetry ", TlmView::Telemetry), text("  ")};
         if (const std::string badge = transferBadge(fileCounts_); !badge.empty()) {
             parts.push_back(text(" " + badge + " ") | bold | color(Color::Cyan));
+            parts.push_back(text(" "));
+        }
+        if (script_.running) {
+            parts.push_back(text(" SCRIPT " + script_.name + " " + std::to_string(script_.line) + "/"
+                                 + std::to_string(script_.lines) + " ")
+                            | bold | inverted | color(Color::Cyan));
             parts.push_back(text(" "));
         }
         if (frozen_) {
@@ -608,6 +661,11 @@ private:
             return text(narrow ? " ↑↓ move · Space tick · PgUp/PgDn scroll · F1 console (or type) · F5 pause"
                                : " ↑↓ move · Space tick · PgUp/PgDn scroll cards · F5 pause · "
                                  "F1 console (or just type) · Ctrl-C quit")
+                 | dim;
+        }
+        if (script_.running) {
+            return text(" Script running: 'run stop' ends it · PgUp/PgDn output · Ctrl+↑↓ events · "
+                        "F2 telemetry · Ctrl-C quit")
                  | dim;
         }
         std::string hint = narrow ? " Tab complete · ↑↓ history · PgUp/PgDn output · Ctrl+↑↓ events · F2 telemetry"
@@ -788,7 +846,21 @@ private:
         if (t.rfind("> ", 0) == 0) {   // the command you typed
             return e | bold | color(Color::Yellow);
         }
-        if (t.rfind("error", 0) == 0 || t.rfind("Unknown command", 0) == 0) {
+        // Test scripts: PASS/FAIL lines (FAIL and error lines may start with "file.mcs:7: ").
+        const auto has = [&t](const char* part) { return t.find(part) != std::string::npos; };
+        if (t.rfind("PASS ", 0) == 0 || t.rfind("result: PASS", 0) == 0) {
+            return e | color(Color::Green);
+        }
+        if (t.rfind("FAIL ", 0) == 0 || has(": FAIL ") || t.rfind("result: FAIL", 0) == 0) {
+            return e | bold | color(Color::Red);
+        }
+        if (t.rfind("=== ", 0) == 0) {
+            if (has(" FAIL")) {
+                return e | bold | color(Color::Red);
+            }
+            return has(" PASS") ? e | bold | color(Color::Green) : e | bold;
+        }
+        if (t.rfind("error", 0) == 0 || t.rfind("Unknown command", 0) == 0 || has(": error: ")) {
             return e | color(Color::Red);
         }
         if (t.rfind("warning", 0) == 0) {
@@ -1286,6 +1358,8 @@ private:
     CompletionResult completion_;
     bool exitRequested_ = false;
     bool quitWarned_ = false;                       // quit asked once while transfers ran
+    bool scriptQuitWarned_ = false;                 // quit asked once while a script ran
+    ScriptRunner::Status script_;                   // "run <script>" state of the last frame
     std::vector<cfdp::TransferStatus> transfers_;   // file transfers of the last frame
     FileTransferService::Counts fileCounts_;
 

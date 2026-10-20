@@ -29,8 +29,9 @@ and sends it to the configured target.
 | Command catalog from data files | EDS (XML) catalog import |
 | Interactive, one-shot (`-c`) and script (`-f`) modes | Telemetry inspector, RX log, replay |
 | Argument validation, help, tab-completion of commands | GUI, remote (telnet) sessions |
-| Packet log (audit trail), hexdump, verbose mode | Command verification via telemetry |
+| Packet log (audit trail), hexdump, verbose mode | Continuous checks (`watch`), result files, JUnit |
 | Full-screen session: telemetry receive/decode (F1 console with EVS events, F2 telemetry checklist and packet cards) | |
+| Script checks in batch mode: `wait`, `expect`, `expect-event`, `expect-no-event`, `save`/`$var`, `test` … `end`; the whole script checked first (§4.13) | Script `include`, procedures, starting/stopping the FSW |
 
 ### 1.2 Requirements
 
@@ -142,8 +143,11 @@ ds set_app_state disable 19 4B C0 00 00 05 6A 02 00 00 00 00
    `FileTransferService` also wires `cfdp/` and the telemetry parser.
 5. `cfdp/` depends only on `core/` and the GSFC CFDP library, which only
    `cfdp/gsfc_bridge.c` and `cfdp/gsfc_engine.cpp` see (§4.12).
+5a. `verify/` depends only on `core/` and `telemetry/` (§4.13); the menu and
+   `app/` connect it to `CommandService` (when the last command was sent).
 6. `ui/` and `app/` are the only modules that include `<cli/...>`.
-7. Everything except `ui/` and `app/` is the static library `mcs_core`.
+7. Everything except `ui/` and `app/` is the static library `mcs_core`; `ui/`
+   without the full-screen session (menus, help, test scripts) is `mcs_menu`.
 
 Breaking any of these rules is a design defect, not a style issue.
 
@@ -476,6 +480,11 @@ public:
                  const std::vector<std::string>& args, std::ostream& out);
     void executeRaw(const std::string& hex, std::ostream& out);
     void setVerbose(bool);
+    // The script check pass: what execute() checks, without sending.
+    bool check(const std::string& app, const std::string& cmd,
+               const std::vector<std::string>& args, bool checkValues, std::ostream& out);
+    // When the last packet was sent: the start of every script check's window.
+    std::optional<std::chrono::system_clock::time_point> lastSentAt() const;
 };
 ```
 
@@ -496,6 +505,9 @@ mcs>
 ├── target                            show the active target (name, pipeline, catalog files)
 ├── verbose on|off                    hexdump every packet
 ├── raw <hex bytes>                   send pre-built packet bytes (still through layers + transport)
+├── wait, timeout, expect, expect-event, expect-no-event, save, test, end
+│                                     script checks, batch mode only (§4.13)
+├── run [<script>|stop]               full-screen session: a test script in the background (§4.13)
 └── (library built-ins) help, exit, history
 ```
 
@@ -506,13 +518,13 @@ that app's commands (plus `..`, `help`, `exit`) are available.
 
 ```
 mcs [--config FILE] [-t|--target NAME] [-n|--dry-run] [-v|--verbose]
-       [--log-dir DIR | --no-log] [-c CMD]... [-f FILE] [--list-targets]
+       [--log-dir DIR | --no-log] [-c CMD]... [-f FILE] [--check] [--list-targets]
        [-h] [--version]
 ```
 
 `--dry-run` replaces the target's transport with `dryrun` without editing the file.
 
-**Exit codes**: 0 success; 1 a command failed; 2 bad command-line options;
+**Exit codes**: 0 success; 1 a command or check failed; 2 bad command-line options;
 3 configuration error (bad targets/catalog file).
 
 
@@ -566,6 +578,57 @@ same PDUs.
   count for the exit code. In sessions they return at once; the full-screen
   session drains notices on the UI thread and shows the TRANSFERS strip.
 
+### 4.13 `verify/` — script checks
+
+Lets a batch script check what the FSW does (the role of CTF's verification
+instructions), with the console syntax:
+
+```
+save n ds.hk cmd_accepted_counter
+fsw ds noop
+expect-event DS id 31 type INFO
+expect ds.hk cmd_accepted_counter == $n+1 within 5
+```
+
+| Class | Role |
+|---|---|
+| `Condition` | `<op> <value>` parsed against a `TlmFieldDef` (integers by raw value or enum name, f32 at f32 precision, strings `==`/`!=`); `matches(DecodedValue)` |
+| `VariableTable` | `$name`, `$name±N`, `$$` in a line; values from `save` |
+| `TlmHistory` | Fed by a `TelemetryService` sink on the receiver thread: the last 64 decoded samples per catalog MID and the last 1000 EVS events, with receive times. `waitUntil(deadline, check)` re-runs `check` (under the lock) on every arrival |
+| `VerifyService` | One method per script command; PASS/FAIL lines, per-test and total counts, summary. Check-only mode for the pass before a script runs |
+
+- **Window.** A check counts what arrived since `CommandService::lastSentAt()`
+  (the session start before the first command). Events that arrive during a
+  `wait` after the command count; telemetry from before the command does not.
+- **Every packet is seen.** The history is fed by its own sink, so checks do
+  not depend on the display's `TlmStore`, which keeps only latest values, and
+  a check wakes on the packet that satisfies it (no polling period).
+- **Check pass.** `-f` (and `--check`) first feed every line to a second menu
+  tree built from a check-only `VerifyService`, its own `CommandService`
+  (`check()`, arming tracked) and the file menu in `FileMenuMode::Check`; any
+  error stops the run before anything is sent. Lines with `$name` are checked
+  with `setValuesKnown(false)`: names and argument counts, not values.
+- **Output and exit code.** `ui/script_runner` (`checkScript`, `runScript`)
+  puts the script location in front of `FAIL` and `error:` lines
+  (`file.mcs:7: FAIL ...`) and prints the summary; failed checks count for
+  exit code 1. A script run gets its own `CommandService`, `VerifyService`,
+  variables and menu tree; it shares only the thread-safe `Pipeline`,
+  `PacketLog`, `FileTransferService` and `TlmHistory`.
+- **Not typed in sessions.** A check blocks while it waits, so the
+  interactive sessions do not have these commands. The full-screen session
+  runs whole scripts instead: `run <script>` checks it on the UI thread, then
+  `ScriptRunner` runs it on its own thread. Output lines are queued for the
+  UI thread (as `FileTransferService` notices are); `run stop` sets a flag
+  that `runScript` checks between lines and `VerifyService` checks every
+  100 ms while waiting. One script at a time: the cli library registers each
+  session's stream in an unlocked global list, so sessions are only created
+  and destroyed while no other thread does so (the TUI joins the script
+  before its own session goes away).
+- **Thread checking.** The threaded tests run clean under clang's
+  ThreadSanitizer. GCC 11's does not intercept `pthread_cond_clockwait`
+  (used by `condition_variable::wait_until` with `steady_clock`) and reports
+  false "double lock" and data races on `TlmHistory`.
+
 ---
 
 ## 5. Directory layout
@@ -595,15 +658,17 @@ mcs/
 │   ├── log/        packet_log.*
 │   ├── service/    command_service.*, file_transfer_service.*
 │   ├── cfdp/       engine.hpp, gsfc_engine.*, gsfc_bridge.*, pdu_info.*, transfer.*, cfdp_config.hpp
-│   ├── ui/         menu_builder.*, fsw_command.*, tui_session.*, transfer_format.*
+│   ├── verify/     condition.*, variables.*, tlm_history.*, verify_service.*
+│   ├── ui/         menu_builder.*, fsw_command.*, tui_session.*, transfer_format.*, script_runner.*
 │   └── app/        main.cpp, options.*
 └── tests/
     ├── unit/       one test file per module
     ├── oracle/     cFE ccsds.h/ccsds.c + stubs, compares against our packets
     ├── integration/ UDP loopback: real socket receives what mcs sends
     ├── smoke/      CTest runs of the executable (-c, -f, exit codes)
-    ├── tools/      cfdp_peer.cpp: a CF stand-in (same CFDP engine) for file transfer tests
-    └── e2e/        file_transfer.sh: mcs file put/get against the stand-in over UDP
+    ├── tools/      cfdp_peer.cpp: a CF stand-in (same CFDP engine) for file transfer tests;
+    │               fake_fsw.cpp: a DS stand-in (housekeeping, events) for script checks
+    └── e2e/        file_transfer.sh, verify.sh: the executable against the stand-ins over UDP
 ```
 
 ---
@@ -642,8 +707,9 @@ Example: CSP over UDP later is just a new class plus this target entry:
 | Integration | Bind a UDP socket on loopback, run the pipeline with `udp` transport, compare received datagram | GoogleTest |
 | Smoke | Run the executable: `-c`, `-f`, `--dry-run`, wrong command / wrong args → exit codes | CTest |
 | CFDP | Engine: PDU layout, checksum (independent implementation), round trip, path rules, pacing; two engines in two processes (class 1/2, loss, cancel, put and get at once); the service (CF command packets, playback, expectations); formatter | GoogleTest |
-| End to end | The executable's `file put/get` against `mcs_cfdp_peer` over UDP, class 1/2, with loss | CTest + bash |
-| Threads | Service, pipeline, log, telemetry sinks, engine under ThreadSanitizer (clang) | manual build |
+| Script checks | Conditions, variables, history (ring limits, wake-up), every check (pass, late pass, timeout with last value, window), tests, check-only mode; `runScript`/`checkScript`, `ScriptRunner` (background run, output order, stop during a wait and a check, one at a time) | GoogleTest |
+| End to end | The executable's `file put/get` against `mcs_cfdp_peer` over UDP, class 1/2, with loss; test scripts against `mcs_fake_fsw` (pass, a failing check, `--check` with a typo) | CTest + bash |
+| Threads | Service, pipeline, log, telemetry sinks, engine, script runner under ThreadSanitizer (clang; see §4.13) | manual build |
 | Manual acceptance | Against real cFS (§8) | operator |
 
 ## 8. Prototype acceptance criteria
@@ -659,7 +725,9 @@ Example: CSP over UDP later is just a new class plus this target entry:
 ## 9. Future work (designed for, not built)
 
 CCSDS v2 format · CSP layer · TCP/serial transports · telemetry inspector,
-RX log, replay and command verification · runtime `target use` · EDS import ·
+RX log and replay · script `watch` (continuous checks), `include` and
+procedures, result files and JUnit output, starting/stopping the FSW from a
+script · runtime `target use` · EDS import ·
 `critical` confirmation for dangerous commands in other apps · remaining DS
 filter commands once `ds_msg.h` is provided.
 

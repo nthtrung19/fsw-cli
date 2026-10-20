@@ -2,7 +2,7 @@
 // to_msgids.h, to_config.c.
 //
 // Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
-// in targets.json. Layouts are the NTPM PC build (pc_linux, x86-64, 64-bit), checked
+// in targets.json. Layouts are the NTPM PC build (pc_linux, i386, 32-bit), checked
 // with offsetof against the FSW headers.
 //   packets  one entry per telemetry MID the app sends
 //   event    true for EVS event packets: shown in the event log
@@ -66,11 +66,10 @@
         { "name": "dw2", "type": "i32", "hex": true },
         { "name": "f1", "type": "f32" },
         { "name": "f2", "type": "f32" },
-        { "type": "padding", "size": 4 },
         { "name": "df1", "type": "f64" },
         { "name": "df2", "type": "f64" },
         { "name": "str", "type": "string", "size": 10 },
-        { "type": "padding", "size": 6 }
+        { "type": "padding", "size": 2 }
       ]
     },
     {

@@ -9,8 +9,10 @@
 //   default  value used when the argument is omitted (only trailing arguments may be omitted)
 // Numbers may be written as JSON integers or as "0x.." strings.
 // Fields are listed in payload order, after the 8-byte command header (CFE_SB_CMD_HDR_SIZE).
-// Layouts are the NTPM PC build (x86-64, 64-bit: double is 8-byte aligned); compiler-inserted
-// holes and spare members are listed as padding.
+// Layouts are the NTPM PC build (i386, 32-bit: double is 4-byte aligned in structs); compiler-
+// inserted holes and spare members are listed as padding. The PC build (lib_simulation_udp)
+// has no inertial_pointing, change_control_gain or change_test_solution: those are listed with
+// the labsat (lib_labsat_bbb, ARM: double 8-byte aligned) layout.
 // AOCS checks the exact packet length (AOCS_VerifyCmdLength) for every command except
 // change_control_gain, change_test_solution and orbit_state_from_tle: those have no length
 // check and do not count commands, so a wrong layout is read silently.
@@ -176,7 +178,7 @@
         {
           "name": "inertial_pointing",
           "cc": 20,
-          "help": "Inertial pointing to a quaternion, or 3-axis sun pointing",
+          "help": "Inertial pointing to a quaternion, or 3-axis sun pointing (labsat build only)",
           "fields": [
             { "name": "q0", "type": "f64", "help": "Attitude in ECI, element 0" },
             { "name": "q1", "type": "f64", "help": "Element 1" },
@@ -195,7 +197,7 @@
         {
           "name": "change_control_gain",
           "cc": 26,
-          "help": "Set the PID gains of a pointing mode (offline: gains ignored)",
+          "help": "Set the PID gains of a pointing mode (offline: gains ignored; labsat build only)",
           "fields": [
             { "name": "tuning", "type": "u8", "enum": { "offline": 0, "online": 1 },
               "help": "IsTuningOnline" },
@@ -217,7 +219,7 @@
         {
           "name": "change_test_solution",
           "cc": 27,
-          "help": "Select the wheel control, attitude determination and actuator test modes",
+          "help": "Select the wheel control, attitude determination and actuator test modes (labsat build only)",
           "fields": [
             { "name": "rwl_control_mode", "type": "u8", "enum": { "speed": 0, "current": 1 },
               "help": "Reaction wheel control" },
@@ -238,7 +240,7 @@
             { "type": "padding", "size": 3 },
             { "name": "sat_catalog_number", "type": "u32", "help": "Satellite catalog number" },
             { "name": "checksum", "type": "u8", "help": "TLE checksum" },
-            { "type": "padding", "size": 7 },
+            { "type": "padding", "size": 3 },
             { "name": "inclination", "type": "f64", "help": "Inclination (deg)" },
             { "name": "raan", "type": "f64", "help": "Right ascension of the ascending node (deg)" },
             { "name": "eccentricity", "type": "f64", "help": "Eccentricity" },

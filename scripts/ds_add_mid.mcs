@@ -1,0 +1,38 @@
+# DS add_mid test. Run ONCE per FSW start-up, after a fresh CDS:
+#
+#   ./build/src/mcs -f scripts/ds_add_mid.mcs
+#
+# DS has no command to remove a message ID from its packet filter table, and DS keeps the
+# table in the CDS, so 0x0ABC stays in the table until the CDS is cleared (power-on reset)
+# or the filter table is reloaded. A second run fails DS-ADD-01 with "already in filter table".
+# 0x0ABC is not used by any app (ntpm_defs, apps/*/msgids). The repeatable DS suite is
+# scripts/ds_full.mcs.
+
+fsw to enable_output 127.0.0.1 5011
+wait 2
+timeout 5
+# DS reports add_mid with a DEBUG event: DEBUG is off by default (see ds_full.mcs)
+fsw evs enable_app_event_type DS debug
+wait 1
+
+test DS-ADD-01 "Add a message ID to the packet filter table" req DS-ADD-MID
+  save a ds.hk cmd_accepted_counter
+  fsw ds add_mid 0x0ABC
+  expect-event DS id 64 type DEBUG text "ADD MID command: MID = 0x0ABC"
+  expect ds.hk cmd_accepted_counter == $a+1
+  # the new entry exists: its filter can be set (and set back to pass nothing)
+  fsw ds set_filter_parms 0x0ABC 0 1 1 0
+  expect-event DS id 41 type DEBUG text "MID = 0x0ABC"
+  fsw ds set_filter_parms 0x0ABC 0 0 0 0
+  expect-event DS id 41 type DEBUG text "N = 0, X = 0, O = 0"
+  expect ds.hk cmd_accepted_counter == $a+3
+end
+
+test DS-ADD-02 "The same message ID cannot be added twice" req DS-ADD-MID
+  save r ds.hk cmd_rejected_counter
+  fsw ds add_mid 0x0ABC
+  expect-event DS id 65 type ERROR text "is already in filter table"
+  expect ds.hk cmd_rejected_counter == $r+1
+end
+
+fsw evs disable_app_event_type DS debug

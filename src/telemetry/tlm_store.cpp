@@ -77,7 +77,10 @@ void TlmStore::ingest(const Bytes& datagram, TlmTime now)
 
     std::vector<DecodedValue> values = decodeTelemetry(*def, frame.payload, endian_);
     if (def->isEvent) {
-        addEvent(*def, values, frame.seconds, frame.subseconds, now);
+        events_.push_back(makeEventRecord(*def, values, frame.seconds, frame.subseconds, now));
+        if (events_.size() > kMaxEvents) {
+            events_.pop_front();
+        }
     }
     updatePacket(*def, std::move(values), frame.sequence, frame.seconds, frame.subseconds, now);
     PacketState& p = packets_[def->mid];
@@ -113,8 +116,8 @@ void TlmStore::updatePacket(const TlmPacketDef& def, std::vector<DecodedValue> v
     p.lastRx = now;
 }
 
-void TlmStore::addEvent(const TlmPacketDef& def, const std::vector<DecodedValue>& values,
-                        std::uint32_t seconds, std::uint16_t subseconds, TlmTime now)
+EventRecord makeEventRecord(const TlmPacketDef& def, const std::vector<DecodedValue>& values,
+                            std::uint32_t seconds, std::uint16_t subseconds, TlmTime now)
 {
     EventRecord e;
     e.rxTime = now;
@@ -133,10 +136,7 @@ void TlmStore::addEvent(const TlmPacketDef& def, const std::vector<DecodedValue>
     if (const auto* v = findValue(def, values, "message")) {
         e.message = v->text;
     }
-    events_.push_back(std::move(e));
-    if (events_.size() > kMaxEvents) {
-        events_.pop_front();
-    }
+    return e;
 }
 
 void TlmStore::clear()

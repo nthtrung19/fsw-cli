@@ -5,7 +5,9 @@
 #include "log/packet_log.hpp"
 #include "pipeline/pipeline.hpp"
 
+#include <chrono>
 #include <cstddef>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -28,6 +30,15 @@ public:
     // Sends pre-built packet bytes given as hex tokens (still through layers + transport).
     bool executeRaw(const std::vector<std::string>& hexTokens, std::ostream& out);
 
+    // What execute() / executeRaw() check, without sending or printing
+    // anything but errors (the pass over a script before it runs). Arming is
+    // tracked as execute() does. With `checkValues` false (the arguments come
+    // from script variables not known yet) only the command and the number of
+    // arguments are checked.
+    bool check(const std::string& app, const std::string& command,
+               const std::vector<std::string>& args, bool checkValues, std::ostream& out);
+    bool checkRaw(const std::vector<std::string>& hexTokens, bool checkValues, std::ostream& out);
+
     // Critical commands are refused unless armed; arming covers the next
     // critical command only.
     void arm() { armed_ = true; }
@@ -38,6 +49,8 @@ public:
 
     std::size_t failures() const { return failures_; }
     std::size_t packetsSent() const { return sent_; }
+    // When the last packet was sent (system clock, as telemetry receive times).
+    std::optional<std::chrono::system_clock::time_point> lastSentAt() const { return lastSentAt_; }
 
     const CommandCatalog& catalog() const { return catalog_; }
     const Pipeline& pipeline() const { return pipeline_; }
@@ -56,6 +69,7 @@ private:
     bool armed_ = false;
     std::size_t failures_ = 0;
     std::size_t sent_ = 0;
+    std::optional<std::chrono::system_clock::time_point> lastSentAt_;
 };
 
 } // namespace mcs

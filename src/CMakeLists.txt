@@ -6,6 +6,7 @@
 #   config    <- the above + nlohmann/json (the ONLY JSON-aware module)
 #   service   <- catalog, encode, pipeline, log, cfdp, telemetry (parser only)
 #   telemetry <- core, catalog (field types), transport (IReceiver)
+#   verify    <- core, telemetry (script checks: expect, save, test ...)
 #   cfdp      <- core + the GSFC CFDP library (external/cfdp-gsfc), reached
 #                only through cfdp/gsfc_bridge.c (C) and cfdp/gsfc_engine.cpp
 # ----------------------------------------------------------------------------
@@ -53,6 +54,11 @@ add_library(mcs_core STATIC
     telemetry/tlm_store.cpp
     telemetry/telemetry_service.cpp
 
+    verify/condition.cpp
+    verify/variables.cpp
+    verify/tlm_history.cpp
+    verify/verify_service.cpp
+
     cfdp/transfer.cpp
     cfdp/pdu_info.cpp
     cfdp/gsfc_engine.cpp
@@ -69,17 +75,27 @@ target_link_libraries(mcs_core
     PRIVATE nlohmann_json::nlohmann_json cfdp_gsfc)
 
 # ----------------------------------------------------------------------------
-# mcs: the executable. Only ui/ and app/ may include <cli/...> or <ftxui/...>.
+# mcs_menu: the menu tree and test scripts (ui/ without the full-screen
+# session), a library so the unit tests can use it. Only ui/ and app/ may
+# include <cli/...>; only the full-screen session includes <ftxui/...>.
 # ----------------------------------------------------------------------------
-add_executable(mcs
+add_library(mcs_menu STATIC
     ui/fsw_command.cpp
     ui/menu_builder.cpp
     ui/completion.cpp
     ui/help_format.cpp
     ui/transfer_format.cpp
+    ui/script_runner.cpp)
+
+target_link_libraries(mcs_menu PUBLIC mcs_core cli::cli PRIVATE mcs_warnings)
+
+# ----------------------------------------------------------------------------
+# mcs: the executable.
+# ----------------------------------------------------------------------------
+add_executable(mcs
     ui/tui_session.cpp
     app/options.cpp
     app/main.cpp)
 
-target_link_libraries(mcs PRIVATE mcs_core cli::cli ftxui::component mcs_warnings)
+target_link_libraries(mcs PRIVATE mcs_menu mcs_core cli::cli ftxui::component mcs_warnings)
 target_compile_definitions(mcs PRIVATE mcs_VERSION="${PROJECT_VERSION}")

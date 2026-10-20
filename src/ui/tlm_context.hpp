@@ -13,6 +13,8 @@
 
 namespace mcs::ui {
 
+class ScriptRunner;
+
 enum class TlmView { Console, Telemetry };   // F1, F2
 
 const char* toString(TlmView view);
@@ -28,6 +30,7 @@ struct TlmContext {
     TelemetryService* service = nullptr;     // null: no receiver (see receiverError)
     std::string receiverError;               // why the receiver could not be opened
     FileTransferService* files = nullptr;    // null: no "cfdp" block for the target
+    ScriptRunner* script = nullptr;          // "run <script>" (full-screen session only)
     TlmViewState view;
 };
 

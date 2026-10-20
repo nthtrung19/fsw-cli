@@ -3,7 +3,7 @@
 // (lib_simulation_udp build).
 //
 // Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
-// in targets.json. Layouts are the NTPM PC build (pc_linux, x86-64, 64-bit), checked
+// in targets.json. Layouts are the NTPM PC build (pc_linux, i386, 32-bit), checked
 // with offsetof against the FSW headers.
 //   packets  one entry per telemetry MID the app sends
 //   event    true for EVS event packets: shown in the event log
@@ -31,8 +31,9 @@
 //   pcdu_model.h    PCDU_NUM_SWITCH 14
 //   Every 5 s MAIN sends hk, eps and the packet of the current mode only.
 //   MAIN never time-stamps its packets: header time is 0.
-//   Capture, downlink and orbit_transfer contain doubles, so they start with an
-//   8-byte gap (4-byte compiler hole + the PaddingHead member).
+//   Capture, downlink and orbit_transfer start with the 4-byte PaddingHead member. Their
+//   doubles need only 4-byte alignment on the 32-bit PC build (a 64-bit build adds a
+//   4-byte hole before PaddingHead).
 //   dev_mask bit n = HardwareIdentifier_t n: 0 STR_0, 1 STR_1, 2 GYR_0, 3 MTM_0, 4 GPS_0,
 //   5-8 FSS_0-3, 9-11 MTQ_0-2, 12-15 RWL_0-3, 16 THR_0, 17 PAYLOAD_0, 18 XTX_0,
 //   19 STRX_0, 20 UVTRX_0, 21 PCDU_0.
@@ -126,7 +127,7 @@
       "mid": "0x0906",
       "help": "CAPTURE mode data, every 5 s in that mode (MAIN_CaptureModeHkPacket_t)",
       "fields": [
-        { "type": "padding", "size": 8 },
+        { "type": "padding", "size": 4 },
         { "name": "mode_stage", "type": "u32",
           "enum": { "STAGE_0": 0, "STAGE_1": 1, "STAGE_2": 2, "SUCCESS": 3, "FAILURE": 4 } },
         { "name": "dev_mask", "type": "u32", "hex": true, "help": "Devices used by this mode" },
@@ -143,7 +144,7 @@
       "mid": "0x0907",
       "help": "DOWNLINK mode data, every 5 s in that mode (MAIN_DownlinkModeHkPacket_t)",
       "fields": [
-        { "type": "padding", "size": 8 },
+        { "type": "padding", "size": 4 },
         { "name": "mode_stage", "type": "u32",
           "enum": { "STAGE_0": 0, "STAGE_1": 1, "STAGE_2": 2, "STAGE_3": 3, "SUCCESS": 4, "FAILURE": 5 } },
         { "name": "dev_mask", "type": "u32", "hex": true, "help": "Devices used by this mode" },
@@ -163,7 +164,7 @@
       "mid": "0x0908",
       "help": "ORBIT TRANSFER mode data, every 5 s in that mode (MAIN_OrbitTransferModeHkPacket_t)",
       "fields": [
-        { "type": "padding", "size": 8 },
+        { "type": "padding", "size": 4 },
         { "name": "mode_stage", "type": "u32",
           "enum": { "STAGE_0": 0, "STAGE_1": 1, "STAGE_2": 2, "STAGE_3": 3, "STAGE_4": 4, "SUCCESS": 5,
                     "FAILURE": 6 } },

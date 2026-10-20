@@ -82,6 +82,10 @@ mcs_smoke(NAME sequence_increments EXIT 0
     ARGS ${BASE} -n -c "fsw ds noop" -c "fsw ds noop"
     EXPECT "seq=0.*seq=1")
 
+mcs_smoke(NAME dryrun_evs_enable_app_event_type EXIT 0
+    ARGS ${BASE} -n -c "fsw evs enable_app_event_type DS debug"
+    EXPECT "\\(30 bytes, apid=0x001 seq=0\\)\n  18 01 C0 00 00 17 22 05 44 53 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 00")
+
 # ---- validation: nothing sent, exit code 1 ---------------------------------------
 mcs_smoke(NAME missing_argument EXIT 1
     ARGS ${BASE} -n -c "fsw ds set_app_state"
@@ -165,6 +169,45 @@ mcs_smoke(NAME menu_navigation EXIT 0
 mcs_smoke(NAME packet_log_written EXIT 0
     ARGS --config ${SHIPPED_CONFIG} -n --log-dir ${CMAKE_CURRENT_BINARY_DIR}/logs -c "fsw ds noop"
     FILE ${CMAKE_CURRENT_BINARY_DIR}/logs/mcs-*.log)
+
+# ---- script checks ----------------------------------------------------------------------
+mcs_smoke(NAME check_good_script EXIT 0
+    ARGS ${BASE} --check -f ${DATA}/checks_ok.mcs
+    EXPECT "checks_ok\\.mcs: ok, 10 line\\(s\\) checked, nothing sent"
+    REJECT "dry-run|sent fsw")
+
+# A script is checked as a whole first: line 2 is valid but is not sent either.
+mcs_smoke(NAME script_with_typo_is_not_run EXIT 1
+    ARGS ${BASE} -n -f ${DATA}/checks_typo.mcs
+    EXPECT "checks_typo\\.mcs:5: error: unknown command: fsw ds nop\n.*checks_typo\\.mcs: not run: 1 error"
+    REJECT "\\[dry-run\\]")
+
+# The shipped test scripts still match the catalogs.
+mcs_smoke(NAME check_script_ds_full EXIT 0
+    ARGS ${BASE} --check -f ${PROJECT_SOURCE_DIR}/scripts/ds_full.mcs
+    EXPECT "ds_full\\.mcs: ok, [0-9]+ line\\(s\\) checked")
+mcs_smoke(NAME check_script_ds_add_mid EXIT 0
+    ARGS ${BASE} --check -f ${PROJECT_SOURCE_DIR}/scripts/ds_add_mid.mcs
+    EXPECT "ds_add_mid\\.mcs: ok, [0-9]+ line\\(s\\) checked")
+mcs_smoke(NAME check_script_ds_smoke EXIT 0
+    ARGS ${BASE} --check -f ${PROJECT_SOURCE_DIR}/scripts/ds_smoke.mcs
+    EXPECT "ds_smoke\\.mcs: ok, [0-9]+ line\\(s\\) checked")
+
+mcs_smoke(NAME check_command_lines EXIT 1
+    ARGS ${BASE} --check -c "fsw ds noop" -c "expect ds.hk cmd_acepted_counter == 1"
+    EXPECT "error: expect: ds.hk has no field 'cmd_acepted_counter' \\(did you mean cmd_accepted_counter\\?\\)"
+    REJECT "\\[dry-run\\]")
+
+mcs_smoke(NAME check_needs_lines EXIT 2 ARGS ${BASE} --check EXPECT "--check needs -f FILE or -c CMD")
+
+# No FSW: the check fails at its deadline (a private telemetry port avoids clashes).
+mcs_smoke(NAME expect_without_telemetry_fails EXIT 1
+    ARGS ${BASE} -n --tlm-port 45999 -c "expect ds.hk within 0.2"
+    EXPECT "FAIL expect ds.hk within 0\\.2 s  \\(no ds\\.hk packet since the start\\)\nresult: FAIL  checks: 0 passed, 1 failed")
+
+mcs_smoke(NAME undefined_variable EXIT 1
+    ARGS ${BASE} -n --tlm-port 45998 -c "fsw ds noop" -c "fsw ds set_app_state $s"
+    EXPECT "\\[dry-run\\] fsw ds noop.*error: undefined variable \\$s")
 
 # ---- file transfer (CFDP) ------------------------------------------------------------
 # A dry-run class 1 put: the directive PDUs are shown as CF_INCOMING_PDU_MID

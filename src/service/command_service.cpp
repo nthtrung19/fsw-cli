@@ -79,6 +79,45 @@ bool CommandService::execute(const std::string& app, const std::string& command,
     }
 }
 
+bool CommandService::check(const std::string& app, const std::string& command,
+                           const std::vector<std::string>& args, bool checkValues, std::ostream& out)
+{
+    try {
+        const AppDef* appDef = catalog_.findApp(app);
+        const CommandDef* def = appDef != nullptr ? appDef->findCommand(command) : nullptr;
+        if (def == nullptr) {
+            return fail("unknown command '" + app + " " + command + "' for target '" + targetName_ + "'", out);
+        }
+        if (checkValues) {
+            encoder_.encode(*def, args);
+        } else {
+            PayloadEncoder::checkArgumentCount(*def, args.size());
+        }
+        if (def->critical) {
+            if (!armed_) {
+                return fail("'" + command + "' is a critical command: type 'arm', then repeat it", out);
+            }
+            armed_ = false;
+        }
+        return true;
+    } catch (const mcsError& e) {
+        return fail(e.what(), out);
+    }
+}
+
+bool CommandService::checkRaw(const std::vector<std::string>& hexTokens, bool checkValues, std::ostream& out)
+{
+    if (!checkValues) {
+        return true;
+    }
+    try {
+        parseHex(join(hexTokens, " "));
+        return true;
+    } catch (const mcsError& e) {
+        return fail(std::string("raw: ") + e.what(), out);
+    }
+}
+
 bool CommandService::executeRaw(const std::vector<std::string>& hexTokens, std::ostream& out)
 {
     const std::string joined = join(hexTokens, " ");
@@ -98,6 +137,7 @@ void CommandService::report(const std::string& commandLine, const Pipeline::Resu
                             std::ostream& out)
 {
     ++sent_;
+    lastSentAt_ = std::chrono::system_clock::now();
     const bool dryRun = pipeline_.isDryRun();
     const std::string details = "(" + std::to_string(result.wire.size()) + " bytes, " + result.note + ")";
 

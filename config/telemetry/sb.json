@@ -2,7 +2,7 @@
 // ntpm_mission_cfg.h, ntpm_platform_cfg.h.
 //
 // Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
-// in targets.json. Layouts are the NTPM PC build (pc_linux, x86-64, 64-bit), checked
+// in targets.json. Layouts are the NTPM PC build (pc_linux, i386, 32-bit), checked
 // with offsetof against the FSW headers.
 //   packets  one entry per telemetry MID the app sends
 //   event    true for EVS event packets: shown in the event log
@@ -26,8 +26,8 @@
 //                        CFE_SB_ALLSUBS_TLM_MID 0x080D, CFE_SB_ONESUB_TLM_MID 0x080E
 //   ntpm_mission_cfg.h   CFE_MISSION_SB_MAX_PIPES 64
 //   cfe_sb.h             CFE_SB_SUB_ENTRIES_PER_PKT 20
-//   CFE_ES_MemHandle_t is a cpuaddr: 8 bytes on the PC build, so hk starts with a 4-byte
-//   hole (flight 32-bit ARM layouts differ).
+//   CFE_ES_MemHandle_t is a cpuaddr: 4 bytes on the 32-bit PC build (8 bytes, with a 4-byte
+//   hole at the start of hk, on a 64-bit build).
 {
   "app": "sb",
   "help": "cFE Software Bus",
@@ -37,7 +37,6 @@
       "mid": "0x0803",
       "help": "Housekeeping, every 30 s (CFE_SB_HousekeepingTlm_t)",
       "fields": [
-        { "type": "padding", "size": 4 },
         { "name": "command_counter", "type": "u8" },
         { "name": "command_error_counter", "type": "u8" },
         { "name": "no_subscribers_counter", "type": "u8" },
@@ -53,7 +52,7 @@
           "help": "Messages dropped because a pipe was full (TO's pipe holds 10)" },
         { "name": "msg_limit_error_counter", "type": "u16",
           "help": "Messages dropped by a per-MID pipe limit (1 for most TO routes)" },
-        { "name": "mem_pool_handle", "type": "u64", "hex": true },
+        { "name": "mem_pool_handle", "type": "u32", "hex": true },
         { "name": "mem_in_use", "type": "u32", "units": "B" },
         { "name": "unmarked_mem", "type": "u32", "units": "B",
           "help": "CFE_PLATFORM_SB_BUF_MEMORY_BYTES (524288) minus peak memory in use" }

@@ -57,6 +57,11 @@ struct EventRecord {
     std::string message;
 };
 
+// The event an EVS event packet carries (fields app_name, event_id, event_type,
+// message of `def`, decoded into `values`).
+EventRecord makeEventRecord(const TlmPacketDef& def, const std::vector<DecodedValue>& values,
+                            std::uint32_t seconds, std::uint16_t subseconds, TlmTime now);
+
 // Link counters over all MIDs.
 struct TlmCounters {
     std::size_t received = 0;                  // all datagrams
@@ -99,9 +104,6 @@ private:
     void updatePacket(const TlmPacketDef& def, std::vector<DecodedValue> values,
                       std::uint16_t sequence, std::uint32_t seconds, std::uint16_t subseconds,
                       TlmTime now);
-    void addEvent(const TlmPacketDef& def, const std::vector<DecodedValue>& values,
-                  std::uint32_t seconds, std::uint16_t subseconds, TlmTime now);
-
     const TelemetryCatalog& catalog_;
     Endian endian_;
 

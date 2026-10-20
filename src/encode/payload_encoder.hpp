@@ -27,6 +27,9 @@ public:
 
     Bytes encode(const CommandDef& command, const std::vector<std::string>& args) const;
 
+    // The argument-count rule of encode() alone; throws the same ParseError.
+    static void checkArgumentCount(const CommandDef& command, std::size_t count);
+
     // Encodes every field default on its own; throws ParseError for one that
     // is not a valid argument for its field.
     void checkDefaults(const CommandDef& command) const;

@@ -9,6 +9,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdlib>
 
 using namespace mcs;
@@ -124,7 +125,8 @@ TEST(ShippedConfig, AocsCatalogMatchesAocsCmdsH)
     ASSERT_NE(aocs, nullptr);
     EXPECT_EQ(aocs->mids(), (std::vector<std::uint16_t>{0x1911, 0x1912}));   // aocs_app_msgids.h
 
-    // Command code (aocs_cmds.h) and payload = sizeof(command struct) - 8, x86-64 layout.
+    // Command code (aocs_cmds.h) and payload = sizeof(command struct) - 8: i386 PC build
+    // (labsat layout for inertial_pointing, change_control_gain and change_test_solution).
     struct Expected {
         const char* name;
         std::uint16_t mid;
@@ -141,7 +143,7 @@ TEST(ShippedConfig, AocsCatalogMatchesAocsCmdsH)
         {"active_propul_system", 0x1911, 16, 0},   {"deactive_propul_system", 0x1911, 17, 0},
         {"target_strip_pointing", 0x1911, 18, 32}, {"fine_sun_pointing", 0x1911, 19, 4},
         {"inertial_pointing", 0x1911, 20, 56},     {"change_control_gain", 0x1911, 26, 80},
-        {"change_test_solution", 0x1911, 27, 3},   {"orbit_state_from_tle", 0x1911, 28, 72},
+        {"change_test_solution", 0x1911, 27, 3},   {"orbit_state_from_tle", 0x1911, 28, 68},
         {"hk", 0x1912, 0, 0},
     };
     ASSERT_EQ(aocs->commands.size(), std::size(expected));
@@ -231,6 +233,52 @@ TEST(ShippedConfig, FdirCatalogMatchesFdirPlatformMsgH)
     }
 }
 
+TEST(ShippedConfig, EvsCatalogMatchesCfeEvsMsgH)
+{
+    const CommandCatalog catalog = loadCatalog({kSourceDir + "/config/telecommand/evs.json"});
+    const AppDef* evs = catalog.findApp("evs");
+    ASSERT_NE(evs, nullptr);
+    EXPECT_EQ(evs->mids(), (std::vector<std::uint16_t>{0x1801}));   // CFE_EVS_CMD_MID
+
+    // Command code (cfe_evs_msg.h) and payload = sizeof(command struct) - 8 on the i386 build:
+    // NoArgsCmd 8, BitMaskCmd 10, AppNameCmd 28, AppNameBitMaskCmd 30.
+    struct Expected {
+        const char* name;
+        int cc;
+        std::size_t payload;
+        bool critical;
+    };
+    const Expected expected[] = {
+        {"noop", 0, 0, false},
+        {"reset", 1, 0, false},
+        {"enable_event_type", 2, 2, false},
+        {"disable_event_type", 3, 2, true},
+        {"enable_app_event_type", 5, 22, false},
+        {"disable_app_event_type", 6, 22, false},
+        {"enable_app_events", 7, 20, false},
+        {"disable_app_events", 8, 20, true},
+        {"reset_app_counter", 9, 20, false},
+        {"clear_log", 20, 0, false},
+    };
+    ASSERT_EQ(evs->commands.size(), std::size(expected));
+    for (const auto& e : expected) {
+        const CommandDef* def = catalog.findCommand("evs", e.name);
+        ASSERT_NE(def, nullptr) << e.name;
+        EXPECT_EQ(def->mid, 0x1801) << e.name;
+        EXPECT_EQ(def->cc, e.cc) << e.name;
+        EXPECT_EQ(def->payloadSize(), e.payload) << e.name;
+        EXPECT_EQ(def->critical, e.critical) << e.name;
+    }
+    // EVS accepts masks 0x01..0x0F only (cfe_evs_task.c): "all" is 0x0F, not 0x1F.
+    const CommandDef* type = catalog.findCommand("evs", "enable_app_event_type");
+    ASSERT_NE(type, nullptr);
+    std::int64_t largest = 0;
+    for (const auto& v : type->fields[1].enumValues) {
+        largest = std::max(largest, v.value);
+    }
+    EXPECT_EQ(largest, 0x0F);
+}
+
 TEST(ShippedConfig, MainCatalogMatchesMainMsgdefsH)
 {
     const CommandCatalog catalog = loadCatalog({kSourceDir + "/config/telecommand/main.json"});
@@ -239,7 +287,8 @@ TEST(ShippedConfig, MainCatalogMatchesMainMsgdefsH)
     EXPECT_EQ(mainApp->mids(), (std::vector<std::uint16_t>{0x1900, 0x1901, 0x1903, 0x1904, 0x1905,
                                                            0x1906, 0x1907}));   // main_msgids.h
 
-    // Command code and payload = sizeof(command struct) - 8 (main_msgdefs.h, labsat build, x86-64).
+    // Command code and payload = sizeof(command struct) - 8 (main_msgdefs.h; explicit padding,
+    // so the same on the i386 PC build and the labsat build).
     struct Expected {
         const char* name;
         std::uint16_t mid;
@@ -286,7 +335,7 @@ TEST(ShippedConfig, TargetsFileLoadsAndBuilds)
     EXPECT_EQ(fsw.format.type, "ccsds_v1");
     EXPECT_EQ(fsw.transport.type, "udp");
     EXPECT_EQ(fsw.transport.options.at("port"), "1234");   // JSON number -> option text
-    ASSERT_EQ(fsw.catalogFiles.size(), 16U);
+    ASSERT_EQ(fsw.catalogFiles.size(), 17U);
     EXPECT_TRUE(std::filesystem::exists(fsw.catalogFiles[0]));
 
     for (const auto& t : targets.targets) {

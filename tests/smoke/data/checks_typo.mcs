@@ -1,0 +1,6 @@
+# Line 5 has a typo: nothing may be sent.
+fsw ds noop
+wait 0.1
+
+fsw ds nop
+expect ds.hk cmd_accepted_counter == 1

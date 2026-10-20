@@ -24,7 +24,7 @@ git clone --recurse-submodules <repo-url> mcs      # or extract the archive
 cd mcs
 cmake -S . -B build
 cmake --build build -j
-ctest --test-dir build                                  # 288 tests
+ctest --test-dir build                                  # 343 tests
 ```
 
 Missing submodules: `git submodule update --init --recursive`.
@@ -53,12 +53,14 @@ two-column `help`:
 ./build/src/mcs -c "fsw ds noop"                  # one command, then exit
 ./build/src/mcs -n -c "fsw ds set_app_state enable"   # dry run: print, don't send
 ./build/src/mcs -f commands.txt                   # script, one command per line
+./build/src/mcs -f scripts/ds_smoke.mcs           # test script: commands and checks, PASS/FAIL
+./build/src/mcs --check -f scripts/ds_smoke.mcs   # check a script, send nothing
 ./build/src/mcs --target fsw-dry                  # pick a target profile
 ./build/src/mcs --list-targets
 ./build/src/mcs --help
 ```
 
-Exit codes: `0` ok, `1` a command failed, `2` bad options, `3` configuration error.
+Exit codes: `0` ok, `1` a command or check failed, `2` bad options, `3` configuration error.
 
 ### Full-screen session
 
@@ -152,10 +154,11 @@ their column.
 | `file get <remote> [local] [class1\|class2]` | Ask CF to send a file and receive it, e.g. `file get /cf/log/hk_0001.dat` |
 | `file list`, `file status <id>` | Active and recent transfers; details of one (`0.24_7`) |
 | `file cancel\|abandon <id>\|all`, `file suspend\|resume <id>` | Control a transfer |
+| `run <script>`, `run stop`, `run` | Run a test script in the background (see [Testing with scripts](#testing-with-scripts)); stop it; show its progress |
 | `history`, `exit` | Library built-ins |
 
-Session commands (`target`, `verbose`, `raw`, `arm`, `tlm ...`, `file ...`) are typed at the
-top level (`mcs>`). The `tlm` commands exist in the full-screen session only; the
+Session commands (`target`, `verbose`, `raw`, `arm`, `tlm ...`, `file ...`, `run ...`) are typed at the
+top level (`mcs>`). The `tlm` and `run` commands exist in the full-screen session only; the
 `file` commands exist when the target has a `cfdp` block.
 
 ### File transfer (CFDP)
@@ -194,6 +197,101 @@ full), and that TO sends telemetry (`fsw ci enable_to`).
 
 Every sent packet is appended to `mcs-YYYYMMDD.log` in the current directory
 (`--log-dir DIR` to change, `--no-log` to disable).
+
+### Testing with scripts
+
+A script (`-f`) can check what the FSW does, not only send commands, so it
+can serve as an automated test. Example ([scripts/ds_smoke.mcs](scripts/ds_smoke.mcs)):
+
+```
+fsw to enable_output 127.0.0.1 5011
+wait 2
+
+test DS-001 "NOOP is accepted and reported" req DS-NOOP
+  save n ds.hk cmd_accepted_counter
+  fsw ds noop
+  expect-event DS id 31 type INFO text "NOOP command"
+  expect ds.hk cmd_accepted_counter == $n+1
+  expect-no-event DS type ERROR for 2
+end
+```
+
+```
+=== test DS-001  NOOP is accepted and reported  [DS-NOOP]
+n = 4  (ds.hk cmd_accepted_counter)
+sent fsw ds noop -> udp://127.0.0.1:1234  (8 bytes, apid=0x14B seq=0)
+PASS expect-event DS id 31 type INFO text "NOOP command"  (after 12 ms: "NOOP command, Version 2.5.2.0")
+PASS expect ds.hk cmd_accepted_counter == 5  (got 5 after 640 ms)
+PASS expect-no-event DS type ERROR for 2 s
+=== DS-001 PASS  (3 check(s))
+result: PASS  tests: 1 passed, 0 failed; checks: 3 passed, 0 failed; commands sent: 2; errors: 0
+```
+
+| Line | Meaning |
+|---|---|
+| `wait <s>` | Pause (`2`, `0.5`, `500ms`). |
+| `timeout <s>` | Time limit of the following checks (5 s at the start). |
+| `expect <packet> [within <s>]` | A packet arrives. |
+| `expect <packet> <field> <op> <value> [within <s>]` | A packet arrives whose field matches: `==` `!=` `<` `<=` `>` `>=`; the value is a number, one of the field's enum names (`enable`) or, for text fields, a string (`==`/`!=` only). |
+| `expect-event <APP> [id <n>] [type <T>] [text "<part>"] [within <s>]` | An event matching all the filters (type: `DEBUG`, `INFO`, `ERROR`, `CRIT`; text: part of the message, case-insensitive). |
+| `expect-no-event <APP> [id] [type] [text] [for <s>]` | Waits the whole time; fails if a matching event arrives. |
+| `save <name> <packet> <field> [within <s>]` | Stores the field's latest value; later lines use `$name`, `$name+1`, `$name-1` (`$$` is a `$`). |
+| `test <ID> ["title"] [req <R1,R2>]` … `end` | A test: it passes if every line inside passes. Lines outside tests still count for the result. |
+
+`<packet>` is a telemetry packet name (`ds.hk`) or MID (`0x0948`); fields
+are the names in `config/telemetry/<app>.json` (arrays as `name_0`, ...).
+
+- **What a check sees.** Telemetry and events received *since the last
+  command was sent*: an event that arrives during a `wait` after the command
+  counts, older telemetry does not. `expect` passes on the first matching
+  packet, so the counter check above passes on the first housekeeping packet
+  after the NOOP.
+- **Checked before it runs.** `-f` reads the whole script first: unknown
+  commands, wrong arguments, unknown packets or fields, bad values, undefined
+  variables and `test`/`end` mistakes are all reported with their line, and
+  then nothing is sent. `--check` stops after this. Lines with `$name` are
+  checked without the value, which is only known when the line runs.
+- **Results.** One `PASS`/`FAIL` line per check (failures show the last value
+  seen), one line per test, and a `result:` line. `FAIL` and `error:` lines
+  carry the script location (`ds_smoke.mcs:17: FAIL ...`). Any failed check or
+  line makes the exit code 1, so the script can gate a CI job.
+- The checks need the target's `telemetry` block and a free receiver port.
+  They work in `-f`, `-c` and `run` (below); typed one by one in a session
+  they are not available, because a check blocks while it waits.
+
+**Shipped scripts** (`scripts/`):
+
+| Script | What it tests | Runs |
+|---|---|---|
+| `ds_smoke.mcs` | DS NOOP and an invalid command code | any time |
+| `ds_full.mcs` | every DS command: nominal (each with its event and counters, file 15 and filter slot 2 of 0x0806 are changed and put back) and ~20 rejections, 12 of them as `raw` packets DS's own checks must catch | any time (repeatable) |
+| `ds_add_mid.mcs` | adding a message ID to DS's filter table | once per FSW start (DS cannot remove it) |
+
+The FSW turns DEBUG events off for every app (`CFE_PLATFORM_EVS_DEFAULT_TYPE_FLAG
+0x1E`), and most apps report a successful command only with a DEBUG event: a script
+that wants to see them turns them on for that app and off at the end, e.g.
+`fsw evs enable_app_event_type DS debug` ... `fsw evs disable_app_event_type DS debug`
+(`config/telecommand/evs.json`; EVS accepts the types debug, info, error, critical).
+
+**From the full-screen session: `run <script>`.** `mcs -f` and the
+full-screen session cannot run at the same time (both receive telemetry on
+UDP 5011, and TO sends to one place), so to watch the events and telemetry
+cards while a test runs, start it from the session:
+
+```
+mcs> run scripts/ds_smoke.mcs
+running scripts/ds_smoke.mcs: 15 line(s); 'run stop' ends it
+```
+
+The script is checked first, as with `-f` (errors are listed and nothing is
+sent). It then runs in the background: its lines stream into COMMAND OUTPUT
+(PASS green, FAIL red), the header shows ` SCRIPT ds_smoke.mcs 9/15 `, and
+the result is the same as `mcs -f` would print. `run` shows where it is,
+`run stop` ends it within a tenth of a second (a running `file put/get`
+finishes first). While it runs only `run`, `tlm ...`, `help`, `target` and
+`file list|status|cancel|abandon|suspend|resume` are accepted, so typed
+commands never mix with the script's; quitting asks once, then stops it.
+Tab completes `.mcs` files after `run `.
 
 ### Configuration
 
@@ -244,6 +342,7 @@ messages) is shipped; housekeeping definitions are written from each app's
 ```
 config/         targets.json, telecommand/*.json, telemetry/*.json (shipped configuration)
 docs/DESIGN.md  design specification
+scripts/        example test scripts (ds_smoke.mcs)
 external/       third-party submodules (do not edit; cli changes go in its fork, other fixes in external/patches/)
 external/cfdp-gsfc  the GSFC CFDP library of CF 2.2.1, vendored unmodified except config/cfdp_config.h
 src/core        bytes, byte order, hex, plug-in options, errors
@@ -258,13 +357,15 @@ src/log         packet audit log
 src/service     CommandService: one command end to end; FileTransferService: file put/get
 src/telemetry   telemetry catalog, CCSDS telemetry parser, decoder, TlmStore, receiver thread
 src/cfdp        CFDP engine interface, adapter to the GSFC library (gsfc_engine, C bridge), PDU inspector
-src/ui          menu tree, full-screen session (only modules using the cli and FTXUI libraries)
+src/verify      script checks: conditions, $variables, recent-telemetry history, VerifyService
+src/ui          menu tree, full-screen session, test scripts (only modules using the cli and FTXUI libraries)
 src/app         main, command-line options
 tests/unit        GoogleTest per module
 tests/oracle      mcs packets vs. cFE 6.7 ccsds.h/ccsds.c
 tests/integration real UDP on loopback
 tests/smoke       the executable, checked for output and exit codes
-tests/e2e         file put/get with the executable against tests/tools/cfdp_peer (a CF stand-in)
+tests/e2e         the executable against stand-ins over UDP: file put/get with tests/tools/cfdp_peer
+                  (CF), test scripts with tests/tools/fake_fsw (DS housekeeping and events)
 ```
 
 ## Testing against cFS
@@ -287,5 +388,7 @@ With cFS running and `ci_lab` listening on 127.0.0.1:1234:
    - In the full-screen session, start a `file put` and a `file get` together and
      watch both in the TRANSFERS strip.
 
+6. `mcs -f scripts/ds_smoke.mcs` → both tests PASS, `result: PASS`, exit 0.
+
 UDP is fire-and-forget: "sent" means the datagram left this machine. Confirm
-reception in the cFS event log.
+reception in the cFS event log, or with a test script.
