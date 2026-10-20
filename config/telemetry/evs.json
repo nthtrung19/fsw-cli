@@ -2,7 +2,7 @@
 // cfe_evs_extern_typedefs.h, ntpm_msgids.h, ntpm_mission_cfg.h, ntpm_platform_cfg.h.
 //
 // Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
-// in targets.json. Layouts are the NTPM SIL build (x86-64, 64-bit), checked
+// in targets.json. Layouts are the NTPM PC build (pc_linux, x86-64, 64-bit), checked
 // with offsetof against the FSW headers.
 //   packets  one entry per telemetry MID the app sends
 //   event    true for EVS event packets: shown in the event log. They must define
@@ -29,7 +29,7 @@
 //                        CFE_MISSION_ES_MAX_APPLICATIONS 16
 //   cfe_evs_extern_typedefs.h  CFE_EVS_EventType: UNDEFINED 0, DEBUG 1, INFORMATION 2,
 //                        ERROR 3, CRITICAL 4, WARNING 5
-//   SIL: SpacecraftID 31 (CMake SPACECRAFT_ID), ProcessorID 1
+//   PC build: SpacecraftID 31 (CMake SPACECRAFT_ID), ProcessorID 1
 {
   "app": "evs",
   "help": "cFE Event Services",
@@ -53,7 +53,7 @@
         { "name": "log_enabled", "type": "u8" },
         { "type": "padding", "size": 3 },
         { "name": "app_data", "count": 16,
-          "help": "Registered apps in AppID order, cut at 16 (SIL registers 20); unused entries are 0",
+          "help": "Registered apps in AppID order, cut at 16 (the PC build registers 20); unused entries are 0",
           "fields": [
             { "name": "app_id", "type": "u32" },
             { "name": "message_sent_counter", "type": "u16" },
@@ -83,7 +83,7 @@
       "name": "short_event",
       "mid": "0x0809",
       "event": true,
-      "help": "Event message without text, sent in short format mode (CFE_EVS_ShortEventTlm_t); not routed by TO in SIL",
+      "help": "Event message without text, sent in short format mode (CFE_EVS_ShortEventTlm_t); not routed by TO in the PC build",
       "fields": [
         { "name": "app_name", "type": "string", "size": 20 },
         { "name": "event_id", "type": "u16" },

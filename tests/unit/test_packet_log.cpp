@@ -32,14 +32,14 @@ TEST(PacketLog, AppendsOneLinePerPacket)
 {
     test::TempDir dir;
     PacketLog log(dir.path() / "logs");   // directory is created on demand
-    EXPECT_FALSE(log.record({"sil", "fsw ds noop", "apid=0x14B seq=0", {0x19, 0x4B}, false}));
-    EXPECT_FALSE(log.record({"sil", "fsw ds say \"hi\"", "apid=0x14B seq=1", {0xAA}, true}));
+    EXPECT_FALSE(log.record({"fsw", "fsw ds noop", "apid=0x14B seq=0", {0x19, 0x4B}, false}));
+    EXPECT_FALSE(log.record({"fsw", "fsw ds say \"hi\"", "apid=0x14B seq=1", {0xAA}, true}));
 
     const std::string file = log.currentFile().filename().string();
     EXPECT_TRUE(std::regex_match(file, std::regex(R"(mcs-\d{8}\.log)"))) << file;
 
     const std::string text = readAll(log.currentFile());
-    EXPECT_NE(text.find(" target=sil cmd=\"fsw ds noop\" apid=0x14B seq=0 bytes=2 wire=19 4B\n"),
+    EXPECT_NE(text.find(" target=fsw cmd=\"fsw ds noop\" apid=0x14B seq=0 bytes=2 wire=19 4B\n"),
               std::string::npos) << text;
     EXPECT_NE(text.find("cmd=\"fsw ds say \\\"hi\\\"\" apid=0x14B seq=1 bytes=1 dryrun=true wire=AA\n"),
               std::string::npos) << text;
@@ -60,8 +60,8 @@ TEST(PacketLog, RecordsEventLines)
 {
     test::TempDir dir;
     PacketLog log(dir.path());
-    EXPECT_FALSE(log.recordEvent("sil", "cfdp=done id=0.23_7 result=SUCCESS"));
-    EXPECT_NE(readAll(log.currentFile()).find(" target=sil cfdp=done id=0.23_7 result=SUCCESS\n"),
+    EXPECT_FALSE(log.recordEvent("fsw", "cfdp=done id=0.23_7 result=SUCCESS"));
+    EXPECT_NE(readAll(log.currentFile()).find(" target=fsw cfdp=done id=0.23_7 result=SUCCESS\n"),
               std::string::npos);
 }
 
@@ -71,7 +71,7 @@ TEST(PacketLog, LinesFromTwoThreadsDoNotMix)
     PacketLog log(dir.path());
     const auto writer = [&log](const std::string& who) {
         for (int i = 0; i < 200; ++i) {
-            log.recordEvent("sil", who + "=" + std::string(100, 'x'));
+            log.recordEvent("fsw", who + "=" + std::string(100, 'x'));
         }
     };
     std::thread a(writer, "a");
@@ -83,7 +83,7 @@ TEST(PacketLog, LinesFromTwoThreadsDoNotMix)
     int count = 0;
     while (std::getline(lines, line)) {
         ++count;
-        EXPECT_TRUE(std::regex_search(line, std::regex(R"( target=sil [ab]=x{100}$)"))) << line;
+        EXPECT_TRUE(std::regex_search(line, std::regex(R"( target=fsw [ab]=x{100}$)"))) << line;
     }
     EXPECT_EQ(count, 400);
 }

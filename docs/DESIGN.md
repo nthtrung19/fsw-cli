@@ -332,7 +332,7 @@ UI thread (FTXUI) --snapshot()--> render
   `"fields": [...]` groups (nested structs) to `group_member` /
   `group_0_member`, so the decoder only sees flat fields.
 - The secondary-header time is read in the target byte order: cFE 6.7
-  `CFE_SB_SetMsgTime` copies it with `memcpy` (little-endian on the SIL).
+  `CFE_SB_SetMsgTime` copies it with `memcpy` (little-endian on the PC build).
 - Checks per packet: CCSDS length field, sequence continuity per MID (gap),
   payload size vs. definition (at least the definition for `"variable": true`
   packets such as CF PDUs), unknown MID. All are counted and shown; none
@@ -384,9 +384,9 @@ The only JSON-aware module (nlohmann/json).
 
 ```json
 {
-  "default_target": "sil",
+  "default_target": "fsw",
   "targets": {
-    "sil": {
+    "fsw": {
       "description": "cFS on this PC (ci_lab)",
       "endian": "little",
       "catalog": ["telecommand/ds.json"],
@@ -394,8 +394,8 @@ The only JSON-aware module (nlohmann/json).
       "layers":    [],
       "transport": { "type": "udp", "host": "127.0.0.1", "port": "1234" }
     },
-    "sil-dry": {
-      "description": "Same as sil, nothing sent",
+    "fsw-dry": {
+      "description": "Same as fsw, nothing sent",
       "endian": "little",
       "catalog": ["telecommand/ds.json"],
       "format":    { "type": "ccsds_v1" },
@@ -460,7 +460,7 @@ as decimal or `"0x…"` strings, then `CommandCatalog::add`.
 `PacketLog` appends one line per sent packet:
 
 ```
-2026-10-05T22:30:01.123+07:00 target=sil cmd="fsw ds noop" seq=0 bytes=8 wire=19 4B C0 00 00 01 6C 00
+2026-10-05T22:30:01.123+07:00 target=fsw cmd="fsw ds noop" seq=0 bytes=8 wire=19 4B C0 00 00 01 6C 00
 ```
 
 Default file `mcs-YYYYMMDD.log` in `--log-dir` (default: current dir);

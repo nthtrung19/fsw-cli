@@ -439,7 +439,7 @@ TEST(PduInfo, RejectsTruncatedPdus)
     EXPECT_FALSE(parseTransactionId("a.b_1"));
 }
 
-// Golden data from the real CF 2.2.1 on the SIL (tests/data/cfdp/README.md):
+// Golden data from the real CF 2.2.1 on the PC build (tests/data/cfdp/README.md):
 // the 0x092D telemetry packets of a class 1 playback, captured from the UDP
 // stream, must rebuild the original file in mcs's engine.
 TEST(GsfcEngine, RebuildsAFileFromRealCfPackets)
@@ -448,7 +448,7 @@ TEST(GsfcEngine, RebuildsAFileFromRealCfPackets)
     const fs::path capture = data / "cf_class1_playback.bin";
     const fs::path original = data / "cf_class1_playback.src";
     if (!fs::exists(capture) || !fs::exists(original)) {
-        GTEST_SKIP() << "no capture from the SIL in " << data;
+        GTEST_SKIP() << "no capture from the PC build in " << data;
     }
     // Records: u32 big-endian length, then the whole UDP datagram.
     const std::string raw = readFile(capture);

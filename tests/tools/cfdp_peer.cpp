@@ -1,4 +1,4 @@
-// mcs_cfdp_peer: a stand-in for CF on the SIL, for end-to-end tests of
+// mcs_cfdp_peer: a stand-in for CF on the PC build, for end-to-end tests of
 // "file put/get" without cFS.
 //
 //   receives on UDP (like CI)   0x192D command packets  -> 8-byte header stripped -> CFDP engine (0.24)
@@ -13,7 +13,7 @@
 //
 // --drop N drops every Nth FileData PDU it receives (the first time for each
 // offset), so class 2 must recover it with a NAK. --rate paces the FileData
-// it sends (CF on the SIL: about 4 per second, 4000 bytes each).
+// it sends (CF on the PC build: about 4 per second, 4000 bytes each).
 
 #include "cfdp/gsfc_engine.hpp"
 #include "cfdp/pdu_info.hpp"
@@ -51,7 +51,7 @@ std::string field(const Bytes& b, std::size_t at, std::size_t size)
     return s;
 }
 
-// cFE 6.7 telemetry packet: primary header, 6-byte time (little-endian on the SIL), payload.
+// cFE 6.7 telemetry packet: primary header, 6-byte time (little-endian on the PC build), payload.
 Bytes telemetry(std::uint16_t mid, std::uint16_t sequence, const Bytes& payload)
 {
     const std::size_t length = 12 + payload.size();

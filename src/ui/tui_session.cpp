@@ -245,12 +245,9 @@ constexpr int kListWidth = 30;   // telemetry screen: packet checklist
 
 class Tui {
 public:
-    Tui(cli::Cli& cli, CommandService& service, TlmContext& tlm, const std::vector<std::string>& banner)
+    Tui(cli::Cli& cli, CommandService& service, TlmContext& tlm)
         : service_(service), tlm_(tlm), out_(&output_), session_(cli, out_)
     {
-        for (const auto& line : banner) {
-            output_.addLine(line);
-        }
         session_.ExitAction([this](std::ostream&) { exitRequested_ = true; });
         // "help" is laid out for the output pane as it is when typed; names in colour.
         installHelp(cli, [this](std::ostream& out, const std::vector<HelpItem>& items) {
@@ -532,14 +529,14 @@ private:
         return frozen_ ? now_ : TlmClock::now();
     }
 
-    //  mcs · sil   F1 Console  F2 Telemetry          TLM udp://… ● 1532 pkts · last 0.2 s  ⠙
+    //  mcs   F1 Console  F2 Telemetry          TLM udp://… ● 1532 pkts · last 0.2 s  ⠙
     Element header()
     {
         const auto tab = [this](const char* label, TlmView v) {
             Element e = text(label);
             return tlm_.view.view == v ? e | bold | inverted : e | dim;
         };
-        Elements parts{text(" mcs ") | bold | color(Color::Cyan), text("· " + service_.targetName() + "  ") | dim,
+        Elements parts{text(" mcs   ") | bold | color(Color::Cyan),
                        tab(" F1 Console ", TlmView::Console), text(" "),
                        tab(" F2 Telemetry ", TlmView::Telemetry), text("  ")};
         if (const std::string badge = transferBadge(fileCounts_); !badge.empty()) {
@@ -1311,9 +1308,9 @@ private:
 
 } // namespace
 
-int runTui(cli::Cli& cli, CommandService& service, TlmContext& tlm, const std::vector<std::string>& banner)
+int runTui(cli::Cli& cli, CommandService& service, TlmContext& tlm)
 {
-    Tui tui(cli, service, tlm, banner);
+    Tui tui(cli, service, tlm);
     return tui.run();
 }
 

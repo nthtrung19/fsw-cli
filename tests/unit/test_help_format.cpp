@@ -14,7 +14,7 @@ std::vector<HelpItem> topLevel()
     return {{"help", "This help message"},
             {"exit", "Quit the session"},
             {"history", "Show the history"},
-            {"fsw", "Send commands to flight software (target 'sil')"},
+            {"fsw", "Send commands to flight software (target 'fsw')"},
             {"target", "Show the active target, its protocol stack and catalog"},
             {"verbose <on|off>", "Show or set hexdump of every sent packet"},
             {"raw <hex bytes...>", "Send pre-built packet bytes, e.g. raw 19 4B C0 00 00 01 6C 00"},

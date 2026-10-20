@@ -43,7 +43,7 @@ mcs_smoke(NAME dryrun_set_app_state_enable EXIT 0
     EXPECT "19 4B C0 00 00 05 6B 02 01 00 00 00")
 
 mcs_smoke(NAME dryrun_target_profile EXIT 0
-    ARGS ${BASE} --target sil-dry -c "fsw ds set_app_state disable"
+    ARGS ${BASE} --target fsw-dry -c "fsw ds set_app_state disable"
     EXPECT "19 4B C0 00 00 05 6A 02 00 00 00 00")
 
 mcs_smoke(NAME dryrun_ci_noop EXIT 0
@@ -128,7 +128,7 @@ mcs_smoke(NAME bad_option EXIT 2 ARGS --bogus EXPECT "unknown option: --bogus")
 mcs_smoke(NAME c_and_f_conflict EXIT 2 ARGS -c x -f y EXPECT "cannot be combined")
 mcs_smoke(NAME unknown_target EXIT 3
     ARGS ${BASE} --target nope -c "fsw ds noop"
-    EXPECT "unknown target 'nope'.*available: sil, sil-dry")
+    EXPECT "unknown target 'nope'.*available: fsw, fsw-dry")
 mcs_smoke(NAME missing_config EXIT 3
     ARGS --config ${DATA}/does_not_exist.json -c "fsw ds noop"
     EXPECT "config file not found")
@@ -137,7 +137,7 @@ mcs_smoke(NAME bad_catalog EXIT 3
     EXPECT "bad_catalog.json.*command code 0 is already used")
 mcs_smoke(NAME list_targets EXIT 0
     ARGS --config ${SHIPPED_CONFIG} --list-targets
-    EXPECT "\\* sil +ccsds_v1 -> udp.*sil-dry +ccsds_v1 -> dryrun")
+    EXPECT "\\* fsw +ccsds_v1 -> udp.*fsw-dry +ccsds_v1 -> dryrun")
 mcs_smoke(NAME help EXIT 0 ARGS --help EXPECT "Exit codes: 0 ok")
 mcs_smoke(NAME version EXIT 0 ARGS --version EXPECT "mcs [0-9]+\\.[0-9]+\\.[0-9]+")
 
@@ -148,7 +148,7 @@ mcs_smoke(NAME script_file EXIT 0
 
 mcs_smoke(NAME target_command EXIT 0
     ARGS ${BASE} -n -c "target"
-    EXPECT "target: +sil\npipeline: ccsds_v1 \\(little-endian\\) -> dryrun.*ds +mid=0x194B")
+    EXPECT "target: +fsw\npipeline: ccsds_v1 \\(little-endian\\) -> dryrun.*ds +mid=0x194B")
 
 mcs_smoke(NAME verbose_option EXIT 0
     ARGS ${BASE} -n -v -c "fsw ds noop"

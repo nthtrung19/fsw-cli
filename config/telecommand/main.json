@@ -25,7 +25,7 @@
 //                  MAIN_PL_CMD_MID 0x1907        MAIN_ProcessCaptureCmd (code not read)
 //
 // Values taken from the FSW (update if the mission changes them):
-//   pcdu_model.h      PCDU_NUM_SWITCH 10 (labsat; the SIL build lib_simulation_udp has 14),
+//   pcdu_model.h      PCDU_NUM_SWITCH 10 (labsat; the PC build lib_simulation_udp has 14),
 //                     PCDU_ChargingState_t CHARGING_OFF 0, CHARGING_ON 1
 //   main_mode_cmds.h  mode command codes (2 is unused); MAIN_TO_INERTIAL_POINTING_MODE_CC 10
 //                     exists only in the labsat build

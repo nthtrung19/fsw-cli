@@ -282,7 +282,7 @@ int main(int argc, char* argv[])
         }
         if (fullScreen) {
             setInteractiveHandlers(cli);
-            return ui::runTui(cli, service, tlm, bannerLines(service));
+            return ui::runTui(cli, service, tlm);
         }
         return runInteractive(cli, service);
     } catch (const std::exception& e) {

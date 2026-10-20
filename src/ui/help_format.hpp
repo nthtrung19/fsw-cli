@@ -29,7 +29,7 @@ struct HelpLine {
 //
 //     help     This help message                  verbose  Show or set hexdump of every
 //     fsw      Send commands to flight software            sent packet
-//              (target 'sil')                     arm      Allow the next critical ...
+//              (target 'fsw')                     arm      Allow the next critical ...
 //
 // Two columns when there is room for both (width >= 82), else one. Entries
 // fill the left column, then the right, balancing the line counts. Inside a

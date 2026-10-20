@@ -9,7 +9,7 @@
 //   default  value used when the argument is omitted (only trailing arguments may be omitted)
 // Numbers may be written as JSON integers or as "0x.." strings.
 // Fields are listed in payload order, after the 8-byte command header (CFE_SB_CMD_HDR_SIZE).
-// Layouts are the NTPM SIL build (x86-64, 64-bit: double is 8-byte aligned); compiler-inserted
+// Layouts are the NTPM PC build (x86-64, 64-bit: double is 8-byte aligned); compiler-inserted
 // holes and spare members are listed as padding.
 // AOCS checks the exact packet length (AOCS_VerifyCmdLength) for every command except
 // change_control_gain, change_test_solution and orbit_state_from_tle: those have no length

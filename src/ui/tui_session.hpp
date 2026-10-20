@@ -3,9 +3,6 @@
 #include "service/command_service.hpp"
 #include "ui/tlm_context.hpp"
 
-#include <string>
-#include <vector>
-
 namespace cli { class Cli; }
 
 namespace mcs::ui {
@@ -21,8 +18,7 @@ namespace mcs::ui {
 //
 // Commands run on the UI thread; the telemetry receiver thread (tlm.service)
 // only fills the store and asks for a redraw. Starts and stops tlm.service.
-// `banner` lines are shown first in the command output. Returns the exit code.
-int runTui(cli::Cli& cli, CommandService& service, TlmContext& tlm,
-           const std::vector<std::string>& banner);
+// Returns the exit code.
+int runTui(cli::Cli& cli, CommandService& service, TlmContext& tlm);
 
 } // namespace mcs::ui

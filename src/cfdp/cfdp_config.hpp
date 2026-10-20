@@ -8,7 +8,7 @@
 namespace mcs::cfdp {
 
 // The "cfdp" block of a target (config/targets.json), as plain values.
-// Defaults match CF 2.2.1 on the SIL (cf_cfgtable.c, cf_msgids.h).
+// Defaults match CF 2.2.1 as built for the fsw target (cf_cfgtable.c, cf_msgids.h).
 struct Config {
     std::string localEntity = "0.23";       // this ground entity (dotted decimal, 2 bytes)
     std::string remoteEntity = "0.24";      // CF's entity

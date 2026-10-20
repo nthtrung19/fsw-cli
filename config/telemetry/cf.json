@@ -2,7 +2,7 @@
 // cf_platform_cfg.h, cf_cmds.c, cf_callbacks.c, cf_app.h, PUB/cfdp_data_structures.h.
 //
 // Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
-// in targets.json. Layouts are the NTPM SIL build (x86-64, 64-bit), checked
+// in targets.json. Layouts are the NTPM PC build (pc_linux, x86-64, 64-bit), checked
 // with offsetof against the FSW headers.
 //   packets  one entry per telemetry MID the app sends
 //   event    true for EVS event packets: shown in the event log
@@ -150,7 +150,7 @@
             { "name": "state", "type": "u32",
               "enum": { "UNINITIALIZED": 0, "S1": 1, "S2": 2, "S3": 3, "S4": 4, "S5": 5, "S6": 6,
                         "FINISHED": 7 } },
-            { "name": "start_time", "type": "u32", "units": "s", "help": "Host time(NULL): Unix seconds on SIL" },
+            { "name": "start_time", "type": "u32", "units": "s", "help": "Host time(NULL): Unix seconds on the PC build" },
             { "name": "src_file", "type": "string", "size": 64 },
             { "name": "dst_file", "type": "string", "size": 64 },
             { "name": "tmp_file", "type": "string", "size": 64 }
@@ -199,7 +199,7 @@
         { "name": "max_playback_chans", "type": "u32" },
         { "name": "max_polling_dirs_per_chan", "type": "u32" },
         { "name": "mem_pool_bytes", "type": "u32", "units": "B" },
-        { "name": "debug_compiled_in", "type": "u32", "help": "0 on SIL (the build flag is misspelled -DCF_DEUBG)" },
+        { "name": "debug_compiled_in", "type": "u32", "help": "0 on the PC build (the build flag is misspelled -DCF_DEUBG)" },
         { "name": "save_incomplete_files", "type": "string", "size": 8 },
         { "name": "pipe_name", "type": "string", "size": 20 },
         { "name": "tmp_file_prefix", "type": "string", "size": 64 },

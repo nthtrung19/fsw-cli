@@ -5,7 +5,7 @@ its telemetry.
 
 ```
 $ mcs
-mcs 0.2.0  target 'sil': ccsds_v1 (little-endian) -> udp://127.0.0.1:1234
+mcs 0.2.0  target 'fsw': ccsds_v1 (little-endian) -> udp://127.0.0.1:1234
 mcs> fsw ds set_app_state enable
 sent fsw ds set_app_state enable -> udp://127.0.0.1:1234  (12 bytes, apid=0x14B seq=0)
 ```
@@ -53,7 +53,7 @@ two-column `help`:
 ./build/src/mcs -c "fsw ds noop"                  # one command, then exit
 ./build/src/mcs -n -c "fsw ds set_app_state enable"   # dry run: print, don't send
 ./build/src/mcs -f commands.txt                   # script, one command per line
-./build/src/mcs --target sil-dry                  # pick a target profile
+./build/src/mcs --target fsw-dry                  # pick a target profile
 ./build/src/mcs --list-targets
 ./build/src/mcs --help
 ```
@@ -70,7 +70,7 @@ are always visible.
 below, then the `mcs>` input line and the Tab-completion list.
 
 ```
- mcs · sil   F1 Console   F2 Telemetry          TLM udp://0.0.0.0:5011 ● 1532 pkts · last 0.2 s ⠙
+ mcs   F1 Console   F2 Telemetry          TLM udp://0.0.0.0:5011 ● 1532 pkts · last 0.2 s ⠙
 ╭ EVENTS 37 ─────────────────────────────────────────────────────────────────────────────────────╮
 │ time          type   app         id    message                                                 │
 │ 09:00:19.414  INFO   TO          3     ENABLE OUTPUT CMD Succesful for Routes:0x0001           │
@@ -215,7 +215,7 @@ arguments can be omitted, and defaults are validated at start-up.
 
 A target's optional `"cfdp"` block turns on file transfer (it needs the
 `telemetry` block: CF's PDUs arrive as telemetry). Every key is optional; the
-defaults are CF 2.2.1 on the SIL: `local_entity` `"0.23"`, `remote_entity`
+defaults are CF 2.2.1 as built for the `fsw` target: `local_entity` `"0.23"`, `remote_entity`
 `"0.24"`, `uplink_mid` `"0x192D"`, `downlink_mid` `"0x092D"`, `chunk_size` 512
 (file bytes per uplink PDU, limited by CI's datagram buffer), `pdus_per_second`
 100, `downlink_dir` `"downlink"`, class 2 timers `ack_timeout` 10, `ack_limit` 2,
@@ -283,7 +283,7 @@ With cFS running and `ci_lab` listening on 127.0.0.1:1234:
      and "…success"; the file in `downlink/cf/...` matches the FSW's copy (`cmp`).
    - `mcs -c "file put test.bin /cf/test.bin class1"`, then with `class2` → CF events
      "Incoming trans started" and "…success"; `cf.hk up_success_counter` +1;
-     `cmp test.bin` with the SIL's `/cf/test.bin`.
+     `cmp test.bin` with the FSW's `/cf/test.bin`.
    - In the full-screen session, start a `file put` and a `file get` together and
      watch both in the TRANSFERS strip.
 

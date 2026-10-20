@@ -9,7 +9,7 @@
 //   telemetry  optional: where telemetry arrives and how to decode it (interactive session)
 //              { "receiver": { "type": "udp", "port": ... }, "catalog": [ telemetry files ] }
 //   cfdp       optional: file transfer with CF ("file put/get"); needs "telemetry".
-//              Every key is optional; the defaults are CF 2.2.1 on the SIL:
+//              Every key is optional; the defaults are CF 2.2.1 as built for the `fsw` target:
 //                local_entity "0.23"   this ground entity      remote_entity "0.24"  CF
 //                uplink_mid "0x192D"   PDUs sent as commands (CF_INCOMING_PDU_MID)
 //                downlink_mid "0x092D" PDUs received as telemetry (CF_SPACE_TO_GND_PDU_MID)
@@ -29,10 +29,10 @@
 //
 // Select a target with --target NAME; list them with --list-targets.
 {
-  "default_target": "sil",
+  "default_target": "fsw",
 
   "targets": {
-    "sil": {
+    "fsw": {
       "description": "cFS on this PC, ci_lab on UDP 1234",
       "endian": "little",
       "catalog": ["telecommand/ds.json", "telecommand/ci.json", "telecommand/fm.json", "telecommand/cf.json", "telecommand/cs.json", "telecommand/gpsr.json", "telecommand/pl.json", "telecommand/sch.json", "telecommand/lc.json", "telecommand/pbm.json", "telecommand/hs.json", "telecommand/to.json", "telecommand/aocs.json", "telecommand/sc.json", "telecommand/fdir.json", "telecommand/main.json"],
@@ -54,8 +54,8 @@
       }
     },
 
-    "sil-dry": {
-      "description": "Same as sil, but nothing is sent",
+    "fsw-dry": {
+      "description": "Same as fsw, but nothing is sent",
       "endian": "little",
       "catalog": ["telecommand/ds.json", "telecommand/ci.json", "telecommand/fm.json", "telecommand/cf.json", "telecommand/cs.json", "telecommand/gpsr.json", "telecommand/pl.json", "telecommand/sch.json", "telecommand/lc.json", "telecommand/pbm.json", "telecommand/hs.json", "telecommand/to.json", "telecommand/aocs.json", "telecommand/sc.json", "telecommand/fdir.json", "telecommand/main.json"],
       "format":    { "type": "ccsds_v1" },
@@ -75,14 +75,30 @@
       }
     }
 
-    // Example for later, once a "csp" layer plug-in exists:
-    // "lab-csp": {
-    //   "description": "Lab board, CSP over UDP",
-    //   "endian": "little",
+    // Second target: the lab satellite. Uncomment (and add a comma after "fsw-dry"),
+    // then fill in the real values. Same apps on the board -> same catalogs as "fsw";
+    // what usually differs is endian, transport (board IP), layers and CFDP pacing.
+    // "lab-sat": {
+    //   "description": "Lab satellite (RTEMS on the BBB), CI over UDP",
+    //   "endian": "little",                            // BBB (ARM) is little-endian; "big" for e.g. PowerPC
     //   "catalog": ["telecommand/ds.json", "telecommand/ci.json", "telecommand/fm.json", "telecommand/cf.json", "telecommand/cs.json", "telecommand/gpsr.json", "telecommand/pl.json", "telecommand/sch.json", "telecommand/lc.json", "telecommand/pbm.json", "telecommand/hs.json", "telecommand/to.json", "telecommand/aocs.json", "telecommand/sc.json", "telecommand/fdir.json", "telecommand/main.json"],
     //   "format":    { "type": "ccsds_v1" },
-    //   "layers":    [ { "type": "csp", "src": 10, "dst": 1, "dport": 10, "crc32": true } ],
-    //   "transport": { "type": "udp", "host": "192.168.1.50", "port": 9600 }
+    //   "layers":    [],                               // e.g. [ { "type": "csp", "src": 10, "dst": 1, "dport": 10, "crc32": true } ] once a CSP layer exists
+    //   "transport": { "type": "udp", "host": "192.168.1.50", "port": 1234 },  // board IP, CI port
+    //   "telemetry": {
+    //     "receiver": { "type": "udp", "port": 5011 },   // then: fsw to enable_output <this PC's IP> 5011
+    //     "catalog":  ["telemetry/es.json", "telemetry/evs.json", "telemetry/sb.json", "telemetry/tbl.json",
+    //                  "telemetry/time.json", "telemetry/to.json", "telemetry/ci.json", "telemetry/sch.json",
+    //                  "telemetry/sc.json", "telemetry/hs.json", "telemetry/cf.json", "telemetry/fm.json",
+    //                  "telemetry/ds.json", "telemetry/lc.json", "telemetry/aocs.json", "telemetry/main.json",
+    //                  "telemetry/pl.json", "telemetry/fdir.json"]   // check struct layouts on the board build
+    //   },
+    //   "cfdp": {
+    //     "local_entity": "0.23", "remote_entity": "0.24",
+    //     "uplink_mid": "0x192D", "downlink_mid": "0x092D",
+    //     "chunk_size": 512, "pdus_per_second": 20,     // slower over a real link
+    //     "downlink_dir": "downlink/lab-sat"
+    //   }
     // }
   }
 }

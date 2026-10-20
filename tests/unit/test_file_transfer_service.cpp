@@ -134,8 +134,8 @@ struct Rig {
           transport(new LockedTransport(dryRun)),
           pipeline(std::make_unique<CcsdsV1Format>(Endian::Little), {}, std::unique_ptr<ITransport>(transport)),
           log(tmp.path() / "logs"),
-          commands(catalog, PayloadEncoder(Endian::Little), pipeline, &log, "sil"),
-          service(makeConfig(tmp, pdusPerSecond), pipeline, commands, &log, "sil")
+          commands(catalog, PayloadEncoder(Endian::Little), pipeline, &log, "fsw"),
+          service(makeConfig(tmp, pdusPerSecond), pipeline, commands, &log, "fsw")
     {
         service.start();
     }

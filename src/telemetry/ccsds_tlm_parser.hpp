@@ -20,7 +20,7 @@ namespace mcs {
 //
 // cFE 6.7 CFE_SB_SetMsgTime copies the time with memcpy, so it is in the
 // CPU's byte order, not big-endian as CCSDS specifies (little-endian on the
-// x86-64 SIL build).
+// x86-64 PC build).
 struct TlmFrame {
     std::uint16_t mid = 0;
     std::uint16_t apid = 0;          // low 11 bits of the stream ID

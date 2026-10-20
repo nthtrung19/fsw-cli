@@ -2,7 +2,7 @@
 // hs_platform_cfg.h, hs_monitors.c, hs_amt.c, hs_xct.c.
 //
 // Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
-// in targets.json. Layouts are the NTPM SIL build (x86-64, 64-bit), checked
+// in targets.json. Layouts are the NTPM PC build (pc_linux, x86-64, 64-bit), checked
 // with offsetof against the FSW headers.
 //   packets  one entry per telemetry MID the app sends
 //   event    true for EVS event packets: shown in the event log
@@ -24,7 +24,7 @@
 // Values taken from the FSW (update if the mission changes them):
 //   hs_msgids.h        HS_HK_TLM_MID 0x096D, HS_CPU_TLM_MID 0x096E
 //   hs_platform_cfg.h  HS_MAX_MONITORED_APPS 32 (one enable word), HS_MAX_EXEC_CNT_SLOTS 32
-//   CPU values on SIL: the pc-linux PSP load word makes util_cpu_avg/peak read
+//   CPU values on the PC build: the pc-linux PSP load word makes util_cpu_avg/peak read
 //   10000 almost always, and idle_percent is a custom formula (about 0-0.12).
 //   Show them raw.
 {
@@ -52,8 +52,8 @@
         { "name": "app_mon_enables", "type": "u32", "hex": true,
           "help": "bit i = app-monitor entry i enabled (default AMT: 0 ES, 1 EVS, 2 TIME, 3 TBL, 4 SB, 5 AOCS_APP, 6 MAIN_APP, 7 PL, 8-9 DS)" },
         { "name": "msg_act_exec", "type": "u32" },
-        { "name": "util_cpu_avg", "type": "u32", "help": "Raw, clamped to 10000; reads 10000 almost always on SIL" },
-        { "name": "util_cpu_peak", "type": "u32", "help": "Raw, clamped to 10000; reads 10000 almost always on SIL" },
+        { "name": "util_cpu_avg", "type": "u32", "help": "Raw, clamped to 10000; reads 10000 almost always on the PC build" },
+        { "name": "util_cpu_peak", "type": "u32", "help": "Raw, clamped to 10000; reads 10000 almost always on the PC build" },
         { "name": "exe_counts", "type": "u32", "count": 32,
           "help": "Execution counters (default XCT: 0 ES, 1 EVS, 2 TIME, 3 TBL, 4 SB); 0xFFFFFFFF = unused" }
       ]

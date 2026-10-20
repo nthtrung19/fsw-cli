@@ -279,15 +279,15 @@ TEST(ShippedConfig, MainCatalogMatchesMainMsgdefsH)
 TEST(ShippedConfig, TargetsFileLoadsAndBuilds)
 {
     const TargetsFile targets = loadTargetsFile(kSourceDir + "/config/targets.json");
-    EXPECT_EQ(targets.defaultTarget, "sil");
-    const TargetConfig sil = selectTarget(targets, std::nullopt);   // copy: avoids a GCC false positive
-    EXPECT_EQ(sil.name, "sil");
-    EXPECT_EQ(sil.endian, Endian::Little);
-    EXPECT_EQ(sil.format.type, "ccsds_v1");
-    EXPECT_EQ(sil.transport.type, "udp");
-    EXPECT_EQ(sil.transport.options.at("port"), "1234");   // JSON number -> option text
-    ASSERT_EQ(sil.catalogFiles.size(), 16U);
-    EXPECT_TRUE(std::filesystem::exists(sil.catalogFiles[0]));
+    EXPECT_EQ(targets.defaultTarget, "fsw");
+    const TargetConfig fsw = selectTarget(targets, std::nullopt);   // copy: avoids a GCC false positive
+    EXPECT_EQ(fsw.name, "fsw");
+    EXPECT_EQ(fsw.endian, Endian::Little);
+    EXPECT_EQ(fsw.format.type, "ccsds_v1");
+    EXPECT_EQ(fsw.transport.type, "udp");
+    EXPECT_EQ(fsw.transport.options.at("port"), "1234");   // JSON number -> option text
+    ASSERT_EQ(fsw.catalogFiles.size(), 16U);
+    EXPECT_TRUE(std::filesystem::exists(fsw.catalogFiles[0]));
 
     for (const auto& t : targets.targets) {
         EXPECT_NO_THROW(loadCatalog(t.catalogFiles)) << t.name;
@@ -297,19 +297,19 @@ TEST(ShippedConfig, TargetsFileLoadsAndBuilds)
         }
     }
 
-    ASSERT_TRUE(sil.telemetry);
-    EXPECT_EQ(sil.telemetry->receiver.type, "udp");
-    EXPECT_EQ(sil.telemetry->receiver.options.at("port"), "5011");
-    ASSERT_FALSE(sil.telemetry->catalogFiles.empty());
-    EXPECT_TRUE(std::filesystem::exists(sil.telemetry->catalogFiles[0]));
+    ASSERT_TRUE(fsw.telemetry);
+    EXPECT_EQ(fsw.telemetry->receiver.type, "udp");
+    EXPECT_EQ(fsw.telemetry->receiver.options.at("port"), "5011");
+    ASSERT_FALSE(fsw.telemetry->catalogFiles.empty());
+    EXPECT_TRUE(std::filesystem::exists(fsw.telemetry->catalogFiles[0]));
 
     // File transfer with CF 2.2.1 (cf_msgids.h, cf_cfgtable.c).
-    ASSERT_TRUE(sil.cfdp);
-    EXPECT_EQ(sil.cfdp->localEntity, "0.23");
-    EXPECT_EQ(sil.cfdp->remoteEntity, "0.24");
-    EXPECT_EQ(sil.cfdp->uplinkMid, 0x192D);
-    EXPECT_EQ(sil.cfdp->downlinkMid, 0x092D);
-    EXPECT_EQ(sil.cfdp->chunkSize, 512U);
+    ASSERT_TRUE(fsw.cfdp);
+    EXPECT_EQ(fsw.cfdp->localEntity, "0.23");
+    EXPECT_EQ(fsw.cfdp->remoteEntity, "0.24");
+    EXPECT_EQ(fsw.cfdp->uplinkMid, 0x192D);
+    EXPECT_EQ(fsw.cfdp->downlinkMid, 0x092D);
+    EXPECT_EQ(fsw.cfdp->chunkSize, 512U);
 }
 
 // ---- catalog loader errors --------------------------------------------------------------
@@ -560,7 +560,7 @@ TEST(TargetsFile, CfdpBlock)
                + R"(, "cfdp": )" + cfdp + " } } }";
     };
 
-    // Every key is optional: the defaults are CF on the SIL.
+    // Every key is optional: the defaults are CF as built for the fsw target.
     const TargetsFile defaults = loadTargetsFile(dir.write("d.json", target("{}")));
     ASSERT_TRUE(defaults.targets[0].cfdp);
     const cfdp::Config& d = *defaults.targets[0].cfdp;
@@ -609,10 +609,10 @@ TEST(TargetsFile, CfdpBlock)
 TEST(TargetsFile, SelectTarget)
 {
     const TargetsFile targets = loadTargetsFile(kSourceDir + "/config/targets.json");
-    EXPECT_EQ(selectTarget(targets, std::string("sil-dry")).name, "sil-dry");
+    EXPECT_EQ(selectTarget(targets, std::string("fsw-dry")).name, "fsw-dry");
     const std::string msg = configErrorOf([&] { selectTarget(targets, std::string("nope")); });
     EXPECT_TRUE(contains(msg, "unknown target 'nope'")) << msg;
-    EXPECT_TRUE(contains(msg, "available: sil, sil-dry")) << msg;
+    EXPECT_TRUE(contains(msg, "available: fsw, fsw-dry")) << msg;
 }
 
 TEST(PipelineFactory, ErrorsNameTheTargetAndForceDryRun)

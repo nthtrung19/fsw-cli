@@ -1,6 +1,6 @@
 # Golden CFDP data from the real CF
 
-Captured on the SIL (cFE 6.7, CF 2.2.1, 32-bit build) on 2026-10-16:
+Captured on the PC build (cFE 6.7, CF 2.2.1, 32-bit) on 2026-10-16:
 
 - `cf_class1_playback.bin`: the UDP datagrams TO sent on port 5011 for
   `fsw cf playback_file class1 0 0 keep 0.23 /cf/lc_def_adt.tbl /golden/lc_def_adt.tbl`,

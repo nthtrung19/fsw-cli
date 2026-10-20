@@ -2,7 +2,7 @@
 // ntpm_mission_cfg.h, ntpm_platform_cfg.h.
 //
 // Telemetry definition files: one per app, listed under "telemetry" -> "catalog"
-// in targets.json. Layouts are the NTPM SIL build (x86-64, 64-bit), checked
+// in targets.json. Layouts are the NTPM PC build (pc_linux, x86-64, 64-bit), checked
 // with offsetof against the FSW headers.
 //   packets  one entry per telemetry MID the app sends
 //   event    true for EVS event packets: shown in the event log
@@ -26,7 +26,7 @@
 //   ntpm_mission_cfg.h   CFE_MISSION_TBL_MAX_FULL_NAME_LEN 40, CFE_MISSION_MAX_PATH_LEN 64,
 //                        CFE_MISSION_MAX_API_LEN 20
 //   Time fields are CFE_TIME_SysTime_t: seconds + subseconds (LSB = 2^-32 s).
-//   CFE_ES_MemHandle_t and cpuaddr are 8 bytes on SIL, so both packets start
+//   CFE_ES_MemHandle_t and cpuaddr are 8 bytes on the PC build, so both packets start
 //   with a 4-byte hole (flight 32-bit ARM layouts differ).
 {
   "app": "tbl",

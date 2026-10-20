@@ -86,13 +86,13 @@ Bytes dsHkPayload(std::uint8_t accepted, std::uint16_t state = 1)
     return {accepted, 0, static_cast<std::uint8_t>(state), 0, 0x00, 0x04, 0, 0, 0xFE, 0xFF, 0x0F, 0x00};
 }
 
-// Every telemetry file the shipped "sil" target lists.
+// Every telemetry file the shipped "fsw" target lists.
 TelemetryCatalog shippedCatalog()
 {
     const TargetsFile targets = loadTargetsFile(kSourceDir + "/config/targets.json");
-    const std::optional<std::string> name = "sil";
-    const TargetConfig& sil = selectTarget(targets, name);
-    return loadTelemetryCatalog(sil.telemetry->catalogFiles);
+    const std::optional<std::string> name = "fsw";
+    const TargetConfig& fsw = selectTarget(targets, name);
+    return loadTelemetryCatalog(fsw.telemetry->catalogFiles);
 }
 
 std::vector<std::string> fieldNames(const TlmPacketDef& p)
@@ -151,7 +151,7 @@ TEST(TlmParser, GoldenBytes)
 
 TEST(TlmParser, LittleEndianHeaderTime)
 {
-    // cFE 6.7 memcpy's the time in CPU order: little-endian on the x86-64 SIL.
+    // cFE 6.7 memcpy's the time in CPU order: little-endian on the x86-64 PC build.
     const Bytes packet = tlmPacket(0x0800, 1, {}, 0x01020304, 0x8001, Endian::Little);
     EXPECT_EQ(packet[6], 0x04);
     const auto r = parseTelemetry(packet, Endian::Little);
@@ -310,7 +310,7 @@ TEST(TlmCatalogLoader, RejectsBadCountsAndGroups)
 
 TEST(TlmShipped, SizesMatchTheFsw)
 {
-    // sizeof() of each FSW telemetry struct, header included (NTPM SIL build,
+    // sizeof() of each FSW telemetry struct, header included (NTPM PC build,
     // mcs_tlm_reference.md Part 2). The CF PDU (0x092D) has variable length.
     const std::map<std::uint16_t, std::size_t> fswSizeof{
         {0x0800, 156}, {0x080B, 200}, {0x0810, 248}, {0x080F, 76},                    // es

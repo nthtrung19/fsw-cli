@@ -35,7 +35,7 @@ protected:
             log_ = std::make_unique<PacketLog>(dir_.path());
         }
         service_ = std::make_unique<CommandService>(catalog_, PayloadEncoder(Endian::Little),
-                                                    *pipeline_, log_.get(), "sil");
+                                                    *pipeline_, log_.get(), "fsw");
     }
 
     bool run(const std::string& cmd, const std::vector<std::string>& args = {})
@@ -110,7 +110,7 @@ TEST_F(ServiceTest, UnknownCommand)
 {
     out_.str("");
     EXPECT_FALSE(service_->execute("fm", "noop", {}, out_));
-    EXPECT_EQ(out_.str(), "error: unknown command 'fm noop' for target 'sil'\n");
+    EXPECT_EQ(out_.str(), "error: unknown command 'fm noop' for target 'fsw'\n");
 }
 
 TEST_F(ServiceTest, TransportErrorIsReportedNotThrown)
@@ -160,7 +160,7 @@ TEST_F(ServiceTest, WritesPacketLog)
     std::ifstream in(log_->currentFile());
     std::string line;
     std::getline(in, line);
-    EXPECT_NE(line.find("target=sil cmd=\"fsw ds set_app_state disable\" apid=0x14B seq=0 bytes=12"),
+    EXPECT_NE(line.find("target=fsw cmd=\"fsw ds set_app_state disable\" apid=0x14B seq=0 bytes=12"),
               std::string::npos) << line;
 }
 

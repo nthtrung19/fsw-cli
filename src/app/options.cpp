@@ -102,7 +102,7 @@ std::string usageText(const std::string& programName)
            "  " + programName + "\n"
            "  " + programName + " -c \"fsw ds noop\"\n"
            "  " + programName + " --dry-run -c \"fsw ds set_app_state enable\"\n"
-           "  " + programName + " --target sil -f commands.txt\n";
+           "  " + programName + " --target fsw -f commands.txt\n";
 }
 
 } // namespace mcs::app
