@@ -300,6 +300,9 @@ public:
         if (tlm_.service != nullptr) {
             tlm_.service->start([this](bool arrived) { onTelemetry(arrived); });
         }
+        if (tlm_.consoleService != nullptr) {
+            tlm_.consoleService->start([this](bool /*arrived*/) { requestRedraw(); });
+        }
         if (tlm_.files != nullptr) {
             tlm_.files->setOnChange([this] { requestRedraw(); });   // progress, notices
         }
@@ -318,6 +321,9 @@ public:
         }
         if (tlm_.service != nullptr) {
             tlm_.service->stop();
+        }
+        if (tlm_.consoleService != nullptr) {
+            tlm_.consoleService->stop();
         }
         screen_ = nullptr;
         return 0;
@@ -369,6 +375,11 @@ private:
             tlm_.view.view = e == Event::F1 ? TlmView::Console : TlmView::Telemetry;
             return true;
         }
+        if (e == Event::F3) {   // from F2 too: show the other pane on F1
+            tlm_.view.pane = tlm_.view.pane == F1Pane::Events ? F1Pane::Console : F1Pane::Events;
+            tlm_.view.view = TlmView::Console;
+            return true;
+        }
         if (e == Event::F5) {
             tlm_.view.paused = !tlm_.view.paused;
             return true;
@@ -415,7 +426,8 @@ private:
         const bool older = e == Event::ArrowUpCtrl || e == Event::Special("\x1b[1;3A");
         const bool newer = e == Event::ArrowDownCtrl || e == Event::Special("\x1b[1;3B");
         if (older || newer) {
-            eventScroll_ = std::max(0, eventScroll_ + (older ? 3 : -3));
+            int& scroll = tlm_.view.pane == F1Pane::Console ? consoleScroll_ : eventScroll_;
+            scroll = std::max(0, scroll + (older ? 3 : -3));
             return true;
         }
         if (e == Event::CtrlD) {
@@ -563,11 +575,16 @@ private:
             }
             script_ = tlm_.script->status();
         }
-        if (tlm_.store == nullptr || (tlm_.view.paused && frozen_)) {
+        if ((tlm_.store == nullptr && tlm_.console == nullptr) || (tlm_.view.paused && frozen_)) {
             return;
         }
         now_ = TlmClock::now();
-        snapshot_ = tlm_.store->snapshot();
+        if (tlm_.store != nullptr) {
+            snapshot_ = tlm_.store->snapshot();
+        }
+        if (tlm_.console != nullptr) {
+            console_ = tlm_.console->snapshot();
+        }
         frozen_ = tlm_.view.paused;
     }
 
@@ -654,6 +671,11 @@ private:
         return hbox(std::move(parts));
     }
 
+    std::string topPane() const
+    {
+        return tlm_.view.pane == F1Pane::Console ? "console" : "events";
+    }
+
     Element hintLine()
     {
         const bool narrow = width_ < 120;
@@ -664,13 +686,14 @@ private:
                  | dim;
         }
         if (script_.running) {
-            return text(" Script running: 'run stop' ends it · PgUp/PgDn output · Ctrl+↑↓ events · "
-                        "F2 telemetry · Ctrl-C quit")
+            return text(" Script running: 'run stop' ends it · PgUp/PgDn output · Ctrl+↑↓ " + topPane()
+                        + " · F3 events/console · F2 telemetry · Ctrl-C quit")
                  | dim;
         }
-        std::string hint = narrow ? " Tab complete · ↑↓ history · PgUp/PgDn output · Ctrl+↑↓ events · F2 telemetry"
-                                  : " Enter run · Tab complete · ↑↓ history · PgUp/PgDn output · Ctrl+↑↓ events · "
-                                    "F2 telemetry · F5 pause · Ctrl-C clear/quit";
+        std::string hint = narrow ? " Tab complete · ↑↓ history · PgUp/PgDn output · Ctrl+↑↓ " + topPane()
+                                        + " · F3 events/console"
+                                  : " Enter run · Tab complete · ↑↓ history · PgUp/PgDn output · Ctrl+↑↓ " + topPane()
+                                        + " · F3 events/console · F2 telemetry · F5 pause · Ctrl-C clear/quit";
         if (width_ >= 160 && fileCounts_.total() != 0) {
             hint += " · 'file cancel <id>' stops a transfer";
         }
@@ -679,7 +702,7 @@ private:
 
     // ---- F1 console -------------------------------------------------------------
     //
-    //   ╭ EVENTS ─────────╮   ~40%
+    //   ╭ EVENTS ─────────╮   ~40%; F3 swaps in the FSW CONSOLE
     //   ╰─────────────────╯
     //   ╭ COMMAND OUTPUT ─╮   the rest
     //   ╰─────────────────╯
@@ -695,7 +718,8 @@ private:
         outputRows_ = outputBox - 2;
         outputWidth_ = std::max(20, width_ - 3);   // border + leading space
 
-        Elements panes{eventsPane(eventsRows) | size(HEIGHT, EQUAL, eventsRows)};
+        Element top = tlm_.view.pane == F1Pane::Console ? fswConsolePane(eventsRows) : eventsPane(eventsRows);
+        Elements panes{std::move(top) | size(HEIGHT, EQUAL, eventsRows)};
         if (stripBox > 0) {
             panes.push_back(transfersPane() | size(HEIGHT, EQUAL, stripBox));
         }
@@ -824,6 +848,62 @@ private:
                                : begin > 0       ? "▲ " + std::to_string(begin) + " older (Ctrl+↑)"
                                                  : "";
         return window(paneTitle("EVENTS", std::to_string(total), note), vbox(std::move(lines)));
+    }
+
+    // ---- F1 FSW CONSOLE (F3): text lines from the "console" receiver -----------------
+    //
+    //   ╭ FSW CONSOLE 1532 ──────────── ▲ 12 older   udp://0.0.0.0:8898 ● last 0.4 s ╮
+    //   │ 10:41:07.112  EVS Port1 66/1/MAIN 1: MAIN App Initialized.                   │
+
+    Element consoleLink()
+    {
+        std::string error = tlm_.consoleService != nullptr ? tlm_.consoleService->lastError()
+                          : tlm_.consoleError.empty()       ? "receiver not open"
+                                                            : tlm_.consoleError;
+        if (!error.empty()) {
+            if (const auto at = error.find("udp receiver: "); at != std::string::npos) {
+                error = error.substr(at + 14);   // drop the "target 'x': console: " context
+            }
+            return hbox({text(" ●") | color(Color::Red), text(" " + error + " ") | color(Color::Red)});
+        }
+        const std::optional<double> age =
+            console_.lastRx ? std::optional<double>(secondsBetween(*console_.lastRx, displayNow())) : std::nullopt;
+        const Color dot = !age ? Color::GrayDark : *age < kFreshSeconds ? Color::Green : Color::Yellow;
+        const std::string where = width_ < 120 ? "" : tlm_.consoleService->describe() + " ";
+        return hbox({text(" " + where) | dim, text("●") | color(dot),
+                     text(age ? " last " + ageText(*age) + " " : " waiting ") | dim});
+    }
+
+    Element fswConsolePane(int box)
+    {
+        if (tlm_.console == nullptr) {
+            return window(paneTitle("FSW CONSOLE", "", ""),
+                          text(" no console configured for target '" + service_.targetName()
+                               + "' (add a \"console\" block in targets.json)") | dim);
+        }
+        const int dataRows = std::max(1, box - 2);   // border
+        const auto& lines = console_.lines;
+        const int total = static_cast<int>(lines.size());
+        consoleScroll_ = std::clamp(consoleScroll_, 0, std::max(0, total - dataRows));
+        const int end = total - consoleScroll_;
+        const int begin = std::max(0, end - dataRows);
+
+        Elements rows;
+        for (int i = begin; i < end; ++i) {
+            const ConsoleLine& l = lines[static_cast<std::size_t>(i)];
+            rows.push_back(hbox({cell(" " + clockText(l.rxTime), 15) | dim, text(l.text)}));
+        }
+        if (lines.empty()) {
+            const bool open = tlm_.consoleService != nullptr;
+            rows.push_back(text(open ? " no console text yet (waiting on " + tlm_.consoleService->describe() + ")"
+                                     : " console receiver not open")
+                           | dim);
+        }
+        const std::string note = consoleScroll_ > 0 ? "▼ " + std::to_string(consoleScroll_) + " newer (Ctrl+↓)"
+                               : begin > 0          ? "▲ " + std::to_string(begin) + " older (Ctrl+↑)"
+                                                    : "";
+        Element title = hbox({paneTitle("FSW CONSOLE", std::to_string(total), note) | flex, consoleLink()});
+        return window(std::move(title), vbox(std::move(rows)));
     }
 
     // One display row of a stored line: help names in cyan, the rest styled by
@@ -1368,6 +1448,7 @@ private:
     int outputScroll_ = 0;               // console: display rows scrolled back
     int outputWidth_ = 100;              // console: columns of an output line (help layout)
     int eventScroll_ = 0;                // console: events scrolled back
+    int consoleScroll_ = 0;              // console: FSW console lines scrolled back
     int displayRows_ = 10;               // telemetry: height of the card area
     int displayScroll_ = 0;              // telemetry: card area, in lines
     int listCursor_ = 0;
@@ -1376,6 +1457,7 @@ private:
     unsigned tick_ = 0;
 
     TlmSnapshot snapshot_;
+    ConsoleSnapshot console_;            // FSW console text of the last frame
     TlmTime now_{};
     bool frozen_ = false;
 };

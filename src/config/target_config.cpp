@@ -130,7 +130,7 @@ TargetConfig parseTarget(const std::string& name, const Json& j, const std::file
         throw ConfigError(ctx + ": target names may contain letters, digits, '_', '-' and '.'");
     }
     jsonutil::checkKeys(j, {"description", "endian", "catalog", "format", "layers", "transport",
-                            "telemetry", "cfdp"}, ctx);
+                            "telemetry", "console", "cfdp"}, ctx);
 
     TargetConfig t;
     t.name = name;
@@ -172,6 +172,25 @@ TargetConfig parseTarget(const std::string& name, const Json& j, const std::file
             tlm.catalogFiles = parsePaths(*files, baseDir, where + ": 'catalog'");
         }
         t.telemetry = std::move(tlm);
+    }
+    if (const auto it = j.find("console"); it != j.end()) {
+        const std::string where = ctx + ": console";
+        jsonutil::requireObject(*it, where);
+        jsonutil::checkKeys(*it, {"receiver"}, where);
+        ConsoleConfig console;
+        console.receiver = parsePlugin(jsonutil::require(*it, "receiver", where), where + ": receiver");
+        // The udp receiver's default port is telemetry's (5011): make it explicit.
+        if (console.receiver.options.count("port") == 0) {
+            throw ConfigError(where + ": receiver needs a 'port'");
+        }
+        if (t.telemetry && t.telemetry->receiver.type == console.receiver.type) {
+            const Options& tlm = t.telemetry->receiver.options;
+            const std::string tlmPort = tlm.count("port") != 0 ? tlm.at("port") : "5011";
+            if (tlmPort == console.receiver.options.at("port")) {
+                throw ConfigError(where + ": receiver uses the telemetry port " + tlmPort);
+            }
+        }
+        t.console = std::move(console);
     }
     if (const auto it = j.find("cfdp"); it != j.end()) {
         if (!t.telemetry) {

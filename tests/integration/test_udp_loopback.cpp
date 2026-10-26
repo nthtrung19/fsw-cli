@@ -10,6 +10,7 @@
 #include "protocol/ccsds_v1_format.hpp"
 #include "registry/plugin_registry.hpp"
 #include "config/tlm_catalog_loader.hpp"
+#include "console/console_service.hpp"
 #include "service/command_service.hpp"
 #include "telemetry/telemetry_service.hpp"
 #include "transport/udp_receiver.hpp"
@@ -180,4 +181,45 @@ TEST(UdpTelemetry, RegistryReceiverAndStopIsPrompt)
     const auto begin = std::chrono::steady_clock::now();
     service.stop();
     EXPECT_LT(std::chrono::steady_clock::now() - begin, std::chrono::milliseconds(500));
+}
+
+TEST(UdpConsole, ServiceRebuildsLinesFromDatagrams)
+{
+    TargetConfig t = udpTarget(1);
+    const std::uint16_t freePort = UdpReceiver("127.0.0.1", 0).port();   // released again here
+    t.console = ConsoleConfig{{"udp", {{"host", "127.0.0.1"}, {"port", std::to_string(freePort)}}}};
+    auto receiver = buildConsoleReceiver(t, builtinPlugins());
+    EXPECT_EQ(receiver->describe(), "udp://127.0.0.1:" + std::to_string(freePort));
+
+    ConsoleStore store;
+    ConsoleService service(std::move(receiver), store);
+    std::atomic<int> datagrams{0};
+    service.start([&datagrams](bool arrived) {
+        if (arrived) {
+            ++datagrams;
+        }
+    });
+
+    auto sender = builtinPlugins().createTransport(
+        "udp", {{"host", "127.0.0.1"}, {"port", std::to_string(freePort)}});
+    for (const std::string part : {"hel", "lo\r\nwor", "ld\nSHLL # "}) {
+        sender->send(Bytes(part.begin(), part.end()));
+    }
+
+    // The prompt has no line end: it shows after the pause.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while (store.snapshot().lines.size() < 3 && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    const auto begin = std::chrono::steady_clock::now();
+    service.stop();
+    EXPECT_LT(std::chrono::steady_clock::now() - begin, std::chrono::milliseconds(500));
+
+    const ConsoleSnapshot s = store.snapshot();
+    ASSERT_EQ(s.lines.size(), 3U);
+    EXPECT_EQ(s.lines[0].text, "hello");
+    EXPECT_EQ(s.lines[1].text, "world");
+    EXPECT_EQ(s.lines[2].text, "SHLL # ");
+    EXPECT_EQ(datagrams, 3);
+    EXPECT_TRUE(service.lastError().empty());
 }

@@ -31,6 +31,7 @@ and sends it to the configured target.
 | Argument validation, help, tab-completion of commands | GUI, remote (telnet) sessions |
 | Packet log (audit trail), hexdump, verbose mode | Continuous checks (`watch`), result files, JUnit |
 | Full-screen session: telemetry receive/decode (F1 console with EVS events, F2 telemetry checklist and packet cards) | |
+| Full-screen session: FSW console text over UDP (F1 top pane, F3 toggles it with the events; §4.5b) | Saving console text, console checks in scripts |
 | Script checks in batch mode: `wait`, `expect`, `expect-event`, `expect-no-event`, `save`/`$var`, `test` … `end`; the whole script checked first (§4.13) | Script `include`, procedures, starting/stopping the FSW |
 
 ### 1.2 Requirements
@@ -342,6 +343,27 @@ UI thread (FTXUI) --snapshot()--> render
   packets such as CF PDUs), unknown MID. All are counted and shown; none
   stops decoding.
 - Memory is bounded: latest values per MID, 500 events.
+
+### 4.5b `console/` — FSW console text (full-screen session)
+
+```
+UdpReceiver -> ConsoleService (thread) -> ConsoleStore::ingest -> lines (last 2000)
+UI thread (FTXUI) --snapshot()--> F1 top pane when F3 selects "console"
+```
+
+- The FSW's console (`OS_printf`, `printf`/`DBG_PRINT`, `EVS Port1` echoes, boot
+  output) is not CCSDS and never passes TO. On the bench a serial-to-Ethernet
+  bridge forwards the BBB's UART as UDP; the target's optional `"console"`
+  block names the receiver (any `IReceiver` plug-in; `port` required, and not
+  telemetry's port).
+- Datagrams are cut wherever the bridge chose: `ConsoleStore` rebuilds lines
+  (`\n` ends one, a trailing `\r` is dropped), emits an unfinished line after
+  300 ms without data (shell prompts), splits lines over 1024 bytes outside
+  UTF-8 sequences, removes ANSI escape sequences and shows other control bytes
+  and invalid UTF-8 as `·`. Each line keeps the receive time of its first byte.
+- Separate from `TelemetryService`/`TlmStore` (those parse CCSDS); no UI code, so
+  a GUI can reuse it. A receiver that cannot bind (port held by `nc`) is shown
+  in the pane, not a setup error.
 
 ### 4.6 `registry/` — names to factories
 
@@ -658,6 +680,7 @@ mcs/
 │   ├── log/        packet_log.*
 │   ├── service/    command_service.*, file_transfer_service.*
 │   ├── cfdp/       engine.hpp, gsfc_engine.*, gsfc_bridge.*, pdu_info.*, transfer.*, cfdp_config.hpp
+│   ├── console/    console_store.*, console_service.*
 │   ├── verify/     condition.*, variables.*, tlm_history.*, verify_service.*
 │   ├── ui/         menu_builder.*, fsw_command.*, tui_session.*, transfer_format.*, script_runner.*
 │   └── app/        main.cpp, options.*
@@ -666,9 +689,8 @@ mcs/
     ├── oracle/     cFE ccsds.h/ccsds.c + stubs, compares against our packets
     ├── integration/ UDP loopback: real socket receives what mcs sends
     ├── smoke/      CTest runs of the executable (-c, -f, exit codes)
-    ├── tools/      cfdp_peer.cpp: a CF stand-in (same CFDP engine) for file transfer tests;
-    │               fake_fsw.cpp: a DS stand-in (housekeeping, events) for script checks
-    └── e2e/        file_transfer.sh, verify.sh: the executable against the stand-ins over UDP
+    ├── tools/      cfdp_peer.cpp: a CF stand-in (same CFDP engine) for file transfer tests
+    └── e2e/        file_transfer.sh: the executable against the stand-in over UDP
 ```
 
 ---
@@ -708,7 +730,7 @@ Example: CSP over UDP later is just a new class plus this target entry:
 | Smoke | Run the executable: `-c`, `-f`, `--dry-run`, wrong command / wrong args → exit codes | CTest |
 | CFDP | Engine: PDU layout, checksum (independent implementation), round trip, path rules, pacing; two engines in two processes (class 1/2, loss, cancel, put and get at once); the service (CF command packets, playback, expectations); formatter | GoogleTest |
 | Script checks | Conditions, variables, history (ring limits, wake-up), every check (pass, late pass, timeout with last value, window), tests, check-only mode; `runScript`/`checkScript`, `ScriptRunner` (background run, output order, stop during a wait and a check, one at a time) | GoogleTest |
-| End to end | The executable's `file put/get` against `mcs_cfdp_peer` over UDP, class 1/2, with loss; test scripts against `mcs_fake_fsw` (pass, a failing check, `--check` with a typo) | CTest + bash |
+| End to end | The executable's `file put/get` against `mcs_cfdp_peer` over UDP, class 1/2, with loss | CTest + bash |
 | Threads | Service, pipeline, log, telemetry sinks, engine, script runner under ThreadSanitizer (clang; see §4.13) | manual build |
 | Manual acceptance | Against real cFS (§8) | operator |
 

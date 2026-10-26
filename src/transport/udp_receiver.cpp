@@ -56,8 +56,9 @@ UdpReceiver::UdpReceiver(std::string host, std::uint16_t port)
             lastError = std::strerror(errno);
             continue;
         }
-        const int on = 1;
-        ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof on);
+        // No SO_REUSEADDR: for UDP it only lets a second socket (another mcs,
+        // `nc -ul`) bind the same port, and then one of them silently gets
+        // nothing. Without it the second bind fails with "Address already in use".
         if (::bind(fd, ai->ai_addr, ai->ai_addrlen) != 0) {
             lastError = std::strerror(errno);
             ::close(fd);

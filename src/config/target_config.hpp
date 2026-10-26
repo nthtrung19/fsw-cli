@@ -25,6 +25,12 @@ struct TelemetryConfig {
     std::vector<std::filesystem::path> catalogFiles;   // may be empty: all MIDs unknown
 };
 
+// Optional "console" block of a target: where the FSW console text arrives
+// (e.g. the BBB's UART forwarded as UDP by a serial-to-Ethernet bridge).
+struct ConsoleConfig {
+    PluginSpec receiver;
+};
+
 // One target profile from targets.json.
 struct TargetConfig {
     std::string name;
@@ -35,6 +41,7 @@ struct TargetConfig {
     std::vector<PluginSpec> layers;
     PluginSpec transport;
     std::optional<TelemetryConfig> telemetry;
+    std::optional<ConsoleConfig> console;
     std::optional<cfdp::Config> cfdp;   // file transfer with CF; needs `telemetry`
 };
 

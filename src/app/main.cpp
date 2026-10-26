@@ -11,6 +11,7 @@
 #include "config/pipeline_factory.hpp"
 #include "config/target_config.hpp"
 #include "config/tlm_catalog_loader.hpp"
+#include "console/console_service.hpp"
 #include "core/errors.hpp"
 #include "registry/plugin_registry.hpp"
 #include "service/command_service.hpp"
@@ -128,6 +129,10 @@ int main(int argc, char* argv[])
     std::unique_ptr<TelemetryCatalog> tlmCatalog;
     std::unique_ptr<IReceiver> tlmReceiver;
     std::string tlmReceiverError;
+    // FSW console text (full-screen session only); a receiver that cannot be
+    // opened is reported in its pane, like telemetry's.
+    std::unique_ptr<IReceiver> consoleReceiver;
+    std::string consoleReceiverError;
     try {
         targets = loadTargetsFile(findTargetsFile(opts.configFile));
         if (opts.listTargets) {
@@ -148,6 +153,13 @@ int main(int argc, char* argv[])
                 } catch (const TransportError& e) {
                     tlmReceiverError = e.what();
                 }
+            }
+        }
+        if (fullScreen && target->console) {
+            try {
+                consoleReceiver = buildConsoleReceiver(*target, builtinPlugins());
+            } catch (const TransportError& e) {
+                consoleReceiverError = e.what();
             }
         }
     } catch (const mcsError& e) {
@@ -183,6 +195,18 @@ int main(int argc, char* argv[])
                     history = std::make_unique<TlmHistory>(*tlmCatalog, target->endian);
                     tlmService->addSink([h = history.get()](const Bytes& datagram) { h->ingest(datagram); });
                 }
+            }
+        }
+
+        std::unique_ptr<ConsoleStore> consoleStore;
+        std::unique_ptr<ConsoleService> consoleService;   // started by the full-screen session
+        if (fullScreen && target->console) {
+            consoleStore = std::make_unique<ConsoleStore>();
+            tlm.console = consoleStore.get();
+            tlm.consoleError = consoleReceiverError;
+            if (consoleReceiver) {
+                consoleService = std::make_unique<ConsoleService>(std::move(consoleReceiver), *consoleStore);
+                tlm.consoleService = consoleService.get();
             }
         }
 

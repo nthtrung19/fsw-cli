@@ -69,7 +69,8 @@ A header line (target, screen tabs, telemetry link status) and a key-hint line
 are always visible.
 
 **F1 Console**: flight software events on top, the output of your commands
-below, then the `mcs>` input line and the Tab-completion list.
+below, then the `mcs>` input line and the Tab-completion list. F3 swaps the
+events for the **FSW CONSOLE**: the flight software's own console text (see below).
 
 ```
  mcs   F1 Console   F2 Telemetry          TLM udp://0.0.0.0:5011 ● 1532 pkts · last 0.2 s ⠙
@@ -83,7 +84,7 @@ below, then the `mcs>` input line and the Tab-completion list.
 │ sent fsw ds noop -> udp://127.0.0.1:1234  (8 bytes, apid=0x14B seq=0)                          │
 ╰────────────────────────────────────────────────────────────────────────────────────────────────╯
  mcs> █
- Enter run · Tab complete · ↑↓ history · PgUp/PgDn output · Ctrl+↑↓ events · F2 telemetry · F5 pause
+ Enter run · Tab complete · ↑↓ history · PgUp/PgDn output · Ctrl+↑↓ events · F3 events/console · F2 telemetry · F5 pause
 ```
 
 **F2 Telemetry**: the packet checklist on the left (every catalog packet,
@@ -109,11 +110,12 @@ as a hexdump (header bytes in cyan, with an ASCII column).
 | Key | Effect |
 |---|---|
 | F1 / F2 | Console / Telemetry screen |
+| F3 | Top pane of the console: EVENTS ⇄ FSW CONSOLE (from F2 too) |
 | F5 | Pause/resume the display (receiving continues) |
 | Ctrl-C | Clear the input line; on an empty line, quit (as do Ctrl-D and `exit`) |
 | **Console** | |
 | PgUp/PgDn | Scroll the command output |
-| Ctrl+↑/↓ (or Alt+↑/↓) | Scroll the events |
+| Ctrl+↑/↓ (or Alt+↑/↓) | Scroll the events or the FSW console, whichever is shown |
 | **Telemetry** | |
 | ↑/↓, Home/End | Move in the checklist |
 | Space or Enter | Tick/untick the packet under the cursor |
@@ -126,6 +128,24 @@ definition files in `config/telemetry/`. Start the stream from the session, e.g.
 `fsw to enable_output 127.0.0.1 5011`. Packets without a definition still show
 up in the checklist and the header counters. When stdin or stdout is not a terminal,
 or with `--plain`, the session is the line-mode prompt, without telemetry.
+
+**FSW console.** What the flight software prints on its console (`OS_printf`,
+`printf`, `EVS Port1` event echoes, boot output) never goes through TO. On the
+bench the BBB's UART is forwarded as UDP by a serial-to-Ethernet bridge; give the
+target a `"console"` block with that port and mcs shows the text in F1 (F3):
+
+```
+╭ FSW CONSOLE 1532 ────────────────────────── ▲ 12 older (Ctrl+↑)   udp://0.0.0.0:8898 ● last 0.4 s ╮
+│ 10:41:07.112  EVS Port1 66/1/MAIN 1: MAIN App Initialized.                                       │
+│ 10:41:07.120  IO_Lib: -12 - UartRcvTimeout Error: Timedout                                       │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+```
+
+Lines are rebuilt from the datagrams (a line may span several; `\r\n` or `\n`
+ends it; an unfinished line, e.g. a shell prompt, shows after 0.3 s), escape
+sequences are removed, and the last 2000 lines are kept. Only one program can
+listen on a UDP port: close `nc -ul ... 8898` before starting mcs, otherwise the
+pane shows the bind error (mcs keeps working). Console text is not saved.
 
 In an interactive session TAB completes command names and enum arguments
 (`fsw ds set_app_state <TAB>` → `disable`, `enable`); in the full-screen console
@@ -148,6 +168,7 @@ their column.
 | `raw <hex bytes>` | Send pre-built bytes, e.g. `raw 19 4B C0 00 00 01 6C 00` |
 | `arm` | Allow the next command marked `critical` |
 | `tlm view console\|telemetry` | Switch screen (same as F1/F2) |
+| `tlm pane events\|console` | Top pane of the console screen (same as F3) |
 | `tlm show <packet>\|<mid>\|all`, `tlm hide ...` | Tick/untick packets in the telemetry checklist, e.g. `tlm show ds.hk`, `tlm show 0x0899` |
 | `tlm pause [on\|off]`, `tlm clear`, `tlm status` | Freeze the display; forget values, events and counters; show receiver and counters |
 | `file put <local> <remote> [class1\|class2]` | Send a ground file to the FSW, e.g. `file put test.bin /cf/test.bin class2` |
@@ -364,8 +385,8 @@ tests/unit        GoogleTest per module
 tests/oracle      mcs packets vs. cFE 6.7 ccsds.h/ccsds.c
 tests/integration real UDP on loopback
 tests/smoke       the executable, checked for output and exit codes
-tests/e2e         the executable against stand-ins over UDP: file put/get with tests/tools/cfdp_peer
-                  (CF), test scripts with tests/tools/fake_fsw (DS housekeeping and events)
+tests/e2e         the executable against a stand-in over UDP: file put/get with tests/tools/cfdp_peer
+                  (CF)
 ```
 
 ## Testing against cFS

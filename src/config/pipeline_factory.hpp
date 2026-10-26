@@ -22,4 +22,9 @@ std::unique_ptr<Pipeline> buildPipeline(const TargetConfig& target, const Plugin
 std::unique_ptr<IReceiver> buildReceiver(const TargetConfig& target, const PluginRegistry& registry,
                                          std::optional<std::uint16_t> portOverride);
 
+// Creates the receiver of the target's console block. Throws ConfigError if
+// the target has no console block or the options are bad, TransportError if
+// it cannot bind.
+std::unique_ptr<IReceiver> buildConsoleReceiver(const TargetConfig& target, const PluginRegistry& registry);
+
 } // namespace mcs

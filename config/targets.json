@@ -8,6 +8,9 @@
 //   transport  transport plug-in        { "type": "udp", "host": ..., "port": ... }
 //   telemetry  optional: where telemetry arrives and how to decode it (interactive session)
 //              { "receiver": { "type": "udp", "port": ... }, "catalog": [ telemetry files ] }
+//   console    optional: where the FSW console text arrives (full-screen session, F1 pane, F3)
+//              { "receiver": { "type": "udp", "port": ... } }   "port" is required
+//              e.g. the BBB's UART forwarded as UDP by a serial-to-Ethernet bridge
 //   cfdp       optional: file transfer with CF ("file put/get"); needs "telemetry".
 //              Every key is optional; the defaults are CF 2.2.1 as built for the `fsw` target:
 //                local_entity "0.23"   this ground entity      remote_entity "0.24"  CF
@@ -46,6 +49,9 @@
                      "telemetry/sc.json", "telemetry/hs.json", "telemetry/cf.json", "telemetry/fm.json",
                      "telemetry/ds.json", "telemetry/lc.json", "telemetry/aocs.json", "telemetry/main.json",
                      "telemetry/pl.json", "telemetry/fdir.json"]
+      },
+      "console": {
+        "receiver": { "type": "udp", "port": 8898 }    // FSW console text (bench UART bridge)
       },
       "cfdp": {
         "local_entity": "0.23", "remote_entity": "0.24",
@@ -92,6 +98,9 @@
     //                  "telemetry/sc.json", "telemetry/hs.json", "telemetry/cf.json", "telemetry/fm.json",
     //                  "telemetry/ds.json", "telemetry/lc.json", "telemetry/aocs.json", "telemetry/main.json",
     //                  "telemetry/pl.json", "telemetry/fdir.json"]   // check struct layouts on the board build
+    //   },
+    //   "console": {
+    //     "receiver": { "type": "udp", "port": 8898 }   // where the UART bridge sends the console
     //   },
     //   "cfdp": {
     //     "local_entity": "0.23", "remote_entity": "0.24",

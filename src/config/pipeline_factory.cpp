@@ -46,4 +46,18 @@ std::unique_ptr<IReceiver> buildReceiver(const TargetConfig& target, const Plugi
     }
 }
 
+std::unique_ptr<IReceiver> buildConsoleReceiver(const TargetConfig& target, const PluginRegistry& registry)
+{
+    if (!target.console) {
+        throw ConfigError("target '" + target.name + "' has no console block");
+    }
+    try {
+        return registry.createReceiver(target.console->receiver.type, target.console->receiver.options);
+    } catch (const ConfigError& e) {
+        throw ConfigError("target '" + target.name + "': console: " + e.what());
+    } catch (const TransportError& e) {
+        throw TransportError("target '" + target.name + "': console: " + e.what());
+    }
+}
+
 } // namespace mcs

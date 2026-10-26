@@ -188,7 +188,18 @@ void printTlmStatus(const TlmContext& tlm, std::ostream& out)
         << "received:  " << c.received << " (unknown " << c.unknown << ", malformed " << c.malformed
         << ", seq gaps " << c.gaps << ", length errors " << c.lengthErrors << ")\n"
         << "screen:    " << toString(tlm.view.view) << (tlm.view.paused ? " (paused)" : "")
-        << ", " << tlm.view.shown.size() << " packet(s) shown on the telemetry screen\n";
+        << ", " << tlm.view.shown.size() << " packet(s) shown on the telemetry screen, F1 shows "
+        << toString(tlm.view.pane) << '\n';
+    if (tlm.consoleService != nullptr) {
+        const ConsoleSnapshot s = tlm.console->snapshot();
+        out << "console:   " << tlm.consoleService->describe() << ", " << s.lines.size() << " line(s), "
+            << s.datagrams << " datagram(s)\n";
+        if (const auto error = tlm.consoleService->lastError(); !error.empty()) {
+            out << "error:     " << error << '\n';
+        }
+    } else if (tlm.console != nullptr) {
+        out << "console:   not open: " << tlm.consoleError << '\n';
+    }
 }
 
 std::unique_ptr<cli::Menu> buildTlmMenu(TlmContext& tlm, std::size_t& sessionErrors)
@@ -215,6 +226,23 @@ std::unique_ptr<cli::Menu> buildTlmMenu(TlmContext& tlm, std::size_t& sessionErr
         },
         wordsCompleter({{"console", "commands and events (F1)"},
                         {"telemetry", "packet checklist and cards (F2)"}})));
+
+    menu->Insert(std::make_unique<FswCommand>(
+        "pane", "Top pane of F1: EVS events or FSW console text (same as F3)",
+        std::vector<std::string>{"events|console"},
+        [&tlm, usage](std::ostream& out, const std::vector<std::string>& args) {
+            const std::string v = args.size() == 1 ? toLower(args[0]) : "";
+            if (v == "events") {
+                tlm.view.pane = F1Pane::Events;
+            } else if (v == "console") {
+                tlm.view.pane = F1Pane::Console;
+            } else {
+                return usage(out, "pane events|console");
+            }
+            out << "F1 pane: " << toString(tlm.view.pane) << '\n';
+        },
+        wordsCompleter({{"events", "EVS events received through TO"},
+                        {"console", "FSW console text (\"console\" block in targets.json)"}})));
 
     // show/hide: the same as ticking/unticking in the telemetry screen's checklist (F2).
     for (const bool show : {true, false}) {
@@ -695,6 +723,15 @@ const char* toString(TlmView view)
     switch (view) {
     case TlmView::Console: return "console";
     case TlmView::Telemetry: return "telemetry";
+    }
+    return "?";
+}
+
+const char* toString(F1Pane pane)
+{
+    switch (pane) {
+    case F1Pane::Events: return "events";
+    case F1Pane::Console: return "console";
     }
     return "?";
 }

@@ -599,6 +599,54 @@ TEST(TargetsFile, TelemetryBlock)
     }), "has no telemetry block"));
 }
 
+TEST(TargetsFile, ConsoleBlock)
+{
+    test::TempDir dir;
+    const auto target = [](const std::string& console, const std::string& tlmPort = "6000") {
+        return R"({ "targets": { "t": { "endian": "little", "catalog": ["x.json"],
+            "format": { "type": "ccsds_v1" }, "transport": { "type": "dryrun" },
+            "telemetry": { "receiver": { "type": "udp")"
+               + (tlmPort.empty() ? std::string() : R"(, "port": )" + tlmPort) + R"( } },
+            "console": )" + console + " } } }";
+    };
+
+    const TargetsFile ok = loadTargetsFile(dir.write("ok.json",
+        target(R"({ "receiver": { "type": "udp", "port": 8898 } })")));
+    ASSERT_TRUE(ok.targets[0].console);
+    EXPECT_EQ(ok.targets[0].console->receiver.type, "udp");
+    EXPECT_EQ(ok.targets[0].console->receiver.options.at("port"), "8898");
+
+    EXPECT_TRUE(contains(configErrorOf([&] {
+        loadTargetsFile(dir.write("e1.json", target(R"({ "receiver": { "type": "udp" } })")));
+    }), "console: receiver needs a 'port'"));
+
+    EXPECT_TRUE(contains(configErrorOf([&] {
+        loadTargetsFile(dir.write("e2.json", target(R"({ "receiver": { "type": "udp", "port": 6000 } })")));
+    }), "console: receiver uses the telemetry port 6000"));
+
+    // Telemetry without a port listens on the udp receiver's default, 5011.
+    EXPECT_TRUE(contains(configErrorOf([&] {
+        loadTargetsFile(dir.write("e3.json", target(R"({ "receiver": { "type": "udp", "port": 5011 } })", "")));
+    }), "uses the telemetry port 5011"));
+
+    EXPECT_TRUE(contains(configErrorOf([&] {
+        loadTargetsFile(dir.write("e4.json", target(R"({ "reciever": {} })")));
+    }), "unknown key 'reciever'"));
+
+    // Bad receiver options are reported when the receiver is built.
+    const TargetsFile badPort = loadTargetsFile(dir.write("e5.json",
+        target(R"({ "receiver": { "type": "udp", "port": 0 } })")));
+    EXPECT_TRUE(contains(configErrorOf([&] {
+        buildConsoleReceiver(badPort.targets[0], builtinPlugins());
+    }), "target 't': console: "));
+
+    EXPECT_TRUE(contains(configErrorOf([&] {
+        TargetConfig none = ok.targets[0];
+        none.console.reset();
+        buildConsoleReceiver(none, builtinPlugins());
+    }), "has no console block"));
+}
+
 TEST(TargetsFile, CfdpBlock)
 {
     test::TempDir dir;

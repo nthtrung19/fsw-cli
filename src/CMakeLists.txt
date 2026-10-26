@@ -54,6 +54,9 @@ add_library(mcs_core STATIC
     telemetry/tlm_store.cpp
     telemetry/telemetry_service.cpp
 
+    console/console_store.cpp
+    console/console_service.cpp
+
     verify/condition.cpp
     verify/variables.cpp
     verify/tlm_history.cpp

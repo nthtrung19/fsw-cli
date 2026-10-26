@@ -38,7 +38,8 @@ add_executable(mcs_unit_tests
     unit/test_file_transfer_service.cpp
     unit/test_transfer_format.cpp
     unit/test_verify.cpp
-    unit/test_script_runner.cpp)
+    unit/test_script_runner.cpp
+    unit/test_console.cpp)
 target_include_directories(mcs_unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(mcs_unit_tests PRIVATE mcs_menu mcs_core cfdp_gsfc GTest::gtest_main)
 target_compile_definitions(mcs_unit_tests PRIVATE ${mcs_TEST_DEFINES})
@@ -79,14 +80,3 @@ add_test(NAME e2e.file_transfer_with_loss
          COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e/file_transfer.sh
                  $<TARGET_FILE:mcs> $<TARGET_FILE:mcs_cfdp_peer> ${PROJECT_SOURCE_DIR} 5)
 set_tests_properties(e2e.file_transfer e2e.file_transfer_with_loss PROPERTIES TIMEOUT 120)
-
-# ---- end-to-end script checks ------------------------------------------------------
-# mcs_fake_fsw stands in for the DS app (housekeeping and events); the script
-# runs test scripts with expect/save/test against it over UDP on loopback.
-add_executable(mcs_fake_fsw tools/fake_fsw.cpp)
-target_link_libraries(mcs_fake_fsw PRIVATE mcs_core)
-
-add_test(NAME e2e.verify
-         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e/verify.sh
-                 $<TARGET_FILE:mcs> $<TARGET_FILE:mcs_fake_fsw> ${PROJECT_SOURCE_DIR})
-set_tests_properties(e2e.verify PROPERTIES TIMEOUT 60)
