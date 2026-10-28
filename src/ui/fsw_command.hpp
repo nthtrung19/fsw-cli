@@ -31,6 +31,11 @@ public:
     FswCommand(std::string commandName, std::string help, std::vector<std::string> params,
                Handler handler, LineCompleter completer);
 
+    // An unlisted command still runs, but TAB never offers its name and Help()
+    // prints nothing (used for "!", which the critical-command error mentions).
+    void setListed(bool listed) { listed_ = listed; }
+    bool listed() const { return listed_; }
+
     bool Exec(const std::vector<std::string>& cmdLine, cli::CliSession& session) override;
     void Help(std::ostream& out) const override;
     // Shown next to the command in the tab-completion list
@@ -44,6 +49,7 @@ private:
     std::vector<std::string> params_;
     Handler handler_;
     LineCompleter completer_;
+    bool listed_ = true;
 };
 
 } // namespace mcs::ui

@@ -22,12 +22,12 @@ namespace mcs::ui {
 //   ├── fsw
 //   │   ├── <app>              one submenu per catalog app
 //   │   │   ├── <cmd> <params> one FswCommand per catalog command
-//   │   │   └── ! <cmd> ...    send a command, also a critical one
+//   │   │   └── ! <cmd> ...    send a command, also a critical one (not listed in TAB or help)
 //   │   └── ! <app> <cmd> ...
 //   ├── target                 show the active target
 //   ├── verbose [on|off]       hexdump every sent packet
 //   ├── raw <hex bytes...>     send pre-built packet bytes
-//   ├── ! fsw <app> <cmd> ...  critical commands need '!' in front, in every fsw menu
+//   ├── ! fsw <app> <cmd> ...  critical commands need '!' in front, in every fsw menu (unlisted)
 //   ├── tlm                    telemetry display (only with a TlmContext that has a store)
 //   │   ├── view console|telemetry   F1 / F2
 //   │   ├── show <packet>|all  tick a packet in the F2 checklist (ds.hk or 0x08B8)

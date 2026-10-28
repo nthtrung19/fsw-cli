@@ -774,7 +774,8 @@ filter commands once `ds_msg.h` is provided.
 - Critical commands are confirmed by typing `!` in front of the command line
   (`fm> ! delete_dir /cf/x`) instead of a y/N prompt, so the same rule works in
   interactive, `-c` and `-f` modes. `!` exists in every fsw menu level and
-  covers that one command only (no "armed" state). The cli library's own `!`
+  covers that one command only (no "armed" state). `!` is unlisted: TAB and
+  `help` never show it; the critical-command error does. The cli library's own `!`
   (re-run a history entry) is removed in the fork; ↑/↓ recall commands.
 - The oracle test compiles the unmodified cFE 6.7 `ccsds.h`/`ccsds.c` (Apache
   2.0) with small stand-in headers; it is skipped on big-endian hosts.

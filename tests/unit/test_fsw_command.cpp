@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <sstream>
+
 using namespace mcs;
 using namespace mcs::ui;
 
@@ -53,6 +55,22 @@ TEST(FswCommand, BangWithoutSpaceStillCompletes)
     const FswCommand bang = lineCommand("!", seen);
     EXPECT_EQ(bang.GetCompletionRecursive("!del"), std::vector<std::string>{item("!delete_dir", "Delete")});
     EXPECT_EQ(seen.partial, "del");
+}
+
+TEST(FswCommand, UnlistedNameIsNeverOffered)
+{
+    Seen seen;
+    FswCommand bang = lineCommand("!", seen);
+    bang.setListed(false);
+    EXPECT_TRUE(bang.GetCompletionRecursive("").empty());    // TAB on an empty line
+    EXPECT_TRUE(bang.GetCompletionRecursive("!").empty());
+    // Once typed, the rest of the line still completes.
+    EXPECT_EQ(bang.GetCompletionRecursive("! "), std::vector<std::string>{item("! delete_dir", "Delete")});
+    EXPECT_EQ(bang.GetCompletionRecursive("!del"), std::vector<std::string>{item("!delete_dir", "Delete")});
+
+    std::ostringstream help;
+    bang.Help(help);
+    EXPECT_EQ(help.str(), "");
 }
 
 TEST(FswCommand, IndexCompleterAndNameCompletion)

@@ -34,6 +34,9 @@ std::vector<std::string> FswCommand::GetCompletionRecursive(const std::string& l
     cli::detail::split(tokens, line);
     const bool newArgument = !line.empty() && std::isspace(static_cast<unsigned char>(line.back()));
     if (!completer_ || tokens.empty() || tokens[0] != Name() || (tokens.size() == 1 && !newArgument)) {
+        if (!listed_) {
+            return {};   // never offered by name
+        }
         return cli::Command::GetCompletionRecursive(line);   // completing the name
     }
     if (!IsEnabled()) {
@@ -79,7 +82,7 @@ bool FswCommand::Exec(const std::vector<std::string>& cmdLine, cli::CliSession& 
 
 void FswCommand::Help(std::ostream& out) const
 {
-    if (!IsEnabled()) {
+    if (!IsEnabled() || !listed_) {
         return;
     }
     out << " - " << Name();

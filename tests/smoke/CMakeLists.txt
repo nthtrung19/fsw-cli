@@ -140,6 +140,14 @@ mcs_smoke(NAME confirm_covers_one_line EXIT 1
     ARGS ${BASE} -n -c "! fsw fm delete_dir /cf/a" -c "fsw fm delete_dir /cf/b"
     EXPECT "fsw fm delete_dir /cf/a.*'delete_dir' is a critical command")
 
+mcs_smoke(NAME help_hides_bang EXIT 0
+    ARGS ${BASE} -n -c "help"
+    EXPECT "verbose" REJECT "also a critical one")
+
+mcs_smoke(NAME help_in_app_menu_hides_bang EXIT 0
+    ARGS ${BASE} -n -c "fsw" -c "fm" -c "help"
+    EXPECT "delete_dir" REJECT "also a critical one")
+
 mcs_smoke(NAME bang_alone EXIT 1
     ARGS ${BASE} -n -c "!"
     EXPECT "usage: ! fsw <app> <command> \\[args...\\]")

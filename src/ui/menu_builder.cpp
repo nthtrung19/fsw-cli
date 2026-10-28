@@ -18,6 +18,9 @@ namespace mcs::ui {
 
 namespace {
 
+// Name of the command that confirms a critical command typed after it.
+constexpr const char* kConfirmCommand = "!";
+
 // Where a "!" command sits, and so what follows it: the rest of the line as
 // that menu would take it.
 enum class ConfirmScope {
@@ -46,8 +49,8 @@ std::unique_ptr<FswCommand> confirmCommand(CommandService& service, const Verify
         params.insert(params.begin(), "fsw");
     }
 
-    return std::make_unique<FswCommand>(
-        "!", "Send a command, also a critical one, e.g. " + example, params,
+    auto command = std::make_unique<FswCommand>(
+        kConfirmCommand, "Send a command, also a critical one, e.g. " + example, params,
         [&service, checkWith, &sessionErrors, scope, app, usage](std::ostream& out,
                                                                  const std::vector<std::string>& args) {
             std::size_t at = 0;
@@ -125,6 +128,9 @@ std::unique_ptr<FswCommand> confirmCommand(CommandService& service, const Verify
                 *target, std::vector<std::string>(previous.begin() + static_cast<std::ptrdiff_t>(at), previous.end()),
                 partial);
         }));
+    // Not offered by TAB or help: the error on a critical command is what tells about it.
+    command->setListed(false);
+    return command;
 }
 
 // `checkWith`: check-only session (the commands are checked, not sent).
@@ -873,7 +879,11 @@ void installHelp(cli::Cli& cli, HelpPrinter print)
         // Name and description only: parameters show up in the Tab hints.
         std::vector<HelpItem> items;
         for (const auto& e : entries) {
-            items.push_back({e.usage.substr(0, e.usage.find(' ')), e.description});
+            std::string name = e.usage.substr(0, e.usage.find(' '));
+            if (name == kConfirmCommand) {
+                continue;   // unlisted (see confirmCommand)
+            }
+            items.push_back({std::move(name), e.description});
         }
         print(out, items);
     });

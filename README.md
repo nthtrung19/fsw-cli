@@ -169,7 +169,7 @@ their column.
 | `target` | Show the active target, protocol stack and catalog |
 | `verbose on\|off` | Hexdump every sent packet |
 | `raw <hex bytes>` | Send pre-built bytes, e.g. `raw 19 4B C0 00 00 01 6C 00` |
-| `! <command line>` | Send a command marked `critical` (refused without `!`): the same line with `!` in front, in any menu: `fm> ! delete_dir /cf/x`, `fsw> ! fm delete_dir /cf/x`, `mcs> ! fsw fm delete_dir /cf/x`. Covers that one command only |
+| `! <command line>` | Send a command marked `critical` (refused without `!`): the same line with `!` in front, in any menu: `fm> ! delete_dir /cf/x`, `fsw> ! fm delete_dir /cf/x`, `mcs> ! fsw fm delete_dir /cf/x`. Covers that one command only. Not offered by TAB or `help`: the error on a critical command tells you |
 | `tlm view console\|telemetry` | Switch screen (same as F1/F2) |
 | `tlm pane events\|console` | Top pane of the console screen (same as F3) |
 | `tlm show <packet>\|<mid>\|all`, `tlm hide ...` | Tick/untick packets in the telemetry checklist, e.g. `tlm show ds.hk`, `tlm show 0x0899` |
