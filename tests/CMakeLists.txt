@@ -32,6 +32,7 @@ add_executable(mcs_unit_tests
     unit/test_command_service.cpp
     unit/test_telemetry.cpp
     unit/test_completion.cpp
+    unit/test_fsw_command.cpp
     unit/test_help_format.cpp
     unit/test_gsfc_engine.cpp
     unit/test_cfdp_two_entities.cpp

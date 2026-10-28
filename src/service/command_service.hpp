@@ -15,7 +15,7 @@
 namespace mcs {
 
 // Executes operator commands end to end:
-//   catalog lookup -> payload encoding -> (arm check) -> pipeline -> log -> status line.
+//   catalog lookup -> payload encoding -> (critical check) -> pipeline -> log -> status line.
 //
 // Every error is caught here and reported as one "error: ..." line; nothing
 // propagates into the UI. Methods return true on success.
@@ -24,25 +24,23 @@ public:
     CommandService(const CommandCatalog& catalog, PayloadEncoder encoder, Pipeline& pipeline,
                    PacketLog* log, std::string targetName);
 
+    // A critical command is refused unless `confirmed` (the operator typed '!'
+    // before it); the confirmation covers this one command only.
     bool execute(const std::string& app, const std::string& command,
-                 const std::vector<std::string>& args, std::ostream& out);
+                 const std::vector<std::string>& args, std::ostream& out, bool confirmed = false);
 
     // Sends pre-built packet bytes given as hex tokens (still through layers + transport).
     bool executeRaw(const std::vector<std::string>& hexTokens, std::ostream& out);
 
     // What execute() / executeRaw() check, without sending or printing
-    // anything but errors (the pass over a script before it runs). Arming is
-    // tracked as execute() does. With `checkValues` false (the arguments come
-    // from script variables not known yet) only the command and the number of
+    // anything but errors (the pass over a script before it runs), including
+    // the critical check. With `checkValues` false (the arguments come from
+    // script variables not known yet) only the command and the number of
     // arguments are checked.
     bool check(const std::string& app, const std::string& command,
-               const std::vector<std::string>& args, bool checkValues, std::ostream& out);
+               const std::vector<std::string>& args, bool checkValues, std::ostream& out,
+               bool confirmed = false);
     bool checkRaw(const std::vector<std::string>& hexTokens, bool checkValues, std::ostream& out);
-
-    // Critical commands are refused unless armed; arming covers the next
-    // critical command only.
-    void arm() { armed_ = true; }
-    bool armed() const { return armed_; }
 
     void setVerbose(bool on) { verbose_ = on; }
     bool verbose() const { return verbose_; }
@@ -66,7 +64,6 @@ private:
     PacketLog* log_;
     std::string targetName_;
     bool verbose_ = false;
-    bool armed_ = false;
     std::size_t failures_ = 0;
     std::size_t sent_ = 0;
     std::optional<std::chrono::system_clock::time_point> lastSentAt_;

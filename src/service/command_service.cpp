@@ -49,8 +49,17 @@ bool CommandService::fail(const std::string& message, std::ostream& out)
     return false;
 }
 
+namespace {
+
+std::string criticalError(const std::string& command)
+{
+    return "'" + command + "' is a critical command: type '!' before it";
+}
+
+} // namespace
+
 bool CommandService::execute(const std::string& app, const std::string& command,
-                             const std::vector<std::string>& args, std::ostream& out)
+                             const std::vector<std::string>& args, std::ostream& out, bool confirmed)
 {
     const std::string line = commandLineOf(app, command, args);
     try {
@@ -62,14 +71,11 @@ bool CommandService::execute(const std::string& app, const std::string& command,
 
         CommandMessage message{def->mid, def->cc, encoder_.encode(*def, args)};
 
-        if (def->critical && !armed_) {
-            return fail("'" + command + "' is a critical command: type 'arm', then repeat it", out);
+        if (def->critical && !confirmed) {
+            return fail(criticalError(command), out);
         }
 
         const Pipeline::Result result = pipeline_.send(message);
-        if (def->critical) {
-            armed_ = false;   // arming covers one critical command
-        }
         report(line, result, out);
         return true;
     } catch (const mcsError& e) {
@@ -80,7 +86,8 @@ bool CommandService::execute(const std::string& app, const std::string& command,
 }
 
 bool CommandService::check(const std::string& app, const std::string& command,
-                           const std::vector<std::string>& args, bool checkValues, std::ostream& out)
+                           const std::vector<std::string>& args, bool checkValues, std::ostream& out,
+                           bool confirmed)
 {
     try {
         const AppDef* appDef = catalog_.findApp(app);
@@ -93,11 +100,8 @@ bool CommandService::check(const std::string& app, const std::string& command,
         } else {
             PayloadEncoder::checkArgumentCount(*def, args.size());
         }
-        if (def->critical) {
-            if (!armed_) {
-                return fail("'" + command + "' is a critical command: type 'arm', then repeat it", out);
-            }
-            armed_ = false;
+        if (def->critical && !confirmed) {
+            return fail(criticalError(command), out);
         }
         return true;
     } catch (const mcsError& e) {

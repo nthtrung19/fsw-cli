@@ -94,3 +94,22 @@ TEST(ArgCompletion, NoMoreArguments)
     EXPECT_EQ(completeArgument(test::dsApp().commands[0], 0, "").hint, expected);   // noop
     EXPECT_EQ(completeArgument(test::dsApp().commands[2], 1, "").hint, expected);   // past the end
 }
+
+TEST(ArgCompletion, CommandLineCompletesCommandNamesThenArguments)
+{
+    const AppDef ds = test::dsApp();
+    const ArgCompletion all = completeCommandLine(ds, {}, "");
+    EXPECT_EQ(names(all), (std::vector<std::string>{"noop", "reset", "set_app_state"}));
+    EXPECT_EQ(all.values[0].second, "No-op");   // the command help as description
+
+    EXPECT_EQ(names(completeCommandLine(ds, {}, "re")), std::vector<std::string>{"reset"});
+    EXPECT_EQ(names(completeCommandLine(ds, {"set_app_state"}, "d")), std::vector<std::string>{"disable"});
+    EXPECT_EQ(completeCommandLine(ds, {"noop"}, "").hint, "(no more arguments: press Enter to send)");
+}
+
+TEST(ArgCompletion, CommandLineHintsForUnknownNames)
+{
+    const AppDef ds = test::dsApp();
+    EXPECT_EQ(completeCommandLine(ds, {}, "zz").hint, "<command of ds>");
+    EXPECT_TRUE(contains(completeCommandLine(ds, {"nope"}, "").hint, "unknown command 'nope'"));
+}

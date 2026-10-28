@@ -208,7 +208,7 @@ struct CommandDef {
     std::uint8_t cc;       // 0..127
     std::string help;
     std::vector<FieldDef> fields;   // in payload order
-    bool critical = false;          // ask for confirmation
+    bool critical = false;          // sent only with '!' in front
 };
 
 struct AppDef {
@@ -510,7 +510,7 @@ public:
 };
 ```
 
-Behavior per command: look up → encode → build → (confirm if `critical`) →
+Behavior per command: look up → encode → build → (refuse if `critical` without `!`) →
 send → log → print one status line (+ hexdump if verbose or dry-run).
 All errors are caught here and reported as one line; nothing propagates as an
 exception into the CLI library. Return/flag used for batch exit codes.
@@ -627,7 +627,7 @@ expect ds.hk cmd_accepted_counter == $n+1 within 5
   a check wakes on the packet that satisfies it (no polling period).
 - **Check pass.** `-f` (and `--check`) first feed every line to a second menu
   tree built from a check-only `VerifyService`, its own `CommandService`
-  (`check()`, arming tracked) and the file menu in `FileMenuMode::Check`; any
+  (`check()`, critical rule included) and the file menu in `FileMenuMode::Check`; any
   error stops the run before anything is sent. Lines with `$name` are checked
   with `setValuesKnown(false)`: names and argument counts, not values.
 - **Output and exit code.** `ui/script_runner` (`checkScript`, `runScript`)
@@ -771,9 +771,11 @@ filter commands once `ds_msg.h` is provided.
 - Config files accept `//` and `/* */` comments.
 - Plug-in options may be JSON strings, numbers or booleans; they reach the
   plug-in as text (`"port": 1234` and `"port": "1234"` are equivalent).
-- Critical commands use an `arm` → command sequence instead of a y/N prompt,
-  so the same rule works in interactive, `-c` and `-f` modes. An invalid
-  critical command does not consume the arming.
+- Critical commands are confirmed by typing `!` in front of the command line
+  (`fm> ! delete_dir /cf/x`) instead of a y/N prompt, so the same rule works in
+  interactive, `-c` and `-f` modes. `!` exists in every fsw menu level and
+  covers that one command only (no "armed" state). The cli library's own `!`
+  (re-run a history entry) is removed in the fork; ↑/↓ recall commands.
 - The oracle test compiles the unmodified cFE 6.7 `ccsds.h`/`ccsds.c` (Apache
   2.0) with small stand-in headers; it is skipped on big-endian hosts.
 - `UdpTransport` uses an unconnected socket (`sendto`), so a missing listener

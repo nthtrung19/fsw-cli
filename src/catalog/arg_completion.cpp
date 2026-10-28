@@ -51,4 +51,27 @@ ArgCompletion completeArgument(const CommandDef& command, std::size_t index, con
     return out;
 }
 
+ArgCompletion completeCommandLine(const AppDef& app, const std::vector<std::string>& previous,
+                                  const std::string& partial)
+{
+    ArgCompletion out;
+    if (previous.empty()) {
+        for (const auto& cmd : app.commands) {
+            if (cmd.name.rfind(partial, 0) == 0) {
+                out.values.emplace_back(cmd.name, cmd.help);
+            }
+        }
+        if (out.values.empty()) {
+            out.hint = "<command of " + app.name + ">";
+        }
+        return out;
+    }
+    const CommandDef* def = app.findCommand(previous[0]);
+    if (def == nullptr) {
+        out.hint = "(unknown command '" + previous[0] + "' for " + app.name + ")";
+        return out;
+    }
+    return completeArgument(*def, previous.size() - 1, partial);
+}
+
 } // namespace mcs

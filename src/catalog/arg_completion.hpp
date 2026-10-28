@@ -23,4 +23,10 @@ struct ArgCompletion {
 // partial: what has been typed of that argument so far (may be empty).
 ArgCompletion completeArgument(const CommandDef& command, std::size_t index, const std::string& partial);
 
+// A whole command line of `app` (as typed after "!"): word 0 is a command
+// name, the following words are that command's arguments.
+// previous: the words already typed; partial: what has been typed of the next one.
+ArgCompletion completeCommandLine(const AppDef& app, const std::vector<std::string>& previous,
+                                  const std::string& partial);
+
 } // namespace mcs

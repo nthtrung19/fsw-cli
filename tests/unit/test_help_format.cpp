@@ -18,7 +18,7 @@ std::vector<HelpItem> topLevel()
             {"target", "Show the active target, its protocol stack and catalog"},
             {"verbose <on|off>", "Show or set hexdump of every sent packet"},
             {"raw <hex bytes...>", "Send pre-built packet bytes, e.g. raw 19 4B C0 00 00 01 6C 00"},
-            {"arm", "Allow the next critical command to be sent"}};
+            {"! fsw <app> <command> <args...>", "Send a command, also a critical one, e.g. ! fsw fm delete_dir /cf/x"}};
 }
 
 std::vector<std::string> texts(const std::vector<HelpLine>& lines)

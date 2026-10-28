@@ -38,10 +38,10 @@ protected:
                                                     *pipeline_, log_.get(), "fsw");
     }
 
-    bool run(const std::string& cmd, const std::vector<std::string>& args = {})
+    bool run(const std::string& cmd, const std::vector<std::string>& args = {}, bool confirmed = false)
     {
         out_.str("");
-        return service_->execute("ds", cmd, args, out_);
+        return service_->execute("ds", cmd, args, out_, confirmed);
     }
 
     test::TempDir dir_;
@@ -121,24 +121,28 @@ TEST_F(ServiceTest, TransportErrorIsReportedNotThrown)
     EXPECT_TRUE(run("noop"));   // the session continues
 }
 
-TEST_F(ServiceTest, CriticalCommandsNeedArming)
+TEST_F(ServiceTest, CriticalCommandsNeedConfirmation)
 {
     EXPECT_FALSE(run("wipe"));
-    EXPECT_NE(out_.str().find("critical command: type 'arm'"), std::string::npos);
+    EXPECT_EQ(out_.str(), "error: 'wipe' is a critical command: type '!' before it\n");
     EXPECT_TRUE(sent_.empty());
 
-    service_->arm();
-    EXPECT_TRUE(run("wipe"));
+    EXPECT_TRUE(run("wipe", {}, /*confirmed=*/true));
     EXPECT_EQ(sent_.size(), 1U);
-    EXPECT_FALSE(service_->armed());   // one command per arm
-    EXPECT_FALSE(run("wipe"));
+    EXPECT_FALSE(run("wipe"));   // the confirmation covered that one command
+    EXPECT_EQ(sent_.size(), 1U);
 }
 
-TEST_F(ServiceTest, ArmingIsNotConsumedByInvalidCriticalCommand)
+TEST_F(ServiceTest, ConfirmedNonCriticalCommandIsSent)
 {
-    service_->arm();
-    EXPECT_FALSE(run("wipe", {"unexpected"}));   // rejected before sending
-    EXPECT_TRUE(service_->armed());
+    EXPECT_TRUE(run("noop", {}, /*confirmed=*/true));
+    EXPECT_EQ(sent_.size(), 1U);
+}
+
+TEST_F(ServiceTest, ConfirmedCommandIsStillValidated)
+{
+    EXPECT_FALSE(run("wipe", {"unexpected"}, /*confirmed=*/true));
+    EXPECT_TRUE(sent_.empty());
 }
 
 TEST_F(ServiceTest, RawBytes)
@@ -210,12 +214,12 @@ TEST_F(ServiceTest, CheckValidatesWithoutSending)
     EXPECT_NE(out.str().find("expected 1 argument, got 2"), std::string::npos);
 }
 
-TEST_F(ServiceTest, CheckTracksArming)
+TEST_F(ServiceTest, CheckAppliesTheCriticalRule)
 {
     std::ostringstream out;
     EXPECT_FALSE(service_->check("ds", "wipe", {}, true, out));
-    service_->arm();
-    EXPECT_TRUE(service_->check("ds", "wipe", {}, true, out));
-    EXPECT_FALSE(service_->check("ds", "wipe", {}, true, out));   // arming covers one command
+    EXPECT_NE(out.str().find("type '!' before it"), std::string::npos);
+    EXPECT_TRUE(service_->check("ds", "wipe", {}, true, out, /*confirmed=*/true));
+    EXPECT_TRUE(service_->check("ds", "wipe", {}, false, out, /*confirmed=*/true));
     EXPECT_TRUE(sent_.empty());
 }

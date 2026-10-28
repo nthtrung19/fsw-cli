@@ -22,9 +22,14 @@ public:
     using Handler = std::function<void(std::ostream& out, const std::vector<std::string>& args)>;
     // Tab completion for argument `index` (0-based), given what has been typed of it.
     using ArgCompleter = std::function<ArgCompletion(std::size_t index, const std::string& partial)>;
+    // The same, given the arguments already typed before it (`previous.size()` is the index).
+    using LineCompleter =
+        std::function<ArgCompletion(const std::vector<std::string>& previous, const std::string& partial)>;
 
     FswCommand(std::string commandName, std::string help, std::vector<std::string> params,
                Handler handler, ArgCompleter completer = {});
+    FswCommand(std::string commandName, std::string help, std::vector<std::string> params,
+               Handler handler, LineCompleter completer);
 
     bool Exec(const std::vector<std::string>& cmdLine, cli::CliSession& session) override;
     void Help(std::ostream& out) const override;
@@ -38,7 +43,7 @@ private:
     std::string help_;
     std::vector<std::string> params_;
     Handler handler_;
-    ArgCompleter completer_;
+    LineCompleter completer_;
 };
 
 } // namespace mcs::ui

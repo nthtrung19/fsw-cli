@@ -169,7 +169,7 @@ their column.
 | `target` | Show the active target, protocol stack and catalog |
 | `verbose on\|off` | Hexdump every sent packet |
 | `raw <hex bytes>` | Send pre-built bytes, e.g. `raw 19 4B C0 00 00 01 6C 00` |
-| `arm` | Allow the next command marked `critical` |
+| `! <command line>` | Send a command marked `critical` (refused without `!`): the same line with `!` in front, in any menu: `fm> ! delete_dir /cf/x`, `fsw> ! fm delete_dir /cf/x`, `mcs> ! fsw fm delete_dir /cf/x`. Covers that one command only |
 | `tlm view console\|telemetry` | Switch screen (same as F1/F2) |
 | `tlm pane events\|console` | Top pane of the console screen (same as F3) |
 | `tlm show <packet>\|<mid>\|all`, `tlm hide ...` | Tick/untick packets in the telemetry checklist, e.g. `tlm show ds.hk`, `tlm show 0x0899` |
@@ -179,10 +179,10 @@ their column.
 | `file list`, `file status <id>` | Active and recent transfers; details of one (`0.24_7`) |
 | `file cancel\|abandon <id>\|all`, `file suspend\|resume <id>` | Control a transfer |
 | `run <script>`, `run stop`, `run` | Run a test script in the background (see [Testing with scripts](#testing-with-scripts)); stop it; show its progress |
-| `history`, `exit` | Library built-ins |
+| `history`, `exit` | Library built-ins (recall earlier commands with ↑/↓) |
 
-Session commands (`target`, `verbose`, `raw`, `arm`, `tlm ...`, `file ...`, `run ...`) are typed at the
-top level (`mcs>`). The `tlm` and `run` commands exist in the full-screen session only; the
+Session commands (`target`, `verbose`, `raw`, `tlm ...`, `file ...`, `run ...`) are typed at the
+top level (`mcs>`); `!` works in `mcs>`, `fsw>` and every app menu. The `tlm` and `run` commands exist in the full-screen session only; the
 `file` commands exist when the target has a `cfdp` block.
 
 ### File transfer (CFDP)

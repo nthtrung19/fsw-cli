@@ -115,6 +115,39 @@ mcs_smoke(NAME main_switch_mask_out_of_range EXIT 1
     ARGS ${BASE} -n -c "fsw main set_switch_state 0x400"
     EXPECT "above maximum 1023" REJECT "dry-run")
 
+# ---- critical commands: '!' in front, in any menu ----------------------------------
+mcs_smoke(NAME critical_refused EXIT 1
+    ARGS ${BASE} -n -c "fsw fm delete_dir /cf/x"
+    EXPECT "'delete_dir' is a critical command: type '!' before it" REJECT "dry-run")
+
+mcs_smoke(NAME confirm_in_app_menu EXIT 0
+    ARGS ${BASE} -n -c "fsw" -c "fm" -c "! delete_dir /cf/x"
+    EXPECT "\\[dry-run\\] fsw fm delete_dir /cf/x")
+
+mcs_smoke(NAME confirm_without_space EXIT 0
+    ARGS ${BASE} -n -c "fsw" -c "fm" -c "!delete_dir /cf/x"
+    EXPECT "\\[dry-run\\] fsw fm delete_dir /cf/x")
+
+mcs_smoke(NAME confirm_in_fsw_menu EXIT 0
+    ARGS ${BASE} -n -c "fsw" -c "! fm delete_dir /cf/x"
+    EXPECT "\\[dry-run\\] fsw fm delete_dir /cf/x")
+
+mcs_smoke(NAME confirm_top_level EXIT 0
+    ARGS ${BASE} -n -c "! fsw fm delete_dir /cf/x"
+    EXPECT "\\[dry-run\\] fsw fm delete_dir /cf/x")
+
+mcs_smoke(NAME confirm_covers_one_line EXIT 1
+    ARGS ${BASE} -n -c "! fsw fm delete_dir /cf/a" -c "fsw fm delete_dir /cf/b"
+    EXPECT "fsw fm delete_dir /cf/a.*'delete_dir' is a critical command")
+
+mcs_smoke(NAME bang_alone EXIT 1
+    ARGS ${BASE} -n -c "!"
+    EXPECT "usage: ! fsw <app> <command> \\[args...\\]")
+
+mcs_smoke(NAME bang_history_index_gone EXIT 1
+    ARGS ${BASE} -n -c "fsw ds noop" -c "! 0"
+    EXPECT "usage: ! fsw <app> <command>" REJECT "seq=1")
+
 mcs_smoke(NAME unknown_command EXIT 1
     ARGS ${BASE} -n -c "fsw ds nope"
     EXPECT "unknown command: fsw ds nope")

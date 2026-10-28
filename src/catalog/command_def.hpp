@@ -15,7 +15,7 @@ struct CommandDef {
     std::uint8_t cc = 0;            // function (command) code, 0..127
     std::string help;
     std::vector<FieldDef> fields;   // payload fields in order (may be empty)
-    bool critical = false;          // must be armed before sending
+    bool critical = false;          // sent only with '!' in front
     std::uint16_t mid = 0;          // command message ID it is sent on (CCSDS stream ID)
 
     std::size_t payloadSize() const;

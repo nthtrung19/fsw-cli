@@ -18,8 +18,118 @@ namespace mcs::ui {
 
 namespace {
 
+// Where a "!" command sits, and so what follows it: the rest of the line as
+// that menu would take it.
+enum class ConfirmScope {
+    App,    // app menu:  ! <command> [args...]
+    Fsw,    // fsw menu:  ! <app> <command> [args...]
+    Root,   // top level: ! fsw <app> <command> [args...]
+};
+
+// "!" in front of a command line sends the command even if it is critical.
+// It confirms that one command only. `app` is set for ConfirmScope::App.
+std::unique_ptr<FswCommand> confirmCommand(CommandService& service, const VerifyService* checkWith,
+                                           std::size_t& sessionErrors, ConfirmScope scope,
+                                           const AppDef* app = nullptr)
+{
+    const std::string usage = scope == ConfirmScope::App   ? "! <command> [args...]"
+                              : scope == ConfirmScope::Fsw ? "! <app> <command> [args...]"
+                                                           : "! fsw <app> <command> [args...]";
+    const std::string example = scope == ConfirmScope::App   ? "! delete_dir /cf/x"
+                                : scope == ConfirmScope::Fsw ? "! fm delete_dir /cf/x"
+                                                             : "! fsw fm delete_dir /cf/x";
+    std::vector<std::string> params{"command", "args..."};
+    if (scope != ConfirmScope::App) {
+        params.insert(params.begin(), "app");
+    }
+    if (scope == ConfirmScope::Root) {
+        params.insert(params.begin(), "fsw");
+    }
+
+    return std::make_unique<FswCommand>(
+        "!", "Send a command, also a critical one, e.g. " + example, params,
+        [&service, checkWith, &sessionErrors, scope, app, usage](std::ostream& out,
+                                                                 const std::vector<std::string>& args) {
+            std::size_t at = 0;
+            const AppDef* target = app;
+            if (scope == ConfirmScope::Root && (args.empty() || args[0] != "fsw")) {
+                ++sessionErrors;
+                out << "error: usage: " << usage << '\n';
+                return;
+            }
+            if (scope == ConfirmScope::Root) {
+                at = 1;
+            }
+            if (scope != ConfirmScope::App && args.size() > at) {
+                target = service.catalog().findApp(args[at]);
+                if (target == nullptr) {
+                    ++sessionErrors;
+                    out << "error: unknown app '" << args[at] << "' for target '" << service.targetName() << "'\n";
+                    return;
+                }
+                ++at;
+            }
+            if (target == nullptr || args.size() <= at) {
+                ++sessionErrors;
+                out << "error: usage: " << usage << '\n';
+                return;
+            }
+            const std::vector<std::string> rest(args.begin() + static_cast<std::ptrdiff_t>(at) + 1, args.end());
+            if (checkWith != nullptr) {
+                service.check(target->name, args[at], rest, checkWith->valuesKnown(), out, true);
+            } else {
+                service.execute(target->name, args[at], rest, out, true);
+            }
+        },
+        // The catalog outlives the menu, so apps can be held by pointer.
+        FswCommand::LineCompleter([&catalog = service.catalog(), scope, app](
+                                      const std::vector<std::string>& previous, const std::string& partial) {
+            ArgCompletion c;
+            std::size_t at = 0;
+            if (scope == ConfirmScope::Root) {
+                if (previous.empty()) {
+                    if (std::string("fsw").rfind(partial, 0) == 0) {
+                        c.values.emplace_back("fsw", "Send commands to flight software");
+                    } else {
+                        c.hint = "<fsw>";
+                    }
+                    return c;
+                }
+                if (previous[0] != "fsw") {
+                    c.hint = "(only fsw commands follow '!')";
+                    return c;
+                }
+                at = 1;
+            }
+            const AppDef* target = app;
+            if (scope != ConfirmScope::App) {
+                if (previous.size() == at) {
+                    for (const auto& a : catalog.apps()) {
+                        if (a.name.rfind(partial, 0) == 0) {
+                            c.values.emplace_back(a.name, a.help);
+                        }
+                    }
+                    if (c.values.empty()) {
+                        c.hint = "<app>";
+                    }
+                    return c;
+                }
+                target = catalog.findApp(previous[at]);
+                if (target == nullptr) {
+                    c.hint = "(unknown app '" + previous[at] + "')";
+                    return c;
+                }
+                ++at;
+            }
+            return completeCommandLine(
+                *target, std::vector<std::string>(previous.begin() + static_cast<std::ptrdiff_t>(at), previous.end()),
+                partial);
+        }));
+}
+
 // `checkWith`: check-only session (the commands are checked, not sent).
-std::unique_ptr<cli::Menu> buildFswMenu(CommandService& service, const VerifyService* checkWith)
+std::unique_ptr<cli::Menu> buildFswMenu(CommandService& service, const VerifyService* checkWith,
+                                        std::size_t& sessionErrors)
 {
     auto fsw = std::make_unique<cli::Menu>("fsw", "Send commands to flight software (target '"
                                                       + service.targetName() + "')");
@@ -35,7 +145,7 @@ std::unique_ptr<cli::Menu> buildFswMenu(CommandService& service, const VerifySer
                 help += " [mid " + toHexString(cmd.mid, 4) + "]";
             }
             if (cmd.critical) {
-                help += " [critical: 'arm' first]";
+                help += " [critical: type '!' before it]";
             }
             appMenu->Insert(std::make_unique<FswCommand>(
                 cmd.name, help, cmd.paramDescriptions(),
@@ -52,8 +162,10 @@ std::unique_ptr<cli::Menu> buildFswMenu(CommandService& service, const VerifySer
                     return completeArgument(*def, index, partial);
                 }));
         }
+        appMenu->Insert(confirmCommand(service, checkWith, sessionErrors, ConfirmScope::App, &app));
         fsw->Insert(std::move(appMenu));
     }
+    fsw->Insert(confirmCommand(service, checkWith, sessionErrors, ConfirmScope::Fsw));
     return fsw;
 }
 
@@ -117,12 +229,7 @@ void insertSessionCommands(cli::Menu& root, CommandService& service, std::size_t
             }
         }));
 
-    root.Insert(std::make_unique<FswCommand>(
-        "arm", "Allow the next critical command to be sent", std::vector<std::string>{},
-        [&service](std::ostream& out, const std::vector<std::string>&) {
-            service.arm();
-            out << "armed: the next critical command will be sent\n";
-        }));
+    root.Insert(confirmCommand(service, checkWith, sessionErrors, ConfirmScope::Root));
 }
 
 // Completes argument 0 from a fixed list of words.
@@ -742,7 +849,7 @@ std::unique_ptr<cli::Menu> buildRootMenu(CommandService& service, std::size_t& s
 {
     const VerifyService* checkWith = verify != nullptr && verify->checkOnly() ? verify : nullptr;
     auto root = std::make_unique<cli::Menu>("mcs");
-    root->Insert(buildFswMenu(service, checkWith));
+    root->Insert(buildFswMenu(service, checkWith, sessionErrors));
     insertSessionCommands(*root, service, sessionErrors, checkWith);
     if (tlm != nullptr && tlm->store != nullptr) {
         root->Insert(buildTlmMenu(*tlm, sessionErrors));
