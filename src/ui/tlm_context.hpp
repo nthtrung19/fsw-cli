@@ -26,7 +26,7 @@ const char* toString(F1Pane pane);
 
 struct TlmViewState {
     TlmView view = TlmView::Console;
-    F1Pane pane = F1Pane::Events;
+    F1Pane pane = F1Pane::Console;   // FSW console first; F3 switches to the events
     std::set<std::uint16_t> shown; // telemetry screen: MIDs ticked in the packet checklist
     bool paused = false;           // display frozen; receiving continues
 };

@@ -68,9 +68,10 @@ On a terminal, the interactive session fills the screen and has two screens.
 A header line (target, screen tabs, telemetry link status) and a key-hint line
 are always visible.
 
-**F1 Console**: flight software events on top, the output of your commands
-below, then the `mcs>` input line and the Tab-completion list. F3 swaps the
-events for the **FSW CONSOLE**: the flight software's own console text (see below).
+**F1 Console**: the **FSW CONSOLE** on top (the flight software's own console
+text, see below), the output of your commands below, then the `mcs>` input line
+and the Tab-completion list. F3 swaps the console text for the flight software
+**EVENTS** (and back).
 
 ```
  mcs   F1 Console   F2 Telemetry          TLM udp://0.0.0.0:5011 ● 1532 pkts · last 0.2 s ⠙
@@ -79,7 +80,7 @@ events for the **FSW CONSOLE**: the flight software's own console text (see belo
 │ 09:00:19.414  INFO   TO          3     ENABLE OUTPUT CMD Succesful for Routes:0x0001           │
 │ 09:00:20.002  ERROR  DS          7     Invalid command length: expected 8, got 12              │
 ╰────────────────────────────────────────────────────────────────────────────────────────────────╯
-╭ COMMAND OUTPUT ────────────────────────────────────────────────────────────────────────────────╮
+╭ COMMAND HISTORY ────────────────────────────────────────────────────────────────────────────────╮
 │ > fsw ds noop                                                                                  │
 │ sent fsw ds noop -> udp://127.0.0.1:1234  (8 bytes, apid=0x14B seq=0)                          │
 ╰────────────────────────────────────────────────────────────────────────────────────────────────╯
@@ -113,12 +114,13 @@ as a hexdump (header bytes in cyan, with an ASCII column).
 | F3 | Top pane of the console: EVENTS ⇄ FSW CONSOLE (from F2 too) |
 | F5 | Pause/resume the display (receiving continues) |
 | Ctrl-C | Clear the input line; on an empty line, quit (as do Ctrl-D and `exit`) |
+| Mouse: drag a scrollbar (┃) | Scroll that panel: the log pane and COMMAND HISTORY on the console, the cards on the telemetry screen. Shift+drag selects text for copying |
 | **Console** | |
 | PgUp/PgDn | Scroll the command output |
 | Ctrl+↑/↓ (or Alt+↑/↓) | Scroll the events or the FSW console, whichever is shown |
 | **Telemetry** | |
 | ↑/↓, Home/End | Move in the checklist |
-| Space or Enter | Tick/untick the packet under the cursor |
+| Space, Enter or a click | Tick/untick the packet under the cursor (a click also moves the cursor there; clicking "▲/▼ N more" pages the list) |
 | PgUp/PgDn, Ctrl+↑/↓ | Scroll the cards |
 | Esc, or typing any character | Back to the console (the character is typed into the input line) |
 
@@ -132,10 +134,11 @@ or with `--plain`, the session is the line-mode prompt, without telemetry.
 **FSW console.** What the flight software prints on its console (`OS_printf`,
 `printf`, `EVS Port1` event echoes, boot output) never goes through TO. On the
 bench the BBB's UART is forwarded as UDP by a serial-to-Ethernet bridge; give the
-target a `"console"` block with that port and mcs shows the text in F1 (F3):
+target a `"console"` block with that port and mcs shows the text at the top of F1
+(the default; F3 switches to the events and back):
 
 ```
-╭ FSW CONSOLE 1532 ────────────────────────── ▲ 12 older (Ctrl+↑)   udp://0.0.0.0:8898 ● last 0.4 s ╮
+╭ FSW CONSOLE ───────────────────────────────────────────────────────   udp://0.0.0.0:8898 ● last 0.4 s ╮
 │ 10:41:07.112  EVS Port1 66/1/MAIN 1: MAIN App Initialized.                                       │
 │ 10:41:07.120  IO_Lib: -12 - UartRcvTimeout Error: Timedout                                       │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
@@ -201,7 +204,7 @@ exactly the same protocol.
   at once.
 - **Full-screen session**: the header shows `FILES ↑1 ↓1` while transfers run,
   and the F1 console shows a TRANSFERS strip (progress bar, rate, ETA per
-  transfer) between EVENTS and COMMAND OUTPUT; start and end notices go to the
+  transfer) between EVENTS and COMMAND HISTORY; start and end notices go to the
   command output (✔ done, ✘ failed, ⊘ cancelled). Quitting while transfers run
   asks once more.
 - **Safety**: received files never leave `downlink_dir` (names with `..` are
@@ -305,7 +308,7 @@ running scripts/ds_smoke.mcs: 15 line(s); 'run stop' ends it
 ```
 
 The script is checked first, as with `-f` (errors are listed and nothing is
-sent). It then runs in the background: its lines stream into COMMAND OUTPUT
+sent). It then runs in the background: its lines stream into COMMAND HISTORY
 (PASS green, FAIL red), the header shows ` SCRIPT ds_smoke.mcs 9/15 `, and
 the result is the same as `mcs -f` would print. `run` shows where it is,
 `run stop` ends it within a tenth of a second (a running `file put/get`

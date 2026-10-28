@@ -13,10 +13,12 @@
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/component_options.hpp>
 #include <ftxui/component/event.hpp>
+#include <ftxui/component/mouse.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/terminal.hpp>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -280,7 +282,9 @@ public:
     {
         App screen = App::Fullscreen();
         screen.ForceHandleCtrlC(false);   // Ctrl-C clears the line; quits when it is empty
-        screen.TrackMouse(false);         // keep the terminal's own text selection for copying
+        // Mouse on for the panels' scrollbars (drag to scroll). Terminals still
+        // select text for copying with Shift+drag.
+        screen.TrackMouse(true);
         screen_ = &screen;
 
         InputOption opt;
@@ -370,6 +374,11 @@ private:
         if (e == Event::Custom) {
             ++tick_;
             return false;
+        }
+        if (e.is_mouse()) {
+            Event copy = e;
+            onMouse(copy.mouse());
+            return true;   // never reaches the input line
         }
         if (e == Event::F1 || e == Event::F2) {
             tlm_.view.view = e == Event::F1 ? TlmView::Console : TlmView::Telemetry;
@@ -555,6 +564,9 @@ private:
         const int bodyRows = std::max(8, dims.dimy - 2);   // header + hint line
 
         refreshSnapshot();
+        for (auto& b : bars_) {
+            b.shown = false;   // each pane that draws its bar sets it again
+        }
         Element body = tlm_.view.view == TlmView::Console ? consoleScreen(bodyRows, input)
                                                           : telemetryScreen(bodyRows);
         return vbox({header(), body | size(HEIGHT, EQUAL, bodyRows), hintLine()});
@@ -680,9 +692,9 @@ private:
     {
         const bool narrow = width_ < 120;
         if (tlm_.view.view == TlmView::Telemetry) {
-            return text(narrow ? " ↑↓ move · Space tick · PgUp/PgDn scroll · F1 console (or type) · F5 pause"
-                               : " ↑↓ move · Space tick · PgUp/PgDn scroll cards · F5 pause · "
-                                 "F1 console (or just type) · Ctrl-C quit")
+            return text(narrow ? " ↑↓ move · Space or click tick · PgUp/PgDn or drag ┃ scroll · F1 console"
+                               : " ↑↓ move · Space or click tick · PgUp/PgDn or drag ┃ scroll cards · F5 pause · "
+                                 "F1 console (or just type) · Shift+drag copies · Ctrl-C quit")
                  | dim;
         }
         if (script_.running) {
@@ -693,18 +705,158 @@ private:
         std::string hint = narrow ? " Tab complete · ↑↓ history · PgUp/PgDn output · Ctrl+↑↓ " + topPane()
                                         + " · F3 events/console"
                                   : " Enter run · Tab complete · ↑↓ history · PgUp/PgDn output · Ctrl+↑↓ " + topPane()
-                                        + " · F3 events/console · F2 telemetry · F5 pause · Ctrl-C clear/quit";
+                                        + " · drag ┃ to scroll · F3 events/console · F2 telemetry · F5 pause"
+                                        + " · Ctrl-C clear/quit";
         if (width_ >= 160 && fileCounts_.total() != 0) {
             hint += " · 'file cancel <id>' stops a transfer";
         }
         return text(hint) | dim;
     }
 
+    // ---- scrollbars: drag the thumb (┃) to scroll a panel --------------------------
+    //
+    // The log pane and COMMAND HISTORY on F1, the cards on F2. Each frame a bar
+    // records where it is on screen (reflect) and what it shows; a left press on
+    // it starts a drag, moves follow the mouse, a release ends it. The wheel is
+    // not used.
+
+    enum class Bar { Log, Output, Cards };
+    static constexpr std::size_t kBars = 3;
+
+    struct BarState {
+        Box box;           // screen cells of the bar, set when drawn
+        int total = 0;     // rows of content
+        int visible = 0;   // rows shown
+        int top = 0;       // first row shown, from the top
+        bool shown = false;   // drawn in the last frame
+    };
+
+    static int thumbSize(const BarState& b)
+    {
+        return std::clamp(b.visible * b.visible / std::max(1, b.total), 1, std::max(1, b.visible));
+    }
+
+    // A one-column bar `visible` rows high; blank when everything fits.
+    Element scrollBar(Bar which, int total, int visible, int top)
+    {
+        BarState& b = bars_[static_cast<std::size_t>(which)];
+        b.total = total;
+        b.visible = std::max(1, visible);
+        b.top = top;
+        b.shown = true;
+        Elements cells;
+        if (total <= b.visible) {
+            for (int i = 0; i < b.visible; ++i) {
+                cells.push_back(text(" "));
+            }
+        } else {
+            const int thumb = thumbSize(b);
+            const int range = total - b.visible;
+            const int pos = (std::clamp(top, 0, range) * (b.visible - thumb) + range / 2) / range;
+            const bool dragging = drag_ && *drag_ == which;
+            for (int i = 0; i < b.visible; ++i) {
+                const bool onThumb = i >= pos && i < pos + thumb;
+                cells.push_back(onThumb ? text("┃") | color(dragging ? Color::CyanLight : Color::Cyan) | bold
+                                        : text("│") | color(Color::GrayDark));
+            }
+        }
+        return vbox(std::move(cells)) | size(WIDTH, EQUAL, 1) | reflect(b.box);
+    }
+
+    // Scrolls the panel of `which` so its first visible row is `top`.
+    void setTop(Bar which, int top)
+    {
+        const BarState& b = bars_[static_cast<std::size_t>(which)];
+        top = std::clamp(top, 0, std::max(0, b.total - b.visible));
+        const int back = b.total - b.visible - top;   // rows below the visible part
+        switch (which) {
+        case Bar::Log:
+            (tlm_.view.pane == F1Pane::Console ? consoleScroll_ : eventScroll_) = back;
+            break;
+        case Bar::Output:
+            outputScroll_ = back;
+            break;
+        case Bar::Cards:
+            displayScroll_ = top;
+            break;
+        }
+    }
+
+    // Thumb centred on screen row `y` of the bar.
+    void dragTo(Bar which, int y)
+    {
+        const BarState& b = bars_[static_cast<std::size_t>(which)];
+        const int thumb = thumbSize(b);
+        const int travel = b.visible - thumb;
+        const int range = b.total - b.visible;
+        if (travel <= 0 || range <= 0) {
+            return;
+        }
+        const int pos = std::clamp(y - b.box.y_min - thumb / 2, 0, travel);
+        setTop(which, (pos * range + travel / 2) / travel);
+    }
+
+    void onMouse(const Mouse& m)
+    {
+        if (m.button == Mouse::Left && m.motion == Mouse::Pressed) {
+            const auto bars = tlm_.view.view == TlmView::Console ? std::vector<Bar>{Bar::Log, Bar::Output}
+                                                                : std::vector<Bar>{Bar::Cards};
+            for (const Bar which : bars) {
+                const BarState& b = bars_[static_cast<std::size_t>(which)];
+                // The column left of the bar counts too, so it is easy to grab.
+                if (b.shown && b.total > b.visible && m.x >= b.box.x_min - 1 && m.x <= b.box.x_max
+                    && m.y >= b.box.y_min && m.y <= b.box.y_max) {
+                    drag_ = which;
+                    dragTo(which, m.y);
+                    return;
+                }
+            }
+            if (tlm_.view.view == TlmView::Telemetry) {
+                clickChecklist(m.x, m.y);
+            }
+            return;
+        }
+        if (drag_ && m.motion == Mouse::Moved) {
+            dragTo(*drag_, m.y);
+            return;
+        }
+        if (m.motion == Mouse::Released) {
+            drag_.reset();
+        }
+    }
+
+    // F2: a click on a packet of the checklist ticks or unticks it (and puts
+    // the cursor there); a click on "▲/▼ N more" pages the list.
+    void clickChecklist(int x, int y)
+    {
+        for (std::size_t k = 0; k < listBoxes_.size() && k < listRowItem_.size(); ++k) {
+            const Box& box = listBoxes_[k];
+            if (x < box.x_min || x > box.x_max || y < box.y_min || y > box.y_max) {
+                continue;
+            }
+            const int last = std::max(0, static_cast<int>(items_.size()) - 1);
+            const int row = listRowItem_[k];
+            // A page up/down: the list moves by its height, the cursor goes to the
+            // first row of the new page (checklist() keeps it in view).
+            if (row == kMoreAbove) {
+                listScroll_ = std::max(0, listScroll_ - listPage_);
+                listCursor_ = listScroll_;
+            } else if (row == kMoreBelow) {
+                listScroll_ = std::min(std::max(0, last + 1 - listPage_), listScroll_ + listPage_);
+                listCursor_ = listScroll_;
+            } else if (row <= last) {
+                listCursor_ = row;
+                toggleCursorItem();
+            }
+            return;
+        }
+    }
+
     // ---- F1 console -------------------------------------------------------------
     //
     //   ╭ EVENTS ─────────╮   ~40%; F3 swaps in the FSW CONSOLE
     //   ╰─────────────────╯
-    //   ╭ COMMAND OUTPUT ─╮   the rest
+    //   ╭ COMMAND HISTORY ─╮   the rest
     //   ╰─────────────────╯
     //    mcs> █              input line, then the Tab list
 
@@ -716,7 +868,7 @@ private:
         const int eventsRows = std::max(4, paneRows * 2 / 5);
         const int outputBox = std::max(4, paneRows - eventsRows);
         outputRows_ = outputBox - 2;
-        outputWidth_ = std::max(20, width_ - 3);   // border + leading space
+        outputWidth_ = std::max(20, width_ - 4);   // border + leading space + scrollbar
 
         Element top = tlm_.view.pane == F1Pane::Console ? fswConsolePane(eventsRows) : eventsPane(eventsRows);
         Elements panes{std::move(top) | size(HEIGHT, EQUAL, eventsRows)};
@@ -802,21 +954,20 @@ private:
         if (total > kMaxStripRows) {
             rows.push_back(text(" +" + std::to_string(total - kMaxStripRows) + " more · 'file list'") | dim);
         }
-        return window(paneTitle("TRANSFERS", std::to_string(total) + " active", ""), vbox(std::move(rows)))
+        return window(paneTitle("TRANSFERS", std::to_string(total) + " active"), vbox(std::move(rows)))
              | color(Color::Default);
     }
 
-    Element paneTitle(const std::string& name, const std::string& count, const std::string& note)
+    Element paneTitle(const std::string& name, const std::string& count)
     {
-        return hbox({text(" " + name + " ") | bold, text(count.empty() ? "" : count + " ") | dim, filler(),
-                     text(note.empty() ? "" : " " + note + " ") | color(Color::Yellow)});
+        return hbox({text(" " + name + " ") | bold, text(count.empty() ? "" : count + " ") | dim, filler()});
     }
 
     Element eventsPane(int box)
     {
         const int dataRows = std::max(1, box - 3);   // border + column header
         if (tlm_.store == nullptr) {
-            return window(paneTitle("EVENTS", "", ""),
+            return window(paneTitle("EVENTS", ""),
                           text(" telemetry is not configured for target '" + service_.targetName()
                                + "' (add a \"telemetry\" block in targets.json)") | dim);
         }
@@ -826,9 +977,9 @@ private:
         const int end = total - eventScroll_;
         const int begin = std::max(0, end - dataRows);
 
+        Element header = hbox({cell(" time", 15), cell("type", 7), cell("app", 12), cell("id", 6),
+                               text("message")}) | dim | bold;
         Elements lines;
-        lines.push_back(hbox({cell(" time", 15), cell("type", 7), cell("app", 12), cell("id", 6),
-                              text("message")}) | dim | bold);
         for (int i = begin; i < end; ++i) {
             const EventRecord& e = events[static_cast<std::size_t>(i)];
             const Color c = eventColor(e.eventType);
@@ -844,10 +995,11 @@ private:
         if (events.empty()) {
             lines.push_back(text(" no events yet") | dim);
         }
-        const std::string note = eventScroll_ > 0 ? "▼ " + std::to_string(eventScroll_) + " newer (Ctrl+↓)"
-                               : begin > 0       ? "▲ " + std::to_string(begin) + " older (Ctrl+↑)"
-                                                 : "";
-        return window(paneTitle("EVENTS", std::to_string(total), note), vbox(std::move(lines)));
+        return window(paneTitle("EVENTS", ""),
+                      vbox({std::move(header),
+                            hbox({vbox(std::move(lines)) | flex,
+                                  scrollBar(Bar::Log, total, dataRows, total - dataRows - eventScroll_)})
+                                | flex}));
     }
 
     // ---- F1 FSW CONSOLE (F3): text lines from the "console" receiver -----------------
@@ -877,7 +1029,7 @@ private:
     Element fswConsolePane(int box)
     {
         if (tlm_.console == nullptr) {
-            return window(paneTitle("FSW CONSOLE", "", ""),
+            return window(paneTitle("FSW CONSOLE", ""),
                           text(" no console configured for target '" + service_.targetName()
                                + "' (add a \"console\" block in targets.json)") | dim);
         }
@@ -899,11 +1051,10 @@ private:
                                      : " console receiver not open")
                            | dim);
         }
-        const std::string note = consoleScroll_ > 0 ? "▼ " + std::to_string(consoleScroll_) + " newer (Ctrl+↓)"
-                               : begin > 0          ? "▲ " + std::to_string(begin) + " older (Ctrl+↑)"
-                                                    : "";
-        Element title = hbox({paneTitle("FSW CONSOLE", std::to_string(total), note) | flex, consoleLink()});
-        return window(std::move(title), vbox(std::move(rows)));
+        Element title = hbox({paneTitle("FSW CONSOLE", "") | flex, consoleLink()});
+        return window(std::move(title),
+                      hbox({vbox(std::move(rows)) | flex,
+                            scrollBar(Bar::Log, total, dataRows, total - dataRows - consoleScroll_)}));
     }
 
     // One display row of a stored line: help names in cyan, the rest styled by
@@ -986,7 +1137,6 @@ private:
                 display.push_front({*it, i, wrapped.size() == 1});
             }
         }
-        const bool olderExist = display.size() > want || (!lines.empty() && !display.empty() && display.front().line > 0);
         outputScroll_ = std::min(outputScroll_, static_cast<int>(display.size() > rows ? display.size() - rows : 0));
         const std::size_t end = display.size() - static_cast<std::size_t>(outputScroll_);
         const std::size_t begin = end > rows ? end - rows : 0;
@@ -995,13 +1145,19 @@ private:
         for (std::size_t i = begin; i < end; ++i) {
             out.push_back(outputRow(lines[display[i].line], display[i].text, display[i].whole));
         }
+        // Rows of the whole output, for the scrollbar: only long lines need wrapping.
+        int total = 0;
+        for (const auto& l : lines) {
+            total += displayWidth(l.text) <= static_cast<std::size_t>(outputWidth_)
+                         ? 1 : static_cast<int>(wrapLine(l.text, outputWidth_).size());
+        }
         while (out.size() < rows) {
             out.insert(out.begin(), text(""));
         }
-        const std::string note = outputScroll_ > 0 ? "▼ " + std::to_string(outputScroll_) + " newer (PgDn)"
-                               : (begin > 0 || olderExist) ? "▲ older (PgUp)"
-                                                           : "";
-        return window(paneTitle("COMMAND OUTPUT", "", note), vbox(std::move(out)));
+        const int shown = static_cast<int>(rows);
+        return window(paneTitle("COMMAND HISTORY", ""),
+                      hbox({vbox(std::move(out)) | flex,
+                            scrollBar(Bar::Output, total, shown, total - shown - outputScroll_)}));
     }
 
     Element inputLine(const Component& input)
@@ -1071,7 +1227,7 @@ private:
         buildChecklist();
         displayRows_ = rows;
         return hbox({checklist(rows), text(" "),
-                     displayArea(rows, width_ - kListWidth - 1) | flex});
+                     displayArea(rows, width_ - kListWidth - 2) | flex});   // - 1 more for the scrollbar
     }
 
     void buildChecklist()
@@ -1140,11 +1296,30 @@ private:
 
         const TlmTime now = displayNow();
         constexpr std::size_t kLabelWidth = static_cast<std::size_t>(kListWidth) - 11;
+
+        // Each line records where it is drawn, for clicks (onMouse). Sized first:
+        // reflect() keeps a reference to its Box.
+        const int last = std::min(count, listScroll_ + visible);
+        listRowItem_.clear();
+        if (overflow) {
+            listRowItem_.push_back(kMoreAbove);
+        }
+        for (int i = listScroll_; i < last; ++i) {
+            listRowItem_.push_back(i);
+        }
+        if (overflow) {
+            listRowItem_.push_back(kMoreBelow);
+        }
+        listBoxes_.assign(listRowItem_.size(), Box{});
+        listPage_ = visible;
+        std::size_t k = 0;   // next line
+
         Elements lines;
         if (overflow) {
-            lines.push_back(text(listScroll_ > 0 ? "  ▲ " + std::to_string(listScroll_) + " more" : "") | dim);
+            lines.push_back(text(listScroll_ > 0 ? "  ▲ " + std::to_string(listScroll_) + " more" : "") | dim
+                            | reflect(listBoxes_[k++]));
         }
-        for (int i = listScroll_; i < std::min(count, listScroll_ + visible); ++i) {
+        for (int i = listScroll_; i < last; ++i) {
             const ChecklistItem& item = items_[static_cast<std::size_t>(i)];
             const bool ticked = tlm_.view.shown.count(item.mid) != 0;
 
@@ -1183,17 +1358,18 @@ private:
             if (i == listCursor_) {
                 line = line | inverted;
             }
-            lines.push_back(line);
+            lines.push_back(line | reflect(listBoxes_[k++]));
         }
         if (overflow) {
             const int below = count - listScroll_ - visible;
-            lines.push_back(text(below > 0 ? "  ▼ " + std::to_string(below) + " more" : "") | dim);
+            lines.push_back(text(below > 0 ? "  ▼ " + std::to_string(below) + " more" : "") | dim
+                            | reflect(listBoxes_[k++]));
         }
         if (items_.empty()) {
             lines.push_back(text(" no packets defined") | dim);
         }
         const std::string counts = std::to_string(tlm_.view.shown.size()) + "/" + std::to_string(count);
-        return window(paneTitle("PACKETS", counts, ""), vbox(std::move(lines)) | yframe | flex)
+        return window(paneTitle("PACKETS", counts), vbox(std::move(lines)) | yframe | flex)
              | size(WIDTH, EQUAL, kListWidth);
     }
 
@@ -1421,7 +1597,7 @@ private:
                                               + std::to_string(std::max(0, below)) + " lines · PgUp/PgDn ")
                                              | inverted | dim})});
         }
-        return area;
+        return hbox({area | flex, scrollBar(Bar::Cards, total, rows, displayScroll_)});
     }
 
     CommandService& service_;
@@ -1453,8 +1629,16 @@ private:
     int displayScroll_ = 0;              // telemetry: card area, in lines
     int listCursor_ = 0;
     int listScroll_ = 0;
+    int listPage_ = 1;                   // visible checklist rows ("▲/▼ more" clicks page by this)
+    static constexpr int kMoreAbove = -1;
+    static constexpr int kMoreBelow = -2;
+    std::vector<Box> listBoxes_;         // checklist lines of the last frame, for clicks
+    std::vector<int> listRowItem_;       // per line: item index, kMoreAbove or kMoreBelow
     std::vector<ChecklistItem> items_;   // checklist of the last frame
     unsigned tick_ = 0;
+
+    std::array<BarState, kBars> bars_{};   // scrollbars of the last frame
+    std::optional<Bar> drag_;              // the bar being dragged
 
     TlmSnapshot snapshot_;
     ConsoleSnapshot console_;            // FSW console text of the last frame
