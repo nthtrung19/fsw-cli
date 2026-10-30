@@ -210,6 +210,32 @@ TEST(FileTransferService, PutSendsEachPduAsACfCommandPacket)
     EXPECT_EQ(log.find("cmd=\"cfdp FD "), std::string::npos) << log;   // FileData counted, not logged
 }
 
+TEST(FileTransferService, TellsTheUiOnlyWhenThereIsSomethingNew)
+{
+    std::atomic<int> changes{0};   // before the rig: its worker calls onChange until it stops
+    test::TempDir tmp;
+    Rig rig(tmp);
+    rig.service.setOnChange([&changes] { ++changes; });
+
+    // The worker publishes every 20 ms; with nothing to transfer the UI is not woken.
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    EXPECT_EQ(changes.load(), 0);
+
+    const fs::path file = writeBinary(tmp.path() / "a.bin", pattern(4000));
+    std::string error;
+    const auto id = rig.service.put(file, "/cf/a.bin", 1, error);
+    ASSERT_TRUE(id) << error;
+    ASSERT_TRUE(rig.service.waitFor(*id).status);
+    EXPECT_GT(changes.load(), 0);   // progress and the end were shown
+
+    // Finished and unchanged: quiet again.
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    changes = 0;
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    EXPECT_EQ(changes.load(), 0);
+    rig.service.setOnChange({});
+}
+
 TEST(FileTransferService, GetSendsPlaybackAndStoresTheDownlinkedFile)
 {
     test::TempDir tmp;

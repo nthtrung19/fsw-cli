@@ -3,6 +3,7 @@
 #include "core/bytes.hpp"
 
 #include <filesystem>
+#include <fstream>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -44,6 +45,8 @@ private:
 
     std::filesystem::path directory_;
     std::mutex mutex_;
+    std::ofstream out_;                  // stays open between lines
+    std::filesystem::path openFile_;     // the file out_ writes to
     bool warned_ = false;
 };
 

@@ -19,6 +19,8 @@ public:
     UdpReceiver(const UdpReceiver&) = delete;
     UdpReceiver& operator=(const UdpReceiver&) = delete;
 
+    // One thread at a time (the receiver thread of its service): the
+    // datagram is read into a buffer allocated once.
     std::optional<Bytes> receive(std::chrono::milliseconds timeout) override;
     std::string describe() const override;
 
@@ -29,6 +31,7 @@ private:
     std::string host_;
     std::uint16_t port_;
     int fd_ = -1;
+    Bytes buffer_;   // kMaxDatagram bytes, reused by receive()
 };
 
 } // namespace mcs

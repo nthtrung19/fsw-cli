@@ -1,9 +1,11 @@
 #pragma once
 
 #include "core/bytes.hpp"
+#include "telemetry/decoded_packet.hpp"
 #include "telemetry/tlm_catalog.hpp"
 #include "telemetry/tlm_decoder.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -91,14 +93,23 @@ public:
     // One received datagram: parse, check, decode, update.
     void ingest(const Bytes& datagram, TlmTime now = TlmClock::now());
 
+    // The same for a datagram decoded already (decodePacket with this store's
+    // catalog and byte order); the decoded values are moved into the store.
+    void ingest(DecodedPacket packet, TlmTime now = TlmClock::now());
+
     // Forget values, events and counters.
     void clear();
 
     TlmSnapshot snapshot() const;
 
+    // Goes up with every ingest() and clear(): a reader that saw the same
+    // version has the current snapshot already.
+    std::uint64_t version() const { return version_.load(); }
+
     TlmCounters counters() const;
 
     const TelemetryCatalog& catalog() const { return catalog_; }
+    Endian endian() const { return endian_; }
 
 private:
     void updatePacket(const TlmPacketDef& def, std::vector<DecodedValue> values,
@@ -108,6 +119,7 @@ private:
     Endian endian_;
 
     mutable std::mutex mutex_;
+    std::atomic<std::uint64_t> version_{0};
     std::map<std::uint16_t, PacketState> packets_;
     std::map<std::uint16_t, UnknownMid> unknown_;
     std::map<std::uint16_t, std::uint16_t> lastSequence_;   // per MID, for gap detection

@@ -105,3 +105,21 @@ TEST(ConsoleStore, RingKeepsTheNewestLines)
     EXPECT_TRUE(store.snapshot().lines.empty());
     EXPECT_EQ(store.snapshot().datagrams, 0U);
 }
+
+TEST(ConsoleStore, VersionMovesWhenTheSnapshotWould)
+{
+    ConsoleStore store;
+    const std::uint64_t v0 = store.version();
+    store.ingest(bytesOf("partial"), at(0));
+    const std::uint64_t v1 = store.version();
+    EXPECT_NE(v1, v0);
+    store.flushIdle(at(100));   // too early: nothing emitted
+    EXPECT_EQ(store.version(), v1);
+    store.flushIdle(at(400));   // the partial line is emitted
+    EXPECT_NE(store.version(), v1);
+    const std::uint64_t v2 = store.version();
+    store.snapshot();
+    EXPECT_EQ(store.version(), v2);
+    store.clear();
+    EXPECT_NE(store.version(), v2);
+}

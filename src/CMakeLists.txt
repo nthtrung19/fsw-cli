@@ -29,6 +29,7 @@ add_library(mcs_core STATIC
     transport/udp_transport.cpp
     transport/dry_run_transport.cpp
     transport/udp_receiver.cpp
+    transport/receiver_thread.cpp
 
     registry/plugin_registry.cpp
     registry/builtin_plugins.cpp
@@ -52,6 +53,7 @@ add_library(mcs_core STATIC
     telemetry/ccsds_tlm_parser.cpp
     telemetry/tlm_decoder.cpp
     telemetry/tlm_store.cpp
+    telemetry/decoded_packet.cpp
     telemetry/telemetry_service.cpp
 
     console/console_store.cpp
@@ -85,6 +87,9 @@ target_link_libraries(mcs_core
 add_library(mcs_menu STATIC
     ui/fsw_command.cpp
     ui/menu_builder.cpp
+    ui/menu_file.cpp
+    ui/menu_tlm.cpp
+    ui/menu_verify.cpp
     ui/completion.cpp
     ui/help_format.cpp
     ui/transfer_format.cpp
@@ -97,6 +102,9 @@ target_link_libraries(mcs_menu PUBLIC mcs_core cli::cli PRIVATE mcs_warnings)
 # ----------------------------------------------------------------------------
 add_executable(mcs
     ui/tui_session.cpp
+    ui/tui_console_screen.cpp
+    ui/tui_telemetry_screen.cpp
+    ui/tui_widgets.cpp
     app/options.cpp
     app/main.cpp)
 

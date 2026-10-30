@@ -193,7 +193,7 @@ int main(int argc, char* argv[])
                 tlm.service = tlmService.get();
                 if (batch || fullScreen) {
                     history = std::make_unique<TlmHistory>(*tlmCatalog, target->endian);
-                    tlmService->addSink([h = history.get()](const Bytes& datagram) { h->ingest(datagram); });
+                    tlmService->addSink([h = history.get()](const DecodedPacket& packet) { h->ingest(packet); });
                 }
             }
         }
@@ -218,7 +218,7 @@ int main(int argc, char* argv[])
                                                           target->name);
             files->setReceiving(tlmService != nullptr, tlmReceiverError);
             if (tlmService) {
-                tlmService->addSink([f = files.get()](const Bytes& datagram) { f->onDatagram(datagram); });
+                tlmService->addSink([f = files.get()](const DecodedPacket& packet) { f->onDatagram(*packet.datagram); });
             }
             try {
                 files->start();

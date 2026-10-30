@@ -1,80 +1,44 @@
 #include "telemetry/telemetry_service.hpp"
 
-#include "core/errors.hpp"
-
+#include <exception>
 #include <stdexcept>
 
 namespace mcs {
 
 TelemetryService::TelemetryService(std::unique_ptr<IReceiver> receiver, TlmStore& store)
-    : receiver_(std::move(receiver)), store_(store)
+    : store_(store),
+      thread_(std::move(receiver), [this](const Bytes& datagram) { onDatagram(datagram); }, {},
+              "telemetry service")
 {
-    if (!receiver_) {
-        throw ConfigError("telemetry service needs a receiver");
-    }
-}
-
-TelemetryService::~TelemetryService()
-{
-    stop();
 }
 
 void TelemetryService::addSink(Sink sink)
 {
-    if (thread_.joinable()) {
+    if (thread_.running()) {
         throw std::logic_error("TelemetryService::addSink after start");
     }
     sinks_.push_back(std::move(sink));
 }
 
-void TelemetryService::start(UpdateCallback onUpdate)
+void TelemetryService::onDatagram(const Bytes& datagram)
 {
-    if (thread_.joinable()) {
-        return;
-    }
-    onUpdate_ = std::move(onUpdate);
-    stopping_ = false;
-    thread_ = std::thread([this] { run(); });
-}
-
-void TelemetryService::stop()
-{
-    stopping_ = true;
-    if (thread_.joinable()) {
-        thread_.join();
-    }
-}
-
-std::string TelemetryService::lastError() const
-{
-    std::lock_guard<std::mutex> lock(errorMutex_);
-    return lastError_;
-}
-
-void TelemetryService::run()
-{
-    while (!stopping_) {
-        bool arrived = false;
+    // Decoded once; the sinks see it first, then the store takes the values.
+    // Every sink runs and the store always gets the packet, even if a sink
+    // throws; the first sink error is reported afterwards.
+    DecodedPacket packet = decodePacket(store_.catalog(), datagram, store_.endian());
+    std::exception_ptr sinkError;
+    for (const auto& sink : sinks_) {
         try {
-            if (auto packet = receiver_->receive(kPollInterval)) {
-                store_.ingest(*packet);
-                arrived = true;
-                for (const auto& sink : sinks_) {
-                    sink(*packet);
-                }
+            sink(packet);
+        } catch (...) {
+            if (!sinkError) {
+                sinkError = std::current_exception();
             }
-            std::lock_guard<std::mutex> lock(errorMutex_);
-            lastError_.clear();
-        } catch (const std::exception& e) {
-            {
-                std::lock_guard<std::mutex> lock(errorMutex_);
-                lastError_ = e.what();
-            }
-            std::this_thread::sleep_for(kPollInterval);   // do not spin on a broken socket
         }
-        if (onUpdate_ && !stopping_) {
-            onUpdate_(arrived);
-        }
+    }
+    store_.ingest(std::move(packet));
+    if (sinkError) {
+        std::rethrow_exception(sinkError);
     }
 }
 

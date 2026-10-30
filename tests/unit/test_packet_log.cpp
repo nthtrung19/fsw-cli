@@ -45,6 +45,18 @@ TEST(PacketLog, AppendsOneLinePerPacket)
               std::string::npos) << text;
 }
 
+TEST(PacketLog, ReopensWhenTheFileIsRemoved)
+{
+    test::TempDir dir;
+    PacketLog log(dir.path() / "logs");
+    EXPECT_FALSE(log.record({"fsw", "fsw ds noop", "seq=0", {0x01}, false}));
+    std::filesystem::remove(log.currentFile());   // e.g. deleted by hand while mcs runs
+    EXPECT_FALSE(log.record({"fsw", "fsw ds reset", "seq=1", {0x02}, false}));
+    const std::string text = readAll(log.currentFile());
+    EXPECT_EQ(text.find("fsw ds noop"), std::string::npos) << text;
+    EXPECT_NE(text.find("cmd=\"fsw ds reset\""), std::string::npos) << text;
+}
+
 TEST(PacketLog, WarnsOnceWhenUnwritable)
 {
     test::TempDir dir;

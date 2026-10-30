@@ -33,9 +33,15 @@ TlmStore::TlmStore(const TelemetryCatalog& catalog, Endian endian)
 
 void TlmStore::ingest(const Bytes& datagram, TlmTime now)
 {
-    const TlmParseResult parsed = parseTelemetry(datagram, endian_);
+    ingest(decodePacket(catalog_, datagram, endian_), now);
+}
+
+void TlmStore::ingest(DecodedPacket packet, TlmTime now)
+{
+    const TlmParseResult& parsed = packet.parsed;
 
     std::lock_guard<std::mutex> lock(mutex_);
+    ++version_;
     ++counters_.received;
     counters_.lastRx = now;
 
@@ -54,13 +60,13 @@ void TlmStore::ingest(const Bytes& datagram, TlmTime now)
         ++counters_.gaps;
     }
 
-    const TlmPacketDef* def = catalog_.find(frame.mid);
+    const TlmPacketDef* def = packet.def;
     if (def == nullptr) {
         ++counters_.unknown;
         UnknownMid& u = unknown_[frame.mid];
         u.mid = frame.mid;
         u.sequence = frame.sequence;
-        u.lastPacket = datagram;
+        u.lastPacket = *packet.datagram;
         u.lastLength = frame.length;
         ++u.count;
         u.gaps += gap ? 1 : 0;
@@ -75,7 +81,7 @@ void TlmStore::ingest(const Bytes& datagram, TlmTime now)
         ++counters_.lengthErrors;
     }
 
-    std::vector<DecodedValue> values = decodeTelemetry(*def, frame.payload, endian_);
+    std::vector<DecodedValue> values = std::move(packet.values);
     if (def->isEvent) {
         events_.push_back(makeEventRecord(*def, values, frame.seconds, frame.subseconds, now));
         if (events_.size() > kMaxEvents) {
@@ -147,6 +153,7 @@ void TlmStore::clear()
     lastSequence_.clear();
     events_.clear();
     counters_ = TlmCounters{};
+    ++version_;
 }
 
 TlmSnapshot TlmStore::snapshot() const

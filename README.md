@@ -42,7 +42,7 @@ two-column `help`:
 | [daniele77/cli](https://github.com/daniele77/cli) (fork) | v2.2.0 + mcs changes | interactive menu (`src/ui`, `src/app`) |
 | [nlohmann/json](https://github.com/nlohmann/json) | v3.12.0 | config files (`src/config` only) |
 | [googletest](https://github.com/google/googletest) | v1.17.0 | tests only |
-| [FTXUI](https://github.com/ArthurSonzogni/FTXUI) | v7.0.3 | full-screen session (`src/ui/tui_session.cpp`) |
+| [FTXUI](https://github.com/ArthurSonzogni/FTXUI) | v7.0.3 | full-screen session (`src/ui/tui_*.cpp`) |
 
 ## Usage
 

@@ -18,16 +18,17 @@ TlmHistory::TlmHistory(const TelemetryCatalog& catalog, Endian endian)
 
 void TlmHistory::ingest(const Bytes& datagram, TlmTime now)
 {
-    const TlmParseResult parsed = parseTelemetry(datagram, endian_);
-    if (!parsed.frame) {
+    ingest(decodePacket(catalog_, datagram, endian_), now);
+}
+
+void TlmHistory::ingest(const DecodedPacket& packet, TlmTime now)
+{
+    if (!packet.parsed.frame || packet.def == nullptr) {
         return;
     }
-    const TlmFrame& frame = *parsed.frame;
-    const TlmPacketDef* def = catalog_.find(frame.mid);
-    if (def == nullptr) {
-        return;
-    }
-    TlmSample sample{now, decodeTelemetry(*def, frame.payload, endian_)};
+    const TlmFrame& frame = *packet.parsed.frame;
+    const TlmPacketDef* def = packet.def;
+    TlmSample sample{now, packet.values};
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (def->isEvent) {

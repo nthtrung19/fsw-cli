@@ -77,17 +77,23 @@ std::optional<std::string> PacketLog::append(const std::string& line)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     const auto file = currentFile();
+    // Reopen on a new day, after a failure, or when the file was removed meanwhile.
     std::error_code ec;
-    std::filesystem::create_directories(directory_, ec);
-
-    std::ofstream out(file, std::ios::app);
-    if (out) {
-        out << line << '\n';
-        out.flush();
+    if (!out_.is_open() || file != openFile_ || !std::filesystem::exists(file, ec)) {
+        out_.close();
+        out_.clear();
+        std::filesystem::create_directories(directory_, ec);
+        out_.open(file, std::ios::app);
+        openFile_ = file;
     }
-    if (out) {
+    if (out_) {
+        out_ << line << '\n';
+        out_.flush();   // every line reaches the file: the audit trail survives a crash
+    }
+    if (out_) {
         return std::nullopt;
     }
+    out_.close();   // retried on the next line
     if (warned_) {
         return std::nullopt;
     }

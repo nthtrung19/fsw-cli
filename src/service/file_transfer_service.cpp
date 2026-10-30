@@ -279,6 +279,28 @@ TransferStatus FileTransferService::overlay(TransferStatus status) const
     return status;
 }
 
+namespace {
+
+// Whether the UI has something new to show: always while a transfer runs or
+// waits (progress, rate, ETA move), otherwise only when the list changed.
+bool listChanged(const std::vector<TransferStatus>& before, const std::vector<TransferStatus>& after)
+{
+    const auto running = [](const std::vector<TransferStatus>& list) {
+        return std::any_of(list.begin(), list.end(), [](const TransferStatus& s) { return !isFinished(s.state); });
+    };
+    if (running(before) || running(after) || before.size() != after.size()) {
+        return true;
+    }
+    for (std::size_t i = 0; i < after.size(); ++i) {
+        if (!(before[i].id == after[i].id) || before[i].state != after[i].state) {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
 void FileTransferService::publish()
 {
     const std::vector<TransferStatus> list = engine_ != nullptr ? engine_->transfers()
@@ -300,8 +322,10 @@ void FileTransferService::publish()
         std::stable_sort(finished.begin(), finished.end(),
                          [](const TransferStatus& a, const TransferStatus& b) { return a.end > b.end; });
         active.insert(active.end(), finished.begin(), finished.end());
+        if (listChanged(snapshot_, active)) {
+            onChange = onChange_;   // the worker publishes every cycle: idle cycles redraw nothing
+        }
         snapshot_ = std::move(active);
-        onChange = onChange_;
     }
     doneCv_.notify_all();
     if (onChange) {

@@ -509,6 +509,23 @@ TEST(TlmStore, LatestValuesAndChanges)
     EXPECT_EQ(s.counters.gaps, 0U);
 }
 
+TEST(TlmStore, VersionMovesWithEveryChange)
+{
+    const TelemetryCatalog c = catalogWithDsAndEvs();
+    TlmStore store(c, Endian::Little);
+    const std::uint64_t v0 = store.version();
+    store.ingest(tlmPacket(0x08B8, 1, dsHkPayload(1)), at(0));
+    const std::uint64_t v1 = store.version();
+    EXPECT_NE(v1, v0);
+    store.snapshot();
+    EXPECT_EQ(store.version(), v1);   // reading changes nothing
+    store.ingest(Bytes{0x01}, at(10));  // malformed: counted, so it changes the snapshot
+    EXPECT_NE(store.version(), v1);
+    const std::uint64_t v2 = store.version();
+    store.clear();
+    EXPECT_NE(store.version(), v2);
+}
+
 TEST(TlmStore, EventsUnknownAndMalformed)
 {
     const TelemetryCatalog c = catalogWithDsAndEvs();
@@ -636,7 +653,7 @@ private:
 
 } // namespace
 
-TEST(TelemetryService, SinksSeeEveryDatagramAfterTheStore)
+TEST(TelemetryService, SinksSeeEveryDatagramDecodedOnceAndTheStoreGetsItAnyway)
 {
     TelemetryCatalog catalog;
     TlmStore store(catalog, Endian::Little);
@@ -646,14 +663,17 @@ TEST(TelemetryService, SinksSeeEveryDatagramAfterTheStore)
     std::mutex mutex;
     std::vector<Bytes> seen;
     std::size_t storedWhenSeen = 0;
-    service.addSink([&](const Bytes& d) {
+    std::size_t afterThrowing = 0;
+    service.addSink([](const DecodedPacket&) { throw std::runtime_error("sink failed"); });
+    service.addSink([&](const DecodedPacket& p) {
         std::lock_guard<std::mutex> lock(mutex);
-        seen.push_back(d);
+        seen.push_back(*p.datagram);
+        EXPECT_TRUE(p.parsed.frame.has_value());
         storedWhenSeen = store.counters().received;
+        ++afterThrowing;
     });
-    service.addSink([](const Bytes&) { throw std::runtime_error("sink failed"); });
     service.start({});
-    EXPECT_THROW(service.addSink([](const Bytes&) {}), std::logic_error);
+    EXPECT_THROW(service.addSink([](const DecodedPacket&) {}), std::logic_error);
     for (int i = 0; i < 200; ++i) {
         {
             std::lock_guard<std::mutex> lock(mutex);
@@ -667,5 +687,7 @@ TEST(TelemetryService, SinksSeeEveryDatagramAfterTheStore)
     ASSERT_EQ(seen.size(), 2u);
     EXPECT_EQ(seen[0], a);
     EXPECT_EQ(seen[1], b);
-    EXPECT_EQ(storedWhenSeen, 2u);   // the store had the packet before the sink ran
+    EXPECT_EQ(storedWhenSeen, 1u);   // sinks run before the store takes the decoded values
+    EXPECT_EQ(afterThrowing, 2u);    // a throwing sink does not stop the next one
+    EXPECT_EQ(store.counters().received, 2u);   // nor the store
 }

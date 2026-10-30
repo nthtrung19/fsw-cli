@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/bytes.hpp"
+#include "telemetry/decoded_packet.hpp"
 #include "telemetry/tlm_catalog.hpp"
 #include "telemetry/tlm_decoder.hpp"
 #include "telemetry/tlm_store.hpp"
@@ -53,6 +54,10 @@ public:
 
     // One received datagram; malformed packets and unknown MIDs are ignored.
     void ingest(const Bytes& datagram, TlmTime now = TlmClock::now());
+
+    // The same for a datagram decoded already with this history's catalog and
+    // byte order (TelemetryService decodes once for every consumer).
+    void ingest(const DecodedPacket& packet, TlmTime now = TlmClock::now());
 
     // Calls `check` now and after every packet that arrives, until it returns
     // true (returns true) or `deadline` passes (returns false). `check` runs

@@ -2,6 +2,7 @@
 
 #include "core/bytes.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <deque>
@@ -55,10 +56,14 @@ public:
 
     ConsoleSnapshot snapshot() const;
 
+    // Goes up whenever the snapshot would differ (datagram, flushed line, clear).
+    std::uint64_t version() const { return version_.load(); }
+
 private:
     void emit(std::string raw, ConsoleTime rxTime);   // under the lock
 
     mutable std::mutex mutex_;
+    std::atomic<std::uint64_t> version_{0};
     std::deque<ConsoleLine> lines_;
     std::string pending_;                      // raw bytes of the unfinished line
     ConsoleTime pendingSince_{};

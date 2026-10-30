@@ -99,6 +99,7 @@ std::string sanitizeConsoleText(const std::string& raw)
 void ConsoleStore::ingest(const Bytes& datagram, ConsoleTime now)
 {
     std::lock_guard<std::mutex> lock(mutex_);
+    ++version_;
     ++datagrams_;
     bytes_ += datagram.size();
     lastRx_ = now;
@@ -138,6 +139,7 @@ void ConsoleStore::flushIdle(ConsoleTime now)
     }
     if (!pending_.empty()) {
         emit(std::move(pending_), pendingSince_);
+        ++version_;
     }
     pending_.clear();
 }
@@ -160,6 +162,7 @@ void ConsoleStore::clear()
     bytes_ = 0;
     dropped_ = 0;
     lastRx_.reset();
+    ++version_;
 }
 
 ConsoleSnapshot ConsoleStore::snapshot() const

@@ -2,14 +2,11 @@
 
 #include "console/console_store.hpp"
 #include "transport/receiver.hpp"
+#include "transport/receiver_thread.hpp"
 
-#include <atomic>
 #include <chrono>
-#include <functional>
 #include <memory>
-#include <mutex>
 #include <string>
-#include <thread>
 
 namespace mcs {
 
@@ -21,36 +18,25 @@ namespace mcs {
 // thread-safe.
 class ConsoleService {
 public:
-    using UpdateCallback = std::function<void(bool dataArrived)>;
+    using UpdateCallback = ReceiverThread::UpdateCallback;
 
-    static constexpr std::chrono::milliseconds kPollInterval{100};
+    static constexpr std::chrono::milliseconds kPollInterval = ReceiverThread::kPollInterval;
 
     ConsoleService(std::unique_ptr<IReceiver> receiver, ConsoleStore& store);
-    ~ConsoleService();   // stops the thread
 
-    ConsoleService(const ConsoleService&) = delete;
-    ConsoleService& operator=(const ConsoleService&) = delete;
+    void start(UpdateCallback onUpdate) { thread_.start(std::move(onUpdate)); }
+    void stop() { thread_.stop(); }   // returns within about one poll interval
 
-    void start(UpdateCallback onUpdate);
-    void stop();         // returns within about one poll interval
-
-    std::string describe() const { return receiver_->describe(); }
+    std::string describe() const { return thread_.describe(); }
 
     // Last receive error, "" if none since the last successful receive.
-    std::string lastError() const;
+    std::string lastError() const { return thread_.lastError(); }
 
     ConsoleStore& store() { return store_; }
 
 private:
-    void run();
-
-    std::unique_ptr<IReceiver> receiver_;
     ConsoleStore& store_;
-    UpdateCallback onUpdate_;
-    std::atomic<bool> stopping_{false};
-    std::thread thread_;
-    mutable std::mutex errorMutex_;
-    std::string lastError_;
+    ReceiverThread thread_;   // last: stopped (destroyed) before the store it uses
 };
 
 } // namespace mcs

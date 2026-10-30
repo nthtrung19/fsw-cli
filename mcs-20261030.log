@@ -1,0 +1,63 @@
+2026-10-30T15:35:12.229+07:00 target=fsw cmd="fsw to enable_output 127.0.0.1 5011" apid=0x1A0 seq=0 bytes=26 wire=19 A0 C0 00 00 13 3C 02 31 32 37 2E 30 2E 30 2E 31 00 00 00 00 00 00 00 93 13
+2026-10-30T15:35:14.229+07:00 target=fsw cmd="fsw evs noop" apid=0x001 seq=0 bytes=8 wire=18 01 C0 00 00 01 27 00
+2026-10-30T15:35:14.564+07:00 target=fsw cmd="fsw evs enable_app_event_type CFE_EVS debug" apid=0x001 seq=1 bytes=30 wire=18 01 C0 01 00 17 6B 05 43 46 45 5F 45 56 53 00 00 00 00 00 00 00 00 00 00 00 00 00 01 00
+2026-10-30T15:35:15.064+07:00 target=fsw cmd="fsw evs hk" apid=0x009 seq=0 bytes=8 wire=18 09 C0 00 00 01 2F 00
+2026-10-30T15:35:15.564+07:00 target=fsw cmd="fsw evs hk" apid=0x009 seq=1 bytes=8 wire=18 09 C0 01 00 01 2E 00
+2026-10-30T15:35:15.564+07:00 target=fsw cmd="fsw evs noop" apid=0x001 seq=2 bytes=8 wire=18 01 C0 02 00 01 25 00
+2026-10-30T15:35:16.064+07:00 target=fsw cmd="fsw evs hk" apid=0x009 seq=2 bytes=8 wire=18 09 C0 02 00 01 2D 00
+2026-10-30T15:35:16.564+07:00 target=fsw cmd="raw 18 01 C0 00 00 01 44 63" raw bytes=8 wire=18 01 C0 00 00 01 44 63
+2026-10-30T15:35:17.064+07:00 target=fsw cmd="fsw evs noop" apid=0x001 seq=3 bytes=8 wire=18 01 C0 03 00 01 24 00
+2026-10-30T15:35:17.064+07:00 target=fsw cmd="fsw evs hk" apid=0x009 seq=3 bytes=8 wire=18 09 C0 03 00 01 2C 00
+2026-10-30T15:35:17.564+07:00 target=fsw cmd="fsw evs reset" apid=0x001 seq=4 bytes=8 wire=18 01 C0 04 00 01 22 01
+2026-10-30T15:35:18.064+07:00 target=fsw cmd="fsw evs hk" apid=0x009 seq=4 bytes=8 wire=18 09 C0 04 00 01 2B 00
+2026-10-30T15:35:18.564+07:00 target=fsw cmd="fsw evs enable_app_event_type DS debug" apid=0x001 seq=5 bytes=30 wire=18 01 C0 05 00 17 27 05 44 53 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 00
+2026-10-30T15:35:19.064+07:00 target=fsw cmd="fsw ds reset" apid=0x14B seq=0 bytes=8 wire=19 4B C0 00 00 01 6D 01
+2026-10-30T15:35:19.564+07:00 target=fsw cmd="fsw evs disable_app_event_type DS debug" apid=0x001 seq=6 bytes=30 wire=18 01 C0 06 00 17 27 06 44 53 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 00
+2026-10-30T15:35:20.064+07:00 target=fsw cmd="fsw ds reset" apid=0x14B seq=1 bytes=8 wire=19 4B C0 01 00 01 6C 01
+2026-10-30T15:35:22.065+07:00 target=fsw cmd="fsw evs enable_app_events DS" apid=0x001 seq=7 bytes=28 wire=18 01 C0 07 00 15 24 07 44 53 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+2026-10-30T15:35:22.564+07:00 target=fsw cmd="fsw evs reset_app_counter DS" apid=0x001 seq=8 bytes=28 wire=18 01 C0 08 00 15 25 09 44 53 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+2026-10-30T15:35:23.064+07:00 target=fsw cmd="fsw evs disable_ports port1" apid=0x001 seq=9 bytes=10 wire=18 01 C0 09 00 03 21 0C 01 00
+2026-10-30T15:35:23.564+07:00 target=fsw cmd="fsw evs hk" apid=0x009 seq=5 bytes=8 wire=18 09 C0 05 00 01 2A 00
+2026-10-30T15:35:24.064+07:00 target=fsw cmd="fsw evs enable_ports port1" apid=0x001 seq=10 bytes=10 wire=18 01 C0 0A 00 03 25 0B 01 00
+2026-10-30T15:35:24.564+07:00 target=fsw cmd="fsw evs hk" apid=0x009 seq=6 bytes=8 wire=18 09 C0 06 00 01 29 00
+2026-10-30T15:35:25.065+07:00 target=fsw cmd="fsw evs set_log_mode overwrite" apid=0x001 seq=11 bytes=10 wire=18 01 C0 0B 00 03 3D 13 00 00
+2026-10-30T15:35:25.564+07:00 target=fsw cmd="fsw evs hk" apid=0x009 seq=7 bytes=8 wire=18 09 C0 07 00 01 28 00
+2026-10-30T15:35:26.065+07:00 target=fsw cmd="fsw evs set_log_mode discard" apid=0x001 seq=12 bytes=10 wire=18 01 C0 0C 00 03 3B 13 01 00
+2026-10-30T15:35:26.564+07:00 target=fsw cmd="fsw evs hk" apid=0x009 seq=8 bytes=8 wire=18 09 C0 08 00 01 27 00
+2026-10-30T15:35:27.064+07:00 target=fsw cmd="fsw evs write_log_data_file" apid=0x001 seq=13 bytes=72 wire=18 01 C0 0D 00 41 78 12 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+2026-10-30T15:35:27.565+07:00 target=fsw cmd="fsw cf playback_file class1 0 0 keep 0.23 /ram/cfe_evs.log /ram/cfe_evs.log" apid=0x123 seq=0 bytes=156 wire=19 23 C0 00 00 95 8D 02 01 00 00 01 30 2E 32 33 00 00 00 00 00 00 00 00 00 00 00 00 2F 72 61 6D 2F 63 66 65 5F 65 76 73 2E 6C 6F 67 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 2F 72 61 6D 2F 63 66 65 5F 65 76 73 2E 6C 6F 67 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+2026-10-30T15:35:28.065+07:00 target=fsw cfdp=start id=0.24_1 dir=down class=1 local="/home/thanhtrung/fsw-cli/downlink/ram/cfe_evs.log" remote="/ram/cfe_evs.log" size=3424
+2026-10-30T15:35:28.065+07:00 target=fsw cfdp=end id=0.24_1 result=DONE condition=NO_ERROR bytes=3424 secs=0.0 fd_sent=0 fd_received=1 naks=0 resent=0 local="/home/thanhtrung/fsw-cli/downlink/ram/cfe_evs(3).log" remote="/ram/cfe_evs.log"
+2026-10-30T15:35:28.065+07:00 target=fsw cmd="fsw evs write_app_data_file" apid=0x001 seq=14 bytes=72 wire=18 01 C0 0E 00 41 78 11 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+2026-10-30T15:35:28.564+07:00 target=fsw cmd="fsw cf playback_file class1 0 0 keep 0.23 /ram/cfe_evs_app.dat /ram/cfe_evs_app.dat" apid=0x123 seq=1 bytes=156 wire=19 23 C0 01 00 95 8C 02 01 00 00 01 30 2E 32 33 00 00 00 00 00 00 00 00 00 00 00 00 2F 72 61 6D 2F 63 66 65 5F 65 76 73 5F 61 70 70 2E 64 61 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 2F 72 61 6D 2F 63 66 65 5F 65 76 73 5F 61 70 70 2E 64 61 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+2026-10-30T15:35:30.064+07:00 target=fsw cfdp=start id=0.24_2 dir=down class=1 local="/home/thanhtrung/fsw-cli/downlink/ram/cfe_evs_app.dat" remote="/ram/cfe_evs_app.dat" size=14896
+2026-10-30T15:35:31.064+07:00 target=fsw cfdp=end id=0.24_2 result=DONE condition=NO_ERROR bytes=14896 secs=1.0 fd_sent=0 fd_received=4 naks=0 resent=0 local="/home/thanhtrung/fsw-cli/downlink/ram/cfe_evs_app(3).dat" remote="/ram/cfe_evs_app.dat"
+2026-10-30T15:35:31.065+07:00 target=fsw cmd="fsw evs add_event_filter DS 31 0xFFFF" apid=0x001 seq=15 bytes=32 wire=18 01 C0 0F 00 19 37 0F 44 53 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 1F 00 FF FF
+2026-10-30T15:35:31.564+07:00 target=fsw cmd="fsw ds noop" apid=0x14B seq=2 bytes=8 wire=19 4B C0 02 00 01 6E 00
+2026-10-30T15:35:32.064+07:00 target=fsw cmd="fsw ds noop" apid=0x14B seq=3 bytes=8 wire=19 4B C0 03 00 01 6F 00
+2026-10-30T15:35:34.064+07:00 target=fsw cmd="fsw evs add_event_filter DS 31 0xFFFE" apid=0x001 seq=16 bytes=32 wire=18 01 C0 10 00 19 29 0F 44 53 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 1F 00 FE FF
+2026-10-30T15:35:34.564+07:00 target=fsw cmd="fsw evs set_filter DS 31 0x0000" apid=0x001 seq=17 bytes=32 wire=18 01 C0 11 00 19 2C 0A 44 53 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 1F 00 00 00
+2026-10-30T15:35:35.064+07:00 target=fsw cmd="fsw ds noop" apid=0x14B seq=4 bytes=8 wire=19 4B C0 04 00 01 68 00
+2026-10-30T15:35:35.564+07:00 target=fsw cmd="fsw evs set_filter DS 31 0xFFFF" apid=0x001 seq=18 bytes=32 wire=18 01 C0 12 00 19 2F 0A 44 53 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 1F 00 FF FF
+2026-10-30T15:35:36.065+07:00 target=fsw cmd="fsw ds noop" apid=0x14B seq=5 bytes=8 wire=19 4B C0 05 00 01 69 00
+2026-10-30T15:35:38.066+07:00 target=fsw cmd="fsw evs reset_filter DS 31" apid=0x001 seq=19 bytes=30 wire=18 01 C0 13 00 17 27 0D 44 53 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 1F 00
+2026-10-30T15:35:38.564+07:00 target=fsw cmd="fsw ds noop" apid=0x14B seq=6 bytes=8 wire=19 4B C0 06 00 01 6A 00
+2026-10-30T15:35:39.064+07:00 target=fsw cmd="fsw ds noop" apid=0x14B seq=7 bytes=8 wire=19 4B C0 07 00 01 6B 00
+2026-10-30T15:35:41.065+07:00 target=fsw cmd="fsw evs reset_all_filters DS" apid=0x001 seq=20 bytes=28 wire=18 01 C0 14 00 15 3E 0E 44 53 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+2026-10-30T15:35:41.565+07:00 target=fsw cmd="fsw ds noop" apid=0x14B seq=8 bytes=8 wire=19 4B C0 08 00 01 64 00
+2026-10-30T15:35:42.065+07:00 target=fsw cmd="fsw evs delete_event_filter DS 31" apid=0x001 seq=21 bytes=30 wire=18 01 C0 15 00 17 3C 10 44 53 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 1F 00
+2026-10-30T15:35:42.564+07:00 target=fsw cmd="fsw ds noop" apid=0x14B seq=9 bytes=8 wire=19 4B C0 09 00 01 65 00
+2026-10-30T15:35:43.064+07:00 target=fsw cmd="fsw ds noop" apid=0x14B seq=10 bytes=8 wire=19 4B C0 0A 00 01 66 00
+2026-10-30T15:35:43.564+07:00 target=fsw cmd="fsw evs reset" apid=0x001 seq=22 bytes=8 wire=18 01 C0 16 00 01 30 01
+2026-10-30T15:35:44.065+07:00 target=fsw cmd="raw 18 01 C0 00 00 03 25 00 00 00" raw bytes=10 wire=18 01 C0 00 00 03 25 00 00 00
+2026-10-30T15:35:44.565+07:00 target=fsw cmd="raw 18 01 C0 00 00 03 2E 0B 00 00" raw bytes=10 wire=18 01 C0 00 00 03 2E 0B 00 00
+2026-10-30T15:35:45.065+07:00 target=fsw cmd="raw 18 01 C0 00 00 03 34 13 02 00" raw bytes=10 wire=18 01 C0 00 00 03 34 13 02 00
+2026-10-30T15:35:45.565+07:00 target=fsw cmd="raw 18 01 C0 00 00 03 23 04 02 00" raw bytes=10 wire=18 01 C0 00 00 03 23 04 02 00
+2026-10-30T15:35:46.065+07:00 target=fsw cmd="fsw evs add_event_filter NO_SUCH_APP 1 0xFFFF" apid=0x001 seq=23 bytes=32 wire=18 01 C0 17 00 19 6B 0F 4E 4F 5F 53 55 43 48 5F 41 50 50 00 00 00 00 00 00 00 00 00 01 00 FF FF
+2026-10-30T15:35:46.564+07:00 target=fsw cmd="fsw evs delete_event_filter DS 999" apid=0x001 seq=24 bytes=30 wire=18 01 C0 18 00 17 CA 10 44 53 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 E7 03
+2026-10-30T15:35:47.064+07:00 target=fsw cmd="fsw evs hk" apid=0x009 seq=9 bytes=8 wire=18 09 C0 09 00 01 26 00
+2026-10-30T15:35:47.564+07:00 target=fsw cmd="fsw evs disable_app_event_type CFE_EVS debug" apid=0x001 seq=25 bytes=30 wire=18 01 C0 19 00 17 70 06 43 46 45 5F 45 56 53 00 00 00 00 00 00 00 00 00 00 00 00 00 01 00
+2026-10-30T15:35:48.564+07:00 target=fsw cmd="fsw evs noop" apid=0x001 seq=26 bytes=8 wire=18 01 C0 1A 00 01 3D 00
+2026-10-30T15:35:49.064+07:00 target=fsw cmd="fsw evs hk" apid=0x009 seq=10 bytes=8 wire=18 09 C0 0A 00 01 25 00
+2026-10-30T15:37:19.064+07:00 target=fsw cfdp=start id=0.24_3 dir=down class=1 local="/home/thanhtrung/fsw-cli/downlink/ram/cfe_es_perf.dat" remote="/ram/cfe_es_perf.dat" size=11636
+2026-10-30T15:37:19.065+07:00 target=fsw cfdp=end id=0.24_3 result=DONE condition=NO_ERROR bytes=11636 secs=0.0 fd_sent=0 fd_received=3 naks=0 resent=0 local="/home/thanhtrung/fsw-cli/downlink/ram/cfe_es_perf(4).dat" remote="/ram/cfe_es_perf.dat"

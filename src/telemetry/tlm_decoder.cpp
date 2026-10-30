@@ -2,9 +2,8 @@
 
 #include "core/text.hpp"
 
+#include <cstdio>
 #include <cstring>
-#include <iomanip>
-#include <sstream>
 
 namespace mcs {
 
@@ -32,11 +31,13 @@ std::int64_t signExtend(std::uint64_t v, std::size_t width)
     return static_cast<std::int64_t>(v | ~((signBit << 1) - 1));
 }
 
+// Same text as an ostream with precision 6 (iostream's default float format is %g),
+// without building a stream for every value.
 std::string formatDouble(double v)
 {
-    std::ostringstream out;
-    out << std::setprecision(6) << v;
-    return out.str();
+    char buf[32];
+    std::snprintf(buf, sizeof buf, "%.6g", v);
+    return buf;
 }
 
 std::string withUnits(std::string text, const std::string& units)

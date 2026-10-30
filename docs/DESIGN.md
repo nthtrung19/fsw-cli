@@ -322,14 +322,19 @@ public:
 ### 4.5a `telemetry/` — receive and decode (full-screen session)
 
 ```
-UdpReceiver -> TelemetryService (thread) -> TlmStore::ingest -> parse -> decode -> latest values,
-                                                                                    events, link counters
-UI thread (FTXUI) --snapshot()--> render
+UdpReceiver -> TelemetryService (ReceiverThread) -> parse + decode once (DecodedPacket)
+    -> sinks (TlmHistory, FileTransferService) -> TlmStore::ingest -> latest values, events, link counters
+UI thread (FTXUI) --snapshot() when version() moved--> render
 ```
 
 - Two threads: the UI thread runs commands and renders; the receiver thread
   waits up to 100 ms per packet, fills `TlmStore` (mutex) and asks for a
-  redraw. The 100 ms timeout also drives the animation.
+  redraw. The 100 ms timeout also drives the animation. The UI redraws at
+  most every 50 ms while data arrives and every 250 ms when idle, and copies a
+  store's snapshot only when its `version()` changed.
+- Each datagram is parsed and decoded once: the sinks see the decoded packet
+  first, then the store takes its values. A throwing sink does not keep the
+  packet from the other sinks or the store.
 - `TelemetryCatalog` (`config/telemetry/<app>.json`): one packet definition
   per MID; fields in payload order after the 12-byte cFE 6.7 telemetry header,
   in the target byte order. `"event": true` packets go to the event log.
@@ -347,7 +352,7 @@ UI thread (FTXUI) --snapshot()--> render
 ### 4.5b `console/` — FSW console text (full-screen session)
 
 ```
-UdpReceiver -> ConsoleService (thread) -> ConsoleStore::ingest -> lines (last 2000)
+UdpReceiver -> ConsoleService (ReceiverThread) -> ConsoleStore::ingest -> lines (last 2000)
 UI thread (FTXUI) --snapshot()--> F1 top pane when F3 selects "console"
 ```
 
@@ -673,16 +678,24 @@ mcs/
 │   ├── catalog/    field_def.hpp, command_def.hpp, catalog.*
 │   ├── encode/     payload_encoder.*
 │   ├── protocol/   command_message.hpp, packet_format.hpp, framing_layer.hpp, ccsds_v1_format.*
-│   ├── transport/  transport.hpp, udp_transport.*, dry_run_transport.*
+│   ├── transport/  transport.hpp, udp_transport.*, dry_run_transport.*, receiver.hpp, udp_receiver.*,
+│   │               receiver_thread.* (receive loop shared by the telemetry and console services)
 │   ├── registry/   plugin_registry.*, builtin_plugins.cpp
 │   ├── pipeline/   pipeline.*
 │   ├── config/     json_util.*, target_config.*, catalog_loader.*, config_paths.*, pipeline_factory.*
 │   ├── log/        packet_log.*
 │   ├── service/    command_service.*, file_transfer_service.*
 │   ├── cfdp/       engine.hpp, gsfc_engine.*, gsfc_bridge.*, pdu_info.*, transfer.*, cfdp_config.hpp
+│   ├── telemetry/  ccsds_tlm_parser.*, tlm_def.*, tlm_catalog.*, tlm_decoder.*, decoded_packet.*,
+│   │               tlm_store.*, telemetry_service.*
 │   ├── console/    console_store.*, console_service.*
 │   ├── verify/     condition.*, variables.*, tlm_history.*, verify_service.*
-│   ├── ui/         menu_builder.*, fsw_command.*, tui_session.*, transfer_format.*, script_runner.*
+│   ├── ui/         menu_builder.* (fsw menu, session commands, root, help) + menu_parts.hpp,
+│   │               menu_tlm.cpp, menu_file.cpp, menu_verify.cpp (one file per menu);
+│   │               tui_session.* (lifecycle, keys, mouse, frame) + tui_app.hpp, tui_widgets.*,
+│   │               tui_console_screen.cpp (F1), tui_telemetry_screen.cpp (F2);
+│   │               fsw_command.*, completion.*, help_format.*, transfer_format.*, script_runner.*,
+│   │               tlm_context.hpp
 │   └── app/        main.cpp, options.*
 └── tests/
     ├── unit/       one test file per module

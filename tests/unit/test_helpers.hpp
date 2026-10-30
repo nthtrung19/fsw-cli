@@ -91,7 +91,9 @@ inline Bytes tlmPacket(std::uint16_t mid, std::uint16_t sequence, const Bytes& p
         std::reverse(p.begin() + 6, p.begin() + 10);
         std::reverse(p.begin() + 10, p.begin() + 12);
     }
-    p.insert(p.end(), payload.begin(), payload.end());
+    for (const std::uint8_t b : payload) {   // not insert(): GCC 11 -O2 -Wstringop-overread false positive
+        p.push_back(b);
+    }
     return p;
 }
 

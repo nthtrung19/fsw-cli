@@ -34,7 +34,7 @@ std::uint16_t boundPort(int fd)
 } // namespace
 
 UdpReceiver::UdpReceiver(std::string host, std::uint16_t port)
-    : host_(std::move(host)), port_(port)
+    : host_(std::move(host)), port_(port), buffer_(kMaxDatagram)
 {
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
@@ -98,8 +98,7 @@ std::optional<Bytes> UdpReceiver::receive(std::chrono::milliseconds timeout)
         return std::nullopt;
     }
 
-    Bytes buffer(kMaxDatagram);
-    const auto n = ::recv(fd_, buffer.data(), buffer.size(), 0);
+    const auto n = ::recv(fd_, buffer_.data(), buffer_.size(), 0);
     if (n < 0) {
         if (errno == EINTR || errno == EAGAIN) {
             return std::nullopt;
@@ -107,8 +106,7 @@ std::optional<Bytes> UdpReceiver::receive(std::chrono::milliseconds timeout)
         throw TransportError("udp receiver: receive on " + describe() + " failed: "
                              + std::strerror(errno));
     }
-    buffer.resize(static_cast<std::size_t>(n));
-    return buffer;
+    return Bytes(buffer_.begin(), buffer_.begin() + n);
 }
 
 std::string UdpReceiver::describe() const

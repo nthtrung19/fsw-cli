@@ -1,5 +1,7 @@
 #include "ui/fsw_command.hpp"
 
+#include <cli/detail/split.h>
+
 #include <gtest/gtest.h>
 
 #include <sstream>
@@ -55,6 +57,18 @@ TEST(FswCommand, BangWithoutSpaceStillCompletes)
     const FswCommand bang = lineCommand("!", seen);
     EXPECT_EQ(bang.GetCompletionRecursive("!del"), std::vector<std::string>{item("!delete_dir", "Delete")});
     EXPECT_EQ(seen.partial, "del");
+}
+
+TEST(FswCommand, BangIsAWordOnlyAtTheStartOfTheLine)
+{
+    std::vector<std::string> tokens;
+    cli::detail::split(tokens, "! fsw tbl activate DS.FILTER_TBL");
+    EXPECT_EQ(tokens, (std::vector<std::string>{"!", "fsw", "tbl", "activate", "DS.FILTER_TBL"}));
+    cli::detail::split(tokens, "!delete_dir /cf/x");
+    EXPECT_EQ(tokens, (std::vector<std::string>{"!", "delete_dir", "/cf/x"}));
+    // Script checks: "!=" is one operator.
+    cli::detail::split(tokens, "expect es.hk perf_state != IDLE");
+    EXPECT_EQ(tokens, (std::vector<std::string>{"expect", "es.hk", "perf_state", "!=", "IDLE"}));
 }
 
 TEST(FswCommand, UnlistedNameIsNeverOffered)
