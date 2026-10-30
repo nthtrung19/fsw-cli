@@ -185,6 +185,44 @@ Session commands (`target`, `verbose`, `raw`, `tlm ...`, `file ...`, `run ...`) 
 top level (`mcs>`); `!` works in `mcs>`, `fsw>` and every app menu. The `tlm` and `run` commands exist in the full-screen session only; the
 `file` commands exist when the target has a `cfdp` block.
 
+**cFE ES files.** Some ES commands (`config/telecommand/es.json`) write a file on
+the FSW's RAM disk instead of sending telemetry; fetch it with `file get` before a
+reset clears `/ram`. Omit the file name to use ES's default:
+
+| Command | File | Content (after a 64-byte cFE file header) |
+|---|---|---|
+| `fsw es write_syslog` | `/ram/cfe_es_syslog.log` | the system log, as text |
+| `fsw es write_er_log` | `/ram/cfe_erlog.log` | the 20 Exception and Reset log entries (binary) |
+| `fsw es query_all` | `/ram/cfe_es_app_info.log` | one record per app and library (binary) |
+| `fsw es query_all_tasks` | `/ram/cfe_es_task_info.log` | one record per task (binary) |
+| `fsw es dump_cds_registry` | `/ram/cfe_cds_reg.log` | the critical data store registry (binary) |
+| `fsw es stop_perf` | `/ram/cfe_es_perf.dat` | perf data (cFS perf tool); written in the background: wait for ES event 68 |
+
+e.g. `fsw es write_syslog`, then `file get /ram/cfe_es_syslog.log` →
+`downlink/ram/cfe_es_syslog.log`. On the PC build `/ram` is the host directory
+`./ram` next to `core-ntpm` (the PSP's `cfe_psp_voltab.c` maps `/ramdev0` to it) and
+must exist: `mkdir ~/SDE/fsw/build/exe/ntpm/ram`, else every file command fails
+with `RC = 0xFFFFFFFF`. `fsw es hk` asks for `es.hk` at once (the
+scheduler sends it every 20 s). The ES commands that stop or restart software
+(`restart`, `start_app`, `stop_app`, `restart_app`, `reload_app`, `delete_cds`,
+`set_max_pr_count`, `rtems_shell`) are critical; `restart` also stops telemetry until
+`fsw to enable_output` is sent again.
+
+**cFE tables.** Tables are changed with TBL (`config/telecommand/tbl.json`); names are
+`APP.TABLE` (`fsw tbl dump_registry` lists them):
+
+```
+file put ds_filter_tbl.tbl /cf/ds_filter_tbl.tbl   # the new table image
+fsw tbl load /cf/ds_filter_tbl.tbl                 # -> inactive buffer (event 12)
+fsw tbl validate inactive DS.FILTER_TBL            # the owner app checks it (event 36, or 96)
+! fsw tbl activate DS.FILTER_TBL                   # critical: the app switches to it (event 37)
+```
+
+`fsw tbl abort_load <table>` drops a loaded table instead; loading again replaces it and
+it must be validated again. `fsw tbl dump active <table> <file>` writes a table to a file
+(same format as a load file) for `file get`. `fsw tbl send_registry <table>` sends
+`tbl.registry` with the next `tbl.hk`, so follow it with `fsw tbl hk`.
+
 ### File transfer (CFDP)
 
 mcs is the ground CFDP entity (`0.23`) for CF (`0.24`). It runs the same CFDP
@@ -290,12 +328,28 @@ are the names in `config/telemetry/<app>.json` (arrays as `name_0`, ...).
 | `ds_smoke.mcs` | DS NOOP and an invalid command code | any time |
 | `ds_full.mcs` | every DS command: nominal (each with its event and counters, file 15 and filter slot 2 of 0x0806 are changed and put back) and ~20 rejections, 12 of them as `raw` packets DS's own checks must catch | any time (repeatable) |
 | `ds_add_mid.mcs` | adding a message ID to DS's filter table | once per FSW start (DS cannot remove it) |
+| `evs_full.mcs` | cFE EVS: noop, reset, event types per app, ports (console echo off/on), log mode, event log and app data files (fetched into `downlink/ram/`), a filter on DS's noop event (first only, all, reset, delete), and 6 rejections (4 as `raw` packets); global type/app off, short format and clearing the log are left to manual tests | any time (repeatable; needs CF for `file get`) |
+| `tbl_full.mcs` | cFE TBL on DS.FILTER_TBL: noop, reset, registry (packet and file), dump, a full load cycle with the dump as load file (load, validate, re-load drops the validation, activate), abort_load, validate active, and 6 rejections; delete_cds and new table content are left to manual tests | any time (repeatable; the table keeps its content; needs CF for `file get`) |
+| `es_full.mcs` | cFE ES: noop, reset, query_one, the five file commands (each fetched with `file get` into `downlink/ram/`), syslog mode, perf masks and perf start/stop, shell, and 6 rejections (4 as `raw` packets); restart, app control, CDS and log clearing are left to manual tests | any time (repeatable; needs CF for `file get`) |
 
 The FSW turns DEBUG events off for every app (`CFE_PLATFORM_EVS_DEFAULT_TYPE_FLAG
 0x1E`), and most apps report a successful command only with a DEBUG event: a script
 that wants to see them turns them on for that app and off at the end, e.g.
 `fsw evs enable_app_event_type DS debug` ... `fsw evs disable_app_event_type DS debug`
 (`config/telecommand/evs.json`; EVS accepts the types debug, info, error, critical).
+
+Other EVS commands useful in operations:
+- **Console echo**: `fsw evs disable_ports port1` stops the `EVS Port1 ...` lines on
+  the FSW console (the FSW CONSOLE pane), `fsw evs enable_ports port1` brings them back.
+- **Onboard event log**: EVS keeps the last 20 events, also while TO is off.
+  `fsw evs write_log_data_file` writes them to `/ram/cfe_evs.log` (fetch with `file get`);
+  `fsw evs set_log_mode overwrite|discard` chooses what happens when it is full.
+- **Filters**: `fsw evs add_event_filter <APP> <event id> 0xFFFF` lets only the first
+  occurrence of a flooding event through (an event passes while `(count & mask) == 0`);
+  `set_filter`, `reset_filter`, `reset_all_filters`, `delete_event_filter` change it.
+- `fsw evs hk` asks for `evs.hk` at once (ports, log state, per-app counters; the
+  scheduler sends it every 50 s). `set_event_format_mode short` is critical: TO only
+  forwards long event packets, so events would stop reaching the ground.
 
 **From the full-screen session: `run <script>`.** `mcs -f` and the
 full-screen session cannot run at the same time (both receive telemetry on

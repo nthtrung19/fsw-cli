@@ -1,0 +1,194 @@
+# EVS (cFE Event Services) test: every EVS command that is safe to repeat, nominal and
+# rejected. Repeatable.
+#
+#   ./build/src/mcs -f scripts/evs_full.mcs            run (FSW up: cd ~/SDE/fsw && sudo ./run_fsw.sh)
+#   ./build/src/mcs --check -f scripts/evs_full.mcs    check only, nothing sent
+#   mcs> run scripts/evs_full.mcs                      from the full-screen session
+#
+# What the FSW does that this script relies on (~/SDE/fsw/cfe/fsw/cfe-core/src/evs, ntpm_defs):
+# - evs.hk comes only every 50 s (SCH): every counter check asks for it first with "fsw evs hk"
+#   (CFE_EVS_SEND_HK_MID 0x1809, not counted as a command). A check only sees packets received
+#   after the last command, so the event checks come before the "fsw evs hk".
+# - DEBUG events: CFE_PLATFORM_EVS_DEFAULT_TYPE_FLAG 0x1E has DEBUG off, and EVS reports its
+#   successful commands (except noop) with DEBUG events. The script turns DEBUG on for CFE_EVS
+#   and off again at the end (EVS-99). "reset" is not counted itself (cfe_evs_task.c).
+# - Filters are tested on DS's noop event (DS id 31, sent at will with "fsw ds noop"); DS
+#   registers no filters of its own (ds_app.c CFE_EVS_Register(NULL, 0, 0)). An event passes
+#   while (count & mask) == 0: mask 0xFFFF lets only the first one through. The filter is
+#   deleted at the end of EVS-08.
+# - Everything changed is put back: port 1 on (console echo, CFE_PLATFORM_EVS_PORT_DEFAULT),
+#   log mode discard (CFE_PLATFORM_EVS_DEFAULT_LOG_MODE), DS DEBUG events off, no DS filter.
+# - Files: write_log_data_file / write_app_data_file write under /ram (on the PC build the
+#   directory ~/SDE/fsw/build/exe/ntpm/ram must exist) and are fetched with "file get".
+# - mcs checks enum values before sending, so EVS's own checks of them are reached with "raw"
+#   packets (EVS-09): 18 01 = CFE_EVS_CMD_MID, C0 00 = sequence, then length - 7, checksum
+#   (0xFF XOR every other byte), command code, payload.
+# - Not run here: disable_event_type and disable_app_events (critical: whole types or apps go
+#   silent), set_event_format_mode short (TO sends long events only: events would stop reaching
+#   the ground), clear_log (loses the onboard event history). Test them by hand.
+# - Event IDs and texts: cfe_evs_events.h, cfe_evs_task.c, cfe_evs_log.c.
+#
+# Requirement tags (req EVS-...) name the EVS function tested; map them to the mission's IDs.
+
+fsw to enable_output 127.0.0.1 5011
+wait 2
+timeout 5
+
+test EVS-00 "Set-up: EVS answers, its DEBUG events on, evs.hk on request" req EVS-SETUP
+  fsw evs noop
+  expect-event CFE_EVS id 0 type INFO text "No-op command"
+  fsw evs enable_app_event_type CFE_EVS debug
+  expect-event CFE_EVS id 23 type DEBUG text "AppName = CFE_EVS"
+  fsw evs hk
+  expect evs.hk within 2
+end
+
+test EVS-01 "NOOP is accepted and reports the cFE version" req EVS-NOOP
+  fsw evs hk
+  save a evs.hk command_counter within 2
+  fsw evs noop
+  expect-event CFE_EVS id 0 type INFO text "No-op command. cFE Version"
+  fsw evs hk
+  expect evs.hk command_counter == $a+1
+end
+
+test EVS-02 "Reset clears the command counters (and is not counted)" req EVS-RESET
+  # make both counters non-zero first: an unknown command code is rejected
+  raw 18 01 C0 00 00 01 44 63
+  expect-event CFE_EVS id 15 type ERROR text "Invalid command code"
+  fsw evs noop
+  fsw evs hk
+  expect evs.hk command_error_counter > 0
+  expect evs.hk command_counter > 0
+  fsw evs reset
+  expect-event CFE_EVS id 16 type DEBUG text "Reset Counters Command Received"
+  fsw evs hk
+  expect evs.hk command_counter == 0
+  expect evs.hk command_error_counter == 0
+end
+
+test EVS-03 "Event type per app: DS DEBUG events on, then off" req EVS-APP-TYPE
+  fsw evs enable_app_event_type DS debug
+  expect-event CFE_EVS id 23 type DEBUG text "AppName = DS, EventType Bit Mask = 0x01"
+  # DS reports "reset" with a DEBUG event (ds_full.mcs DS-03)
+  fsw ds reset
+  expect-event DS id 33 type DEBUG text "Reset counters command"
+  fsw evs disable_app_event_type DS debug
+  expect-event CFE_EVS id 24 type DEBUG text "AppName = DS, EventType Bit Mask = 0x01"
+  fsw ds reset
+  expect-no-event DS id 33 for 2
+end
+
+test EVS-04 "Enable an app's events and reset its event counter" req EVS-APP
+  fsw evs enable_app_events DS
+  expect-event CFE_EVS id 25 type DEBUG text "Enable App Events Command Received with AppName = DS"
+  fsw evs reset_app_counter DS
+  expect-event CFE_EVS id 27 type DEBUG text "Reset Event Counter Command Received with AppName = DS"
+end
+
+test EVS-05 "Ports: console echo (port 1) off, then on again" req EVS-PORTS
+  fsw evs disable_ports port1
+  expect-event CFE_EVS id 19 type DEBUG text "Port Bit Mask = 0x01"
+  fsw evs hk
+  expect evs.hk output_port == 0
+  fsw evs enable_ports port1
+  expect-event CFE_EVS id 18 type DEBUG text "Port Bit Mask = 0x01"
+  fsw evs hk
+  expect evs.hk output_port == 1
+end
+
+test EVS-06 "Local event log mode: overwrite, then back to discard" req EVS-LOG-MODE
+  fsw evs set_log_mode overwrite
+  expect-event CFE_EVS id 38 type DEBUG text "Log Mode = 0"
+  fsw evs hk
+  expect evs.hk log_mode == OVERWRITE
+  fsw evs set_log_mode discard
+  expect-event CFE_EVS id 38 type DEBUG text "Log Mode = 1"
+  fsw evs hk
+  expect evs.hk log_mode == DISCARD
+end
+
+test EVS-07 "Write the event log and the app data to files and fetch them" req EVS-FILES
+  fsw evs write_log_data_file
+  expect-event CFE_EVS id 33 type DEBUG text "event log entries written to /ram/cfe_evs.log"
+  file get /ram/cfe_evs.log
+  fsw evs write_app_data_file
+  expect-event CFE_EVS id 32 type DEBUG text "application data entries written to /ram/cfe_evs_app.dat"
+  file get /ram/cfe_evs_app.dat
+end
+
+test EVS-08 "Filter DS noop: first only, all, reset, delete" req EVS-FILTER
+  fsw evs add_event_filter DS 31 0xFFFF
+  expect-event CFE_EVS id 30 type DEBUG text "AppName = DS, EventID = 0x0000001f, Mask = 0xffff"
+  # count 0 passes, then (count & 0xFFFF) != 0: filtered
+  fsw ds noop
+  expect-event DS id 31 type INFO text "NOOP command"
+  fsw ds noop
+  expect-no-event DS id 31 for 2
+  # a second filter for the same event is refused
+  fsw evs add_event_filter DS 31 0xFFFE
+  expect-event CFE_EVS id 37 type ERROR text "is already registered for filtering"
+  # mask 0: every event passes
+  fsw evs set_filter DS 31 0x0000
+  expect-event CFE_EVS id 17 type DEBUG text "AppName=DS, EventID=0x0000001f, Mask=0x0000"
+  fsw ds noop
+  expect-event DS id 31 type INFO
+  # back to first-only: the count is past 0, so nothing passes
+  fsw evs set_filter DS 31 0xFFFF
+  expect-event CFE_EVS id 17 type DEBUG text "Mask=0xffff"
+  fsw ds noop
+  expect-no-event DS id 31 for 2
+  # reset_filter restarts the count: one event passes again
+  fsw evs reset_filter DS 31
+  expect-event CFE_EVS id 28 type DEBUG text "AppName = DS, EventID = 0x0000001f"
+  fsw ds noop
+  expect-event DS id 31 type INFO
+  fsw ds noop
+  expect-no-event DS id 31 for 2
+  # reset_all_filters restarts every DS filter
+  fsw evs reset_all_filters DS
+  expect-event CFE_EVS id 29 type DEBUG text "AppName = DS"
+  fsw ds noop
+  expect-event DS id 31 type INFO
+  # delete: back to normal, every noop event passes
+  fsw evs delete_event_filter DS 31
+  expect-event CFE_EVS id 31 type DEBUG text "AppName = DS, EventID = 0x0000001f"
+  fsw ds noop
+  expect-event DS id 31 type INFO
+  fsw ds noop
+  expect-event DS id 31 type INFO
+end
+
+test EVS-09 "Rejections EVS checks itself" req EVS-REJECT
+  fsw evs reset
+  expect-event CFE_EVS id 16 type DEBUG
+  # noop with 2 extra payload bytes
+  raw 18 01 C0 00 00 03 25 00 00 00
+  expect-event CFE_EVS id 43 type ERROR text "Invalid cmd length"
+  # enable_ports with port mask 0 (valid: 0x01..0x0F)
+  raw 18 01 C0 00 00 03 2E 0B 00 00
+  expect-event CFE_EVS id 40 type ERROR text "out of range"
+  # set_log_mode 2 (valid: 0, 1)
+  raw 18 01 C0 00 00 03 34 13 02 00
+  expect-event CFE_EVS id 39 type ERROR text "Log Mode = 2"
+  # set_event_format_mode 2 (valid: 0, 1)
+  raw 18 01 C0 00 00 03 23 04 02 00
+  expect-event CFE_EVS id 10 type ERROR text "Invalid Event Format Mode = 0x02"
+  # filter commands for an unknown app and for an event without a filter
+  fsw evs add_event_filter NO_SUCH_APP 1 0xFFFF
+  expect-event CFE_EVS id 9 type ERROR text "Unable to retrieve application ID for NO_SUCH_APP"
+  fsw evs delete_event_filter DS 999
+  expect-event CFE_EVS id 6 type ERROR text "DS Event ID 999 not registered for filtering"
+  fsw evs hk
+  expect evs.hk command_error_counter == 6
+end
+
+test EVS-99 "Tear-down: EVS DEBUG events off" req EVS-SETUP
+  fsw evs disable_app_event_type CFE_EVS debug
+  wait 1
+  fsw evs noop
+  expect-event CFE_EVS id 0 type INFO
+  fsw evs hk
+  expect evs.hk output_port == 1
+  expect evs.hk log_mode == DISCARD
+end

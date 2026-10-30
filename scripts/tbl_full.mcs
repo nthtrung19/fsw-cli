@@ -1,0 +1,156 @@
+# TBL (cFE Table Services) test: every TBL command that is safe to repeat, nominal and
+# rejected, with a full load cycle that changes nothing. Repeatable.
+#
+#   ./build/src/mcs -f scripts/tbl_full.mcs            run (FSW up: cd ~/SDE/fsw && sudo ./run_fsw.sh)
+#   ./build/src/mcs --check -f scripts/tbl_full.mcs    check only, nothing sent
+#   mcs> run scripts/tbl_full.mcs                      from the full-screen session
+#
+# What the FSW does that this script relies on (~/SDE/fsw/cfe/fsw/cfe-core/src/tbl, apps/ds):
+# - The table under test is DS.FILTER_TBL (DS's message filter table; DS validates it with
+#   DS_ValidateFilterTable and switches to a new copy in its table-manage call, about every
+#   second). The load cycle uses a dump of the active table as the load file: dump -> load ->
+#   validate -> activate puts the same content back, so DS keeps filtering as before.
+# - tbl.hk comes only every 60 s (SCH): every counter check asks for it first with "fsw tbl hk"
+#   (CFE_TBL_SEND_HK_MID 0x180C). A check only sees packets received after the last command, so
+#   the event checks come before the "fsw tbl hk" / "fsw tbl send_registry".
+# - DEBUG events: CFE_PLATFORM_EVS_DEFAULT_TYPE_FLAG 0x1E has DEBUG off; TBL reports some steps
+#   (validation request, load-pending notice, registry dump) with DEBUG events. The script turns
+#   DEBUG on for CFE_TBL and off again at the end (TBL-99). All TBL events, also the
+#   validation and update results, come from app CFE_TBL.
+# - send_registry only marks the entry: TBL sends tbl.registry with its next housekeeping
+#   packet, so the script asks for one ("fsw tbl hk") right after it.
+# - Loading again before activate replaces the working buffer and drops its validation:
+#   activate is then refused (event 81) until it is validated again (TBL-04).
+# - Files go to /ram (on the PC build ~/SDE/fsw/build/exe/ntpm/ram must exist) and are fetched
+#   with "file get". A dump that overwrites its file reports event 13 instead of 14 (and 15
+#   instead of 22 for the registry): those checks match the text only.
+# - activate is critical in mcs: the script sends it with "!".
+# - "raw" packets reach TBL's own length and command code checks (TBL-06): 18 04 =
+#   CFE_TBL_CMD_MID, C0 00 = sequence, then length - 7, checksum (0xFF XOR every other byte),
+#   command code.
+# - Not run here: delete_cds (critical; only for tables of apps that are not running), loads of
+#   new table content. Test them by hand.
+# - Event IDs and texts: cfe_tbl_events.h, cfe_tbl_task_cmds.c, cfe_tbl_api.c.
+#
+# Requirement tags (req TBL-...) name the TBL function tested; map them to the mission's IDs.
+
+fsw to enable_output 127.0.0.1 5011
+wait 2
+timeout 5
+
+test TBL-00 "Set-up: TBL answers, its DEBUG events on, tbl.hk on request" req TBL-SETUP
+  fsw tbl noop
+  expect-event CFE_TBL id 10 type INFO text "No-op command"
+  fsw evs enable_app_event_type CFE_TBL debug
+  wait 1
+  fsw tbl hk
+  expect tbl.hk within 2
+end
+
+test TBL-01 "NOOP is accepted; reset clears the counters" req TBL-NOOP,TBL-RESET
+  fsw tbl hk
+  save a tbl.hk command_counter within 2
+  fsw tbl noop
+  expect-event CFE_TBL id 10 type INFO text "No-op command. cFE Version"
+  fsw tbl hk
+  expect tbl.hk command_counter == $a+1
+  raw 18 04 C0 00 00 01 41 63
+  expect-event CFE_TBL id 51 type ERROR text "Invalid command code"
+  fsw tbl hk
+  expect tbl.hk command_error_counter > 0
+  fsw tbl reset
+  expect-event CFE_TBL id 11 type DEBUG text "Reset Counters command"
+  fsw tbl hk
+  expect tbl.hk command_counter == 0
+  expect tbl.hk command_error_counter == 0
+end
+
+test TBL-02 "Registry: one entry as tbl.registry, all of them to a file" req TBL-REGISTRY
+  fsw tbl send_registry DS.FILTER_TBL
+  expect-event CFE_TBL id 18 type DEBUG text "Table Registry entry for 'DS.FILTER_TBL' will be telemetered"
+  fsw tbl hk
+  expect tbl.registry name == DS.FILTER_TBL
+  expect tbl.registry owner_app_name == DS
+  expect tbl.registry load_pending == 0
+  fsw tbl dump_registry
+  expect-event CFE_TBL type DEBUG text "Table Registry"
+  file get /ram/cfe_tbl_reg.log
+end
+
+test TBL-03 "Dump the active DS.FILTER_TBL to a file and fetch it" req TBL-DUMP
+  fsw tbl dump active DS.FILTER_TBL /ram/ds_filter_tbl.tbl
+  expect-event CFE_TBL type INFO text "/ram/ds_filter_tbl.tbl"
+  fsw tbl hk
+  expect tbl.hk last_file_dumped == /ram/ds_filter_tbl.tbl
+  file get /ram/ds_filter_tbl.tbl
+end
+
+test TBL-04 "Load cycle: load the dump, validate it, activate it" req TBL-LOAD,TBL-VALIDATE,TBL-ACTIVATE
+  fsw tbl hk
+  save v tbl.hk success_val_counter within 2
+  fsw tbl load /ram/ds_filter_tbl.tbl
+  expect-event CFE_TBL id 12 type INFO text "Successful load of '/ram/ds_filter_tbl.tbl' into 'DS.FILTER_TBL' working buffer"
+  # the owner app (DS) runs its validation function in its next table-manage call
+  fsw tbl validate inactive DS.FILTER_TBL
+  expect-event CFE_TBL id 16 type DEBUG text "issued validation request for 'DS.FILTER_TBL'"
+  expect-event CFE_TBL id 36 type INFO text "validation successful for Inactive 'DS.FILTER_TBL'"
+  fsw tbl hk
+  expect tbl.hk success_val_counter == $v+1
+  # loading again replaces the working buffer and drops the validation: activate is refused
+  fsw tbl load /ram/ds_filter_tbl.tbl
+  expect-event CFE_TBL id 12 type INFO text "into 'DS.FILTER_TBL' working buffer"
+  ! fsw tbl activate DS.FILTER_TBL
+  expect-event CFE_TBL id 81 type ERROR text "Inactive image not Validated"
+  fsw tbl validate inactive DS.FILTER_TBL
+  expect-event CFE_TBL id 36 type INFO text "validation successful for Inactive 'DS.FILTER_TBL'"
+  ! fsw tbl activate DS.FILTER_TBL
+  expect-event CFE_TBL id 17 type DEBUG text "notifying App that 'DS.FILTER_TBL' has a load pending"
+  expect-event CFE_TBL id 37 type INFO text "Successfully Updated 'DS.FILTER_TBL'"
+  fsw tbl send_registry DS.FILTER_TBL
+  expect-event CFE_TBL id 18 type DEBUG
+  fsw tbl hk
+  expect tbl.registry load_pending == 0
+  expect tbl.registry last_file_loaded == /ram/ds_filter_tbl.tbl
+end
+
+test TBL-05 "Abort a load instead of activating it" req TBL-ABORT
+  fsw tbl load /ram/ds_filter_tbl.tbl
+  expect-event CFE_TBL id 12 type INFO text "into 'DS.FILTER_TBL' working buffer"
+  fsw tbl abort_load DS.FILTER_TBL
+  expect-event CFE_TBL id 21 type INFO text "Table Load Aborted for 'DS.FILTER_TBL'"
+  # nothing left to activate
+  ! fsw tbl activate DS.FILTER_TBL
+  expect-event CFE_TBL id 70 type ERROR text "No Inactive image available"
+end
+
+test TBL-06 "Validate the active table" req TBL-VALIDATE
+  fsw tbl validate active DS.FILTER_TBL
+  expect-event CFE_TBL id 36 type INFO text "validation successful for Active 'DS.FILTER_TBL'"
+end
+
+test TBL-07 "Rejections TBL checks itself" req TBL-REJECT
+  fsw tbl reset
+  expect-event CFE_TBL id 11 type DEBUG
+  # noop with 2 extra payload bytes
+  raw 18 04 C0 00 00 03 20 00 00 00
+  expect-event CFE_TBL id 52 type ERROR text "Invalid msg length"
+  fsw tbl load /ram/no_such_table.tbl
+  expect-event CFE_TBL id 53 type ERROR text "Unable to open file '/ram/no_such_table.tbl'"
+  fsw tbl dump active NO.SUCH_TBL /ram/x.tbl
+  expect-event CFE_TBL id 57 type ERROR text "Unable to locate 'NO.SUCH_TBL' in Table Registry"
+  fsw tbl send_registry NO.SUCH_TBL
+  expect-event CFE_TBL id 57 type ERROR text "Unable to locate 'NO.SUCH_TBL'"
+  fsw tbl abort_load DS.FILTER_TBL
+  expect-event CFE_TBL id 69 type ERROR text "No load started"
+  fsw tbl validate inactive DS.FILTER_TBL
+  expect-event CFE_TBL id 66 type ERROR text "No Inactive Buffer for Table 'DS.FILTER_TBL' present"
+  fsw tbl hk
+  expect tbl.hk command_error_counter == 6
+end
+
+test TBL-99 "Tear-down: TBL DEBUG events off" req TBL-SETUP
+  fsw evs disable_app_event_type CFE_TBL debug
+  wait 1
+  fsw tbl noop
+  expect-event CFE_TBL id 10 type INFO
+end

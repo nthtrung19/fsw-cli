@@ -238,33 +238,47 @@ TEST(ShippedConfig, EvsCatalogMatchesCfeEvsMsgH)
     const CommandCatalog catalog = loadCatalog({kSourceDir + "/config/telecommand/evs.json"});
     const AppDef* evs = catalog.findApp("evs");
     ASSERT_NE(evs, nullptr);
-    EXPECT_EQ(evs->mids(), (std::vector<std::uint16_t>{0x1801}));   // CFE_EVS_CMD_MID
+    EXPECT_EQ(evs->mids(), (std::vector<std::uint16_t>{0x1801, 0x1809}));   // CFE_EVS_CMD_MID, CFE_EVS_SEND_HK_MID
 
     // Command code (cfe_evs_msg.h) and payload = sizeof(command struct) - 8 on the i386 build:
-    // NoArgsCmd 8, BitMaskCmd 10, AppNameCmd 28, AppNameBitMaskCmd 30.
+    // NoArgsCmd 8, BitMaskCmd / SetLogMode / SetEventFormatMode 10, AppNameCmd 28,
+    // AppNameBitMaskCmd 30, AppNameEventIDCmd 30, AppNameEventIDMaskCmd 32, LogFileCmd 72.
     struct Expected {
         const char* name;
+        std::uint16_t mid;
         int cc;
         std::size_t payload;
         bool critical;
     };
     const Expected expected[] = {
-        {"noop", 0, 0, false},
-        {"reset", 1, 0, false},
-        {"enable_event_type", 2, 2, false},
-        {"disable_event_type", 3, 2, true},
-        {"enable_app_event_type", 5, 22, false},
-        {"disable_app_event_type", 6, 22, false},
-        {"enable_app_events", 7, 20, false},
-        {"disable_app_events", 8, 20, true},
-        {"reset_app_counter", 9, 20, false},
-        {"clear_log", 20, 0, false},
+        {"noop", 0x1801, 0, 0, false},
+        {"reset", 0x1801, 1, 0, false},
+        {"enable_event_type", 0x1801, 2, 2, false},
+        {"disable_event_type", 0x1801, 3, 2, true},
+        {"set_event_format_mode", 0x1801, 4, 2, true},
+        {"enable_app_event_type", 0x1801, 5, 22, false},
+        {"disable_app_event_type", 0x1801, 6, 22, false},
+        {"enable_app_events", 0x1801, 7, 20, false},
+        {"disable_app_events", 0x1801, 8, 20, true},
+        {"reset_app_counter", 0x1801, 9, 20, false},
+        {"set_filter", 0x1801, 10, 24, false},
+        {"enable_ports", 0x1801, 11, 2, false},
+        {"disable_ports", 0x1801, 12, 2, false},
+        {"reset_filter", 0x1801, 13, 22, false},
+        {"reset_all_filters", 0x1801, 14, 20, false},
+        {"add_event_filter", 0x1801, 15, 24, false},
+        {"delete_event_filter", 0x1801, 16, 22, false},
+        {"write_app_data_file", 0x1801, 17, 64, false},
+        {"write_log_data_file", 0x1801, 18, 64, false},
+        {"set_log_mode", 0x1801, 19, 2, false},
+        {"clear_log", 0x1801, 20, 0, false},
+        {"hk", 0x1809, 0, 0, false},
     };
     ASSERT_EQ(evs->commands.size(), std::size(expected));
     for (const auto& e : expected) {
         const CommandDef* def = catalog.findCommand("evs", e.name);
         ASSERT_NE(def, nullptr) << e.name;
-        EXPECT_EQ(def->mid, 0x1801) << e.name;
+        EXPECT_EQ(def->mid, e.mid) << e.name;
         EXPECT_EQ(def->cc, e.cc) << e.name;
         EXPECT_EQ(def->payloadSize(), e.payload) << e.name;
         EXPECT_EQ(def->critical, e.critical) << e.name;
@@ -277,6 +291,102 @@ TEST(ShippedConfig, EvsCatalogMatchesCfeEvsMsgH)
         largest = std::max(largest, v.value);
     }
     EXPECT_EQ(largest, 0x0F);
+}
+
+TEST(ShippedConfig, EsCatalogMatchesCfeEsMsgH)
+{
+    const CommandCatalog catalog = loadCatalog({kSourceDir + "/config/telecommand/es.json"});
+    const AppDef* es = catalog.findApp("es");
+    ASSERT_NE(es, nullptr);
+    EXPECT_EQ(es->mids(), (std::vector<std::uint16_t>{0x1806, 0x1808}));   // CFE_ES_CMD_MID, CFE_ES_SEND_HK_MID
+
+    // Command code (cfe_es_msg.h) and payload = sizeof(command struct) - 8 on the 32-bit builds:
+    // API name 20, path 64, shell command 64, CDS name 40, CFE_ES_MemHandle_t 4.
+    struct Expected {
+        const char* name;
+        std::uint16_t mid;
+        int cc;
+        std::size_t payload;
+        bool critical;
+    };
+    const Expected expected[] = {
+        {"noop", 0x1806, 0, 0, false},
+        {"reset", 0x1806, 1, 0, false},
+        {"restart", 0x1806, 2, 2, true},                   // RestartType
+        {"shell", 0x1806, 3, 128, false},                  // CmdString[64], OutputFilename[64]
+        {"start_app", 0x1806, 4, 112, true},               // 20 + 20 + 64 + 4 + 2 + 2
+        {"stop_app", 0x1806, 5, 20, true},
+        {"restart_app", 0x1806, 6, 20, true},
+        {"reload_app", 0x1806, 7, 84, true},               // 20 + 64
+        {"query_one", 0x1806, 8, 20, false},
+        {"query_all", 0x1806, 9, 64, false},
+        {"clear_syslog", 0x1806, 10, 0, false},
+        {"write_syslog", 0x1806, 11, 64, false},
+        {"clear_er_log", 0x1806, 12, 0, false},
+        {"write_er_log", 0x1806, 13, 64, false},
+        {"start_perf", 0x1806, 14, 4, false},              // TriggerMode
+        {"stop_perf", 0x1806, 15, 64, false},
+        {"set_perf_filter_mask", 0x1806, 16, 8, false},
+        {"set_perf_trigger_mask", 0x1806, 17, 8, false},
+        {"overwrite_syslog", 0x1806, 18, 4, false},        // Mode
+        {"reset_pr_count", 0x1806, 19, 0, false},
+        {"set_max_pr_count", 0x1806, 20, 2, true},
+        {"delete_cds", 0x1806, 21, 40, true},              // 16 + 20 + 4
+        {"send_mem_pool_stats", 0x1806, 22, 24, false},    // 20 + PoolHandle 4
+        {"dump_cds_registry", 0x1806, 23, 64, false},
+        {"query_all_tasks", 0x1806, 24, 64, false},
+        {"rtems_shell", 0x1806, 100, 64, true},            // ShellPath[OS_MAX_PATH_LEN]
+        {"hk", 0x1808, 0, 0, false},
+    };
+    ASSERT_EQ(es->commands.size(), std::size(expected));
+    for (const auto& e : expected) {
+        const CommandDef* def = catalog.findCommand("es", e.name);
+        ASSERT_NE(def, nullptr) << e.name;
+        EXPECT_EQ(def->mid, e.mid) << e.name;
+        EXPECT_EQ(def->cc, e.cc) << e.name;
+        EXPECT_EQ(def->payloadSize(), e.payload) << e.name;
+        EXPECT_EQ(def->critical, e.critical) << e.name;
+    }
+}
+
+TEST(ShippedConfig, TblCatalogMatchesCfeTblMsgH)
+{
+    const CommandCatalog catalog = loadCatalog({kSourceDir + "/config/telecommand/tbl.json"});
+    const AppDef* tbl = catalog.findApp("tbl");
+    ASSERT_NE(tbl, nullptr);
+    EXPECT_EQ(tbl->mids(), (std::vector<std::uint16_t>{0x1804, 0x180C}));   // CFE_TBL_CMD_MID, CFE_TBL_SEND_HK_MID
+
+    // Command code (cfe_tbl_msg.h) and payload = sizeof(command struct) - 8 on the 32-bit builds:
+    // path 64, table name CFE_MISSION_TBL_MAX_FULL_NAME_LEN 40, ActiveTableFlag u16.
+    struct Expected {
+        const char* name;
+        std::uint16_t mid;
+        int cc;
+        std::size_t payload;
+        bool critical;
+    };
+    const Expected expected[] = {
+        {"noop", 0x1804, 0, 0, false},
+        {"reset", 0x1804, 1, 0, false},
+        {"load", 0x1804, 2, 64, false},
+        {"dump", 0x1804, 3, 106, false},          // 2 + 40 + 64
+        {"validate", 0x1804, 4, 42, false},       // 2 + 40
+        {"activate", 0x1804, 5, 40, true},
+        {"dump_registry", 0x1804, 6, 64, false},
+        {"send_registry", 0x1804, 7, 40, false},
+        {"delete_cds", 0x1804, 8, 40, true},
+        {"abort_load", 0x1804, 9, 40, false},
+        {"hk", 0x180C, 0, 0, false},
+    };
+    ASSERT_EQ(tbl->commands.size(), std::size(expected));
+    for (const auto& e : expected) {
+        const CommandDef* def = catalog.findCommand("tbl", e.name);
+        ASSERT_NE(def, nullptr) << e.name;
+        EXPECT_EQ(def->mid, e.mid) << e.name;
+        EXPECT_EQ(def->cc, e.cc) << e.name;
+        EXPECT_EQ(def->payloadSize(), e.payload) << e.name;
+        EXPECT_EQ(def->critical, e.critical) << e.name;
+    }
 }
 
 TEST(ShippedConfig, MainCatalogMatchesMainMsgdefsH)
@@ -335,7 +445,7 @@ TEST(ShippedConfig, TargetsFileLoadsAndBuilds)
     EXPECT_EQ(fsw.format.type, "ccsds_v1");
     EXPECT_EQ(fsw.transport.type, "udp");
     EXPECT_EQ(fsw.transport.options.at("port"), "1234");   // JSON number -> option text
-    ASSERT_EQ(fsw.catalogFiles.size(), 17U);
+    ASSERT_EQ(fsw.catalogFiles.size(), 19U);
     EXPECT_TRUE(std::filesystem::exists(fsw.catalogFiles[0]));
 
     for (const auto& t : targets.targets) {

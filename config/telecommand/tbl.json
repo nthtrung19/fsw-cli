@@ -1,0 +1,153 @@
+// TBL (cFE Table Services) ground commands: load, validate, activate, dump tables; the registry.
+// Source: cFE 6.7 cfe_tbl_msg.h, cfe_tbl_task.c, cfe_tbl_task_cmds.c, cfe_tbl_api.c,
+// cfe_tbl_events.h, ntpm_msgids.h, ntpm_mission_cfg.h, ntpm_platform_cfg.h.
+//
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   enum     { "name": value, ... }  names accepted as arguments, shown in help
+//   min/max  inclusive range for integer fields
+//   default  value used when the argument is omitted (only trailing arguments may be omitted)
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 8-byte command header (CFE_SB_CMD_HDR_SIZE).
+// TBL checks the exact packet length (event 52). Sizes on the 32-bit builds: path 64
+// (CFE_MISSION_MAX_PATH_LEN), table name CFE_MISSION_TBL_MAX_FULL_NAME_LEN 16 + 20 + 4 = 40.
+//
+//   ntpm_msgids.h  CFE_TBL_CMD_MID 0x1804      CFE_TBL_TaskPipe, dispatched by command code
+//                  CFE_TBL_SEND_HK_MID 0x180C  TBL housekeeping (SCH sends it every 60 s)
+//
+// Table names are "APP.TABLE" as registered, e.g. DS.FILTER_TBL, DS.FILE_TBL; "fsw tbl
+// dump_registry" lists them all. Every table has an active buffer (what the app uses) and,
+// during a load, an inactive one. The update cycle:
+//   load <file>                file -> inactive buffer (INFO event 12); the file is a table image
+//                              (e.g. uploaded with "file put", or a dump: same format)
+//   validate inactive <table>  TBL asks the owner app to check it (DEBUG 16); the app's next
+//                              table-manage call runs its validation function (INFO 36 / ERROR 96;
+//                              tables without one are assumed valid, INFO 23)
+//   activate <table>           critical: TBL tells the owner app (DEBUG 17), which switches to the
+//                              new content in its next manage call (INFO 37 "Successfully Updated")
+//   abort_load <table>         drops the inactive buffer instead (INFO 21)
+// Loading again before activate replaces the working buffer and drops its validation (activate
+// then fails with ERROR 81 "not Validated"); a load is refused (ERROR 88) only while an activation
+// waits for the owner app. send_registry only marks the entry: tbl.registry goes out with TBL's
+// next housekeeping packet ("fsw tbl hk").
+// All these events come from app CFE_TBL. Table image files are not checked for spacecraft or
+// processor ID (CFE_PLATFORM_TBL_VALID_SCID_COUNT / _PRID_COUNT 0).
+//
+// Files (under /ram: fetch with "file get"; on the PC build ~/SDE/fsw/build/exe/ntpm/ram must exist):
+//   dump            the file name is required (INFO 14, or 13 when it overwrote the file)
+//   dump_registry   omitted = /ram/cfe_tbl_reg.log (DEBUG 22, or 15 when it overwrote the file)
+//
+// Not listed: none (all 10 command codes).
+{
+  "app": "tbl",
+  "help": "cFE Table Services: load, validate, activate and dump tables; the table registry",
+  "mids": [
+    {
+      "mid": "0x1804",
+      "commands": [
+        {
+          "name": "noop",
+          "cc": 0,
+          "help": "No-op: reports the cFE version (INFO event 10)"
+        },
+        {
+          "name": "reset",
+          "cc": 1,
+          "help": "Reset the TBL command, error and validation counters (DEBUG event 11)"
+        },
+        {
+          "name": "load",
+          "cc": 2,
+          "help": "Load a table image file into the table's inactive buffer, e.g. load /cf/ds_filter_tbl.tbl (INFO event 12)",
+          "fields": [
+            { "name": "file", "type": "string", "size": 64,
+              "help": "LoadFilename: table image on the FSW (its header names the table)" }
+          ]
+        },
+        {
+          "name": "dump",
+          "cc": 3,
+          "help": "Write a table buffer to a file, e.g. dump active DS.FILTER_TBL /ram/ds_filter_tbl.tbl (INFO event 14)",
+          "fields": [
+            { "name": "buffer", "type": "u16",
+              "enum": { "inactive": 0, "active": 1 },
+              "help": "ActiveTableFlag: the buffer to dump" },
+            { "name": "table", "type": "string", "size": 40,
+              "help": "TableName: APP.TABLE, e.g. DS.FILTER_TBL" },
+            { "name": "file", "type": "string", "size": 64,
+              "help": "DumpFilename: file on the FSW (loadable again with load)" }
+          ]
+        },
+        {
+          "name": "validate",
+          "cc": 4,
+          "help": "Have the owner app check a table buffer, e.g. validate inactive DS.FILTER_TBL (result: INFO 36 / ERROR 96)",
+          "fields": [
+            { "name": "buffer", "type": "u16",
+              "enum": { "inactive": 0, "active": 1 },
+              "help": "ActiveTableFlag: the buffer to validate (inactive after a load)" },
+            { "name": "table", "type": "string", "size": 40,
+              "help": "TableName: APP.TABLE" }
+          ]
+        },
+        {
+          "name": "activate",
+          "cc": 5,
+          "critical": true,
+          "help": "Make the validated inactive buffer the active one: the app uses the new content (INFO event 37)",
+          "fields": [
+            { "name": "table", "type": "string", "size": 40,
+              "help": "TableName: APP.TABLE" }
+          ]
+        },
+        {
+          "name": "dump_registry",
+          "cc": 6,
+          "help": "Write the table registry (every table: size, CRC, owner, last load) to a file (DEBUG event 22)",
+          "fields": [
+            { "name": "file", "type": "string", "size": 64, "default": "",
+              "help": "DumpFilename: omitted = /ram/cfe_tbl_reg.log" }
+          ]
+        },
+        {
+          "name": "send_registry",
+          "cc": 7,
+          "help": "Send one table's registry entry as tbl.registry (0x080C) with the next tbl.hk, e.g. send_registry DS.FILTER_TBL",
+          "fields": [
+            { "name": "table", "type": "string", "size": 40,
+              "help": "TableName: APP.TABLE" }
+          ]
+        },
+        {
+          "name": "delete_cds",
+          "cc": 8,
+          "critical": true,
+          "help": "Delete a critical table's CDS copy (only when its app is not running) (INFO event 38)",
+          "fields": [
+            { "name": "table", "type": "string", "size": 40,
+              "help": "TableName: APP.TABLE" }
+          ]
+        },
+        {
+          "name": "abort_load",
+          "cc": 9,
+          "help": "Drop a loaded but not activated table (INFO event 21)",
+          "fields": [
+            { "name": "table", "type": "string", "size": 40,
+              "help": "TableName: APP.TABLE" }
+          ]
+        }
+      ]
+    },
+    {
+      "mid": "0x180C",
+      "commands": [
+        {
+          "name": "hk",
+          "cc": 0,
+          "help": "Request tbl.hk now (normally sent by the scheduler every 60 s)"
+        }
+      ]
+    }
+  ]
+}

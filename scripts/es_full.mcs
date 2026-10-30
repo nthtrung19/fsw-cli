@@ -1,0 +1,196 @@
+# ES (cFE Executive Services) test: every ES command that is safe to repeat, nominal and
+# rejected. Repeatable.
+#
+#   ./build/src/mcs -f scripts/es_full.mcs            run (FSW up: cd ~/SDE/fsw && sudo ./run_fsw.sh)
+#   ./build/src/mcs --check -f scripts/es_full.mcs    check only, nothing sent
+#   mcs> run scripts/es_full.mcs                      from the full-screen session
+#
+# What the FSW does that this script relies on (~/SDE/fsw/cfe/fsw/cfe-core/src/es, ntpm_defs):
+# - es.hk comes only every 20 s (SCH): every counter check asks for it first with "fsw es hk"
+#   (CFE_ES_SEND_HK_MID 0x1808, not counted as a command). A check only sees packets received
+#   after the last command, so the event checks come before the "fsw es hk".
+# - DEBUG events: CFE_PLATFORM_EVS_DEFAULT_TYPE_FLAG 0x1E has DEBUG off, and ES reports most
+#   successful commands with a DEBUG event. The script turns DEBUG on for CFE_ES only and off
+#   again at the end (ES-99).
+# - File commands write under /ram (default names when the file name is omitted); each file is
+#   then fetched with "file get" (needs the target's cfdp block and CF running), so the files are
+#   in downlink/ram/ after the run. On the PC build /ram is the host directory ./ram next to
+#   core-ntpm (cfe_psp_voltab.c: /ramdev0 -> ./ram): it must exist
+#   (mkdir ~/SDE/fsw/build/exe/ntpm/ram), else every file command fails with RC 0xFFFFFFFF.
+# - stop_perf starts a child task that writes the file in the background: event 60 at once,
+#   event 68 when the file is complete. Perf masks are put back to the platform defaults
+#   (filter: all on, CFE_PLATFORM_ES_PERF_FILTMASK_INIT; trigger: none, ..._TRIGMASK_INIT).
+# - overwrite_syslog is put back to discard (the FSW starts with CFE_PLATFORM_ES_DEFAULT_SYSLOG_MODE 1).
+# - mcs checks enum values and limits before sending, so ES's own checks of them are reached with
+#   "raw" packets (ES-12): 18 06 = CFE_ES_CMD_MID, C0 00 = sequence, then length - 7, checksum
+#   (0xFF XOR every other byte), command code, payload little-endian.
+# - Not run here (they change the FSW for good or stop it): restart, start_app, stop_app,
+#   restart_app, reload_app, delete_cds, set_max_pr_count, reset_pr_count, clear_syslog,
+#   clear_er_log, rtems_shell (BBB build only). Test them by hand.
+# - Event IDs and texts: cfe_es_events.h, cfe_es_task.c, cfe_es_perf.c, cfe_es_shell.c.
+#
+# Requirement tags (req ES-...) name the ES function tested; map them to the mission's IDs.
+
+fsw to enable_output 127.0.0.1 5011
+wait 2
+timeout 5
+
+test ES-00 "Set-up: EVS answers, ES DEBUG events on, es.hk on request" req ES-SETUP
+  fsw evs noop
+  expect-event CFE_EVS id 0 type INFO text "No-op command"
+  fsw evs enable_app_event_type CFE_ES debug
+  wait 1
+  fsw es hk
+  expect es.hk within 2
+end
+
+test ES-01 "NOOP is accepted and reports the versions" req ES-NOOP
+  fsw es hk
+  save a es.hk command_counter within 2
+  fsw es noop
+  expect-event CFE_ES id 3 type INFO text "No-op command"
+  fsw es hk
+  expect es.hk command_counter == $a+1
+end
+
+test ES-02 "Reset clears the command counters" req ES-RESET
+  # make both counters non-zero first: an unknown command code is rejected
+  raw 18 06 C0 00 00 01 43 63
+  expect-event CFE_ES id 22 type ERROR text "Invalid ground command code"
+  fsw es noop
+  fsw es hk
+  expect es.hk command_error_counter > 0
+  expect es.hk command_counter > 0
+  fsw es reset
+  expect-event CFE_ES id 4 type INFO text "Reset Counters command"
+  fsw es hk
+  expect es.hk command_counter == 0
+  expect es.hk command_error_counter == 0
+end
+
+test ES-03 "Query one application: es.app_info" req ES-QUERY-ONE
+  fsw es query_one TO
+  expect-event CFE_ES id 15 type DEBUG text "Sent TO application data"
+  expect es.app_info name == TO
+  fsw es query_one NO_SUCH_APP
+  expect-event CFE_ES id 50 type ERROR text "GetAppIDByName Failed"
+  fsw es hk
+  expect es.hk command_error_counter == 1
+end
+
+test ES-04 "Write the system log to a file and fetch it" req ES-SYSLOG
+  fsw es hk
+  save a es.hk command_counter within 2
+  fsw es write_syslog
+  expect-event CFE_ES id 18 type DEBUG text "/ram/cfe_es_syslog.log written"
+  fsw es hk
+  expect es.hk command_counter == $a+1
+  file get /ram/cfe_es_syslog.log
+end
+
+test ES-05 "Write the Exception and Reset log to a file and fetch it" req ES-ERLOG
+  fsw es write_er_log
+  expect-event CFE_ES id 20 type DEBUG text "/ram/cfe_erlog.log written"
+  file get /ram/cfe_erlog.log
+end
+
+test ES-06 "Write all applications' info to a file and fetch it" req ES-QUERY-ALL
+  fsw es query_all
+  expect-event CFE_ES id 16 type DEBUG text "App Info file written to /ram/cfe_es_app_info.log"
+  file get /ram/cfe_es_app_info.log
+end
+
+test ES-07 "Write all tasks' info to a file and fetch it" req ES-QUERY-TASKS
+  fsw es query_all_tasks
+  expect-event CFE_ES id 87 type DEBUG text "Task Info file written to /ram/cfe_es_task_info.log"
+  file get /ram/cfe_es_task_info.log
+end
+
+test ES-08 "Dump the CDS registry to a file and fetch it" req ES-CDS-REG
+  fsw es dump_cds_registry
+  expect-event CFE_ES id 83 type DEBUG text "Successfully dumped CDS Registry to '/ram/cfe_cds_reg.log'"
+  file get /ram/cfe_cds_reg.log
+end
+
+test ES-09 "System log mode: overwrite, then back to discard" req ES-SYSLOG-MODE
+  fsw es overwrite_syslog overwrite
+  expect-event CFE_ES id 70 type DEBUG text "Mode setting = 0"
+  fsw es hk
+  expect es.hk sys_log_mode == OVERWRITE
+  fsw es overwrite_syslog discard
+  expect-event CFE_ES id 70 type DEBUG text "Mode setting = 1"
+  fsw es hk
+  expect es.hk sys_log_mode == DISCARD
+end
+
+test ES-10 "Perf masks: change one word, then put the defaults back" req ES-PERF-MASK
+  # cFE 6.7 prints the word number as "val" in events 63/65 (cfe_es_perf.c), so the value is
+  # checked in es.hk (perf_*_mask_0 = word 0)
+  fsw es set_perf_trigger_mask 0 0x1
+  expect-event CFE_ES id 65 type DEBUG text "num 0"
+  fsw es set_perf_filter_mask 0 0x0000FFFF
+  expect-event CFE_ES id 63 type DEBUG text "num 0"
+  fsw es hk
+  expect es.hk perf_trigger_mask_0 == 1
+  expect es.hk perf_filter_mask_0 == 65535
+  fsw es set_perf_trigger_mask 0 0
+  expect-event CFE_ES id 65 type DEBUG text "num 0"
+  fsw es set_perf_filter_mask 0 0xFFFFFFFF
+  expect-event CFE_ES id 63 type DEBUG text "num 0"
+  fsw es hk
+  expect es.hk perf_trigger_mask_0 == 0
+  expect es.hk perf_filter_mask_0 == 4294967295
+end
+
+test ES-11 "Perf data: start, stop, wait for the file, fetch it" req ES-PERF
+  fsw es start_perf start
+  expect-event CFE_ES id 57 type DEBUG text "trigger mode = 0"
+  fsw es hk
+  # trigger mask 0 (platform default): no perf ID triggers, so it stays waiting
+  expect es.hk perf_state == WAITING_FOR_TRIGGER
+  wait 2
+  fsw es stop_perf
+  expect-event CFE_ES id 60 type DEBUG text "Perf Stop Cmd Rcvd"
+  expect-event CFE_ES id 68 type DEBUG text "/ram/cfe_es_perf.dat written" within 60
+  fsw es hk
+  expect es.hk perf_state == IDLE
+  file get /ram/cfe_es_perf.dat
+end
+
+test ES-12 "Rejections ES checks itself" req ES-REJECT
+  fsw es reset
+  expect-event CFE_ES id 4 type INFO
+  # noop with 2 extra payload bytes
+  raw 18 06 C0 00 00 03 22 00 00 00
+  expect-event CFE_ES id 23 type ERROR text "Invalid cmd length"
+  # start_perf with trigger mode 3 (valid: 0..2)
+  raw 18 06 C0 00 00 05 29 0E 03 00 00 00
+  expect-event CFE_ES id 59 type ERROR text "trigger mode (3)"
+  # overwrite_syslog with mode 2 (valid: 0, 1)
+  raw 18 06 C0 00 00 05 34 12 02 00 00 00
+  expect-event CFE_ES id 71 type ERROR text "Invalid Mode setting = 2"
+  # set_perf_filter_mask word 4 (valid: 0..3)
+  raw 18 06 C0 00 00 09 3C 10 04 00 00 00 00 00 00 00
+  expect-event CFE_ES id 64 type ERROR text "out of range"
+  # memory pool statistics for an invalid handle
+  fsw es send_mem_pool_stats CFE_ES 0
+  expect-event CFE_ES id 82 type ERROR text "Illegal Handle"
+  fsw es hk
+  expect es.hk command_error_counter == 5
+end
+
+test ES-13 "Shell command: output as es.shell packets" req ES-SHELL
+  # The command runs in the OS shell: the host's sh on the PC build (host paths, not /cf or
+  # /ram), the RTEMS shell on the BBB. A non-zero exit status is reported as ERROR event 25,
+  # so the command must succeed on both: echo.
+  fsw es shell "echo ES-13"
+  expect-event CFE_ES id 5 type INFO text "Invoked shell command: 'echo ES-13'"
+  expect es.shell within 5
+end
+
+test ES-99 "Tear-down: ES DEBUG events off" req ES-SETUP
+  fsw evs disable_app_event_type CFE_ES debug
+  wait 1
+  fsw es noop
+  expect-event CFE_ES id 3 type INFO
+end

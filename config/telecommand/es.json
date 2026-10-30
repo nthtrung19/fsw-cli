@@ -1,0 +1,290 @@
+// ES (cFE Executive Services) ground commands. Source: cFE 6.7 cfe_es_msg.h, cfe_es_task.c,
+// cfe_es_perf.c, cfe_es_shell.c, cfe_es_events.h, ntpm_msgids.h, ntpm_mission_cfg.h,
+// ntpm_platform_cfg.h, ntpm_osconfig.h.
+//
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   enum     { "name": value, ... }  names accepted as arguments, shown in help
+//   min/max  inclusive range for integer fields
+//   default  value used when the argument is omitted (only trailing arguments may be omitted)
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 8-byte command header (CFE_SB_CMD_HDR_SIZE).
+// ES checks the exact packet length (CFE_ES_VerifyCmdLength, event 23 "Invalid cmd length").
+// Sizes on the 32-bit builds: CFE_MISSION_MAX_API_LEN 20, CFE_MISSION_MAX_PATH_LEN 64,
+// OS_MAX_PATH_LEN 64, CFE_MISSION_ES_MAX_SHELL_CMD 64, CFE_MISSION_ES_CDS_MAX_NAME_LEN
+// 16 + 20 + 4 = 40, CFE_ES_MemHandle_t = cpuaddr = 4 bytes.
+//
+//   ntpm_msgids.h  CFE_ES_CMD_MID 0x1806      CFE_ES_TaskPipe, dispatched by command code
+//                  CFE_ES_SEND_HK_MID 0x1808  CFE_ES_HousekeepingCmd (SCH sends it every 20 s)
+//
+// Events come from app CFE_ES. noop, reset, clear_syslog, clear_er_log, reset_pr_count and
+// set_max_pr_count report INFO events; the other successful commands report DEBUG events,
+// which CFE_PLATFORM_EVS_DEFAULT_TYPE_FLAG 0x1E keeps off: "fsw evs enable_app_event_type
+// CFE_ES debug" shows them. Errors are ERROR events. Every command counts in es.hk
+// command_counter / command_error_counter.
+//
+// File commands: the file name may be omitted (""): ES then uses its default under /ram
+// (RAM disk: lost at a reset; fetch with "file get"). Every file starts with a 64-byte cFE
+// file header. Defaults and success events:
+//   query_all          /ram/cfe_es_app_info.log    event 16
+//   write_syslog       /ram/cfe_es_syslog.log      event 18
+//   write_er_log       /ram/cfe_erlog.log          event 20
+//   dump_cds_registry  /ram/cfe_cds_reg.log        event 83
+//   query_all_tasks    /ram/cfe_es_task_info.log   event 87
+//   stop_perf          /ram/cfe_es_perf.dat        event 60 at once, event 68 when written
+//                                                  (a child task writes it in the background)
+//   shell              /ram/ShellCmd.out, and the output as shell packets (es.shell 0x080F)
+//
+// Not listed: none (all 26 command codes). RTEMS_SHELL 100 is the mission's: dispatched only when
+// built with _ENALBE_ES_RTEMS_SEPARATE_SHELL_ (toolchain-bbb_rtems6.cmake), so the PC FSW answers
+// it with event 22 "Invalid ground command code".
+{
+  "app": "es",
+  "help": "cFE Executive Services: apps, resets, system and ER logs, perf data, CDS",
+  "mids": [
+    {
+      "mid": "0x1806",
+      "commands": [
+        {
+          "name": "noop",
+          "cc": 0,
+          "help": "No-op: reports the cFE, OSAL and PSP versions (INFO event 3)"
+        },
+        {
+          "name": "reset",
+          "cc": 1,
+          "help": "Reset the ES command and command error counters (INFO event 4)"
+        },
+        {
+          "name": "restart",
+          "cc": 2,
+          "critical": true,
+          "help": "Restart the whole FSW (telemetry stops; send fsw to enable_output again after it)",
+          "fields": [
+            { "name": "restart_type", "type": "u16",
+              "enum": { "processor": 1, "poweron": 2 },
+              "help": "processor keeps the CDS, volatile disk and logs; poweron clears all memory" }
+          ]
+        },
+        {
+          "name": "shell",
+          "cc": 3,
+          "help": "Run an OS shell command, e.g. shell \"ls\" (output as es.shell packets and in a file; on the PC the host's sh runs it, with host paths)",
+          "fields": [
+            { "name": "command", "type": "string", "size": 64,
+              "help": "CmdString: the command line (quote it when it has spaces)" },
+            { "name": "output_file", "type": "string", "size": 64, "default": "",
+              "help": "OutputFilename: omitted = /ram/ShellCmd.out" }
+          ]
+        },
+        {
+          "name": "start_app",
+          "cc": 4,
+          "critical": true,
+          "help": "Load and start an application, e.g. start_app SAMPLE_APP SAMPLE_AppMain /cf/sample_app.so 16384 restart_app 50",
+          "fields": [
+            { "name": "app", "type": "string", "size": 20, "help": "Application: name to register" },
+            { "name": "entry_point", "type": "string", "size": 20, "help": "AppEntryPoint: main function symbol" },
+            { "name": "file", "type": "string", "size": 64, "help": "AppFileName: object file on the FSW" },
+            { "name": "stack_size", "type": "u32", "help": "StackSize in bytes (at least the platform default)" },
+            { "name": "exception_action", "type": "u16",
+              "enum": { "restart_app": 0, "proc_restart": 1 },
+              "help": "ExceptionAction: what ES does if the app causes an exception" },
+            { "name": "priority", "type": "u16", "min": 0, "max": 255, "help": "Priority (0 highest)" }
+          ]
+        },
+        {
+          "name": "stop_app",
+          "cc": 5,
+          "critical": true,
+          "help": "Stop and unload an application, e.g. stop_app SAMPLE_APP",
+          "fields": [
+            { "name": "app", "type": "string", "size": 20, "help": "Application: registered name (upper case, e.g. DS)" }
+          ]
+        },
+        {
+          "name": "restart_app",
+          "cc": 6,
+          "critical": true,
+          "help": "Stop an application and start it again from the same file",
+          "fields": [
+            { "name": "app", "type": "string", "size": 20, "help": "Application: registered name" }
+          ]
+        },
+        {
+          "name": "reload_app",
+          "cc": 7,
+          "critical": true,
+          "help": "Stop an application and start it again from another file",
+          "fields": [
+            { "name": "app", "type": "string", "size": 20, "help": "Application: registered name" },
+            { "name": "file", "type": "string", "size": 64, "help": "AppFileName: the new object file" }
+          ]
+        },
+        {
+          "name": "query_one",
+          "cc": 8,
+          "help": "Send one application's info as es.app_info (0x080B), e.g. query_one TO",
+          "fields": [
+            { "name": "app", "type": "string", "size": 20, "help": "Application: registered name" }
+          ]
+        },
+        {
+          "name": "query_all",
+          "cc": 9,
+          "help": "Write every application's info to a file (DEBUG event 16)",
+          "fields": [
+            { "name": "file", "type": "string", "size": 64, "default": "",
+              "help": "FileName: omitted = /ram/cfe_es_app_info.log" }
+          ]
+        },
+        {
+          "name": "clear_syslog",
+          "cc": 10,
+          "help": "Clear the system log (INFO event 17)"
+        },
+        {
+          "name": "write_syslog",
+          "cc": 11,
+          "help": "Write the system log to a file (DEBUG event 18); the log is kept",
+          "fields": [
+            { "name": "file", "type": "string", "size": 64, "default": "",
+              "help": "FileName: omitted = /ram/cfe_es_syslog.log" }
+          ]
+        },
+        {
+          "name": "clear_er_log",
+          "cc": 12,
+          "help": "Clear the Exception and Reset log (INFO event 19)"
+        },
+        {
+          "name": "write_er_log",
+          "cc": 13,
+          "help": "Write the Exception and Reset log (20 entries) to a file (DEBUG event 20); the log is kept",
+          "fields": [
+            { "name": "file", "type": "string", "size": 64, "default": "",
+              "help": "FileName: omitted = /ram/cfe_erlog.log" }
+          ]
+        },
+        {
+          "name": "start_perf",
+          "cc": 14,
+          "help": "Start collecting performance data (DEBUG event 57)",
+          "fields": [
+            { "name": "trigger_mode", "type": "u32",
+              "enum": { "start": 0, "center": 1, "end": 2 }, "default": "start",
+              "help": "TriggerMode: where the trigger falls in the buffer" }
+          ]
+        },
+        {
+          "name": "stop_perf",
+          "cc": 15,
+          "help": "Stop collecting and write the data to a file (DEBUG 60 now, DEBUG 68 when the file is complete)",
+          "fields": [
+            { "name": "file", "type": "string", "size": 64, "default": "",
+              "help": "DataFileName: omitted = /ram/cfe_es_perf.dat" }
+          ]
+        },
+        {
+          "name": "set_perf_filter_mask",
+          "cc": 16,
+          "help": "Set one 32-bit word of the perf filter mask (DEBUG event 63)",
+          "fields": [
+            { "name": "mask_num", "type": "u32", "min": 0, "max": 3,
+              "help": "FilterMaskNum: word index (128 perf IDs / 32)" },
+            { "name": "mask", "type": "u32", "help": "FilterMask: bit n = perf ID 32*mask_num + n recorded" }
+          ]
+        },
+        {
+          "name": "set_perf_trigger_mask",
+          "cc": 17,
+          "help": "Set one 32-bit word of the perf trigger mask (DEBUG event 65)",
+          "fields": [
+            { "name": "mask_num", "type": "u32", "min": 0, "max": 3,
+              "help": "TriggerMaskNum: word index (128 perf IDs / 32)" },
+            { "name": "mask", "type": "u32", "help": "TriggerMask: bit n = perf ID 32*mask_num + n triggers" }
+          ]
+        },
+        {
+          "name": "overwrite_syslog",
+          "cc": 18,
+          "help": "What the system log does when it is full (DEBUG event 70); the FSW starts in discard",
+          "fields": [
+            { "name": "mode", "type": "u32",
+              "enum": { "overwrite": 0, "discard": 1 },
+              "help": "Mode: overwrite the oldest messages, or discard new ones" }
+          ]
+        },
+        {
+          "name": "reset_pr_count",
+          "cc": 19,
+          "help": "Set the processor reset count to zero (INFO event 72)"
+        },
+        {
+          "name": "set_max_pr_count",
+          "cc": 20,
+          "critical": true,
+          "help": "Processor resets allowed before ES turns the next one into a power-on reset (INFO event 73)",
+          "fields": [
+            { "name": "max", "type": "u16", "help": "MaxPRCount" }
+          ]
+        },
+        {
+          "name": "delete_cds",
+          "cc": 21,
+          "critical": true,
+          "help": "Delete a critical data store block of an app that is not running, e.g. delete_cds DS.DS_CDS",
+          "fields": [
+            { "name": "name", "type": "string", "size": 40, "help": "CdsName: AppName.CDSName" }
+          ]
+        },
+        {
+          "name": "send_mem_pool_stats",
+          "cc": 22,
+          "help": "Send a memory pool's statistics as es.mem_stats (0x0810) (DEBUG event 81)",
+          "fields": [
+            { "name": "app", "type": "string", "size": 20, "help": "Application: the pool's owner" },
+            { "name": "pool_handle", "type": "u32", "help": "PoolHandle (e.g. 0x0805A2C0)" }
+          ]
+        },
+        {
+          "name": "dump_cds_registry",
+          "cc": 23,
+          "help": "Write the critical data store registry to a file (DEBUG event 83)",
+          "fields": [
+            { "name": "file", "type": "string", "size": 64, "default": "",
+              "help": "DumpFilename: omitted = /ram/cfe_cds_reg.log" }
+          ]
+        },
+        {
+          "name": "query_all_tasks",
+          "cc": 24,
+          "help": "Write every task's info to a file (DEBUG event 87)",
+          "fields": [
+            { "name": "file", "type": "string", "size": 64, "default": "",
+              "help": "FileName: omitted = /ram/cfe_es_task_info.log" }
+          ]
+        },
+        {
+          "name": "rtems_shell",
+          "cc": 100,
+          "critical": true,
+          "help": "Run an RTEMS shell script, output on the FSW console (BBB build only; the PC FSW rejects code 100)",
+          "fields": [
+            { "name": "script", "type": "string", "size": 64, "help": "ShellPath: script file on the FSW" }
+          ]
+        }
+      ]
+    },
+    {
+      "mid": "0x1808",
+      "commands": [
+        {
+          "name": "hk",
+          "cc": 0,
+          "help": "Request es.hk now (normally sent by the scheduler every 20 s)"
+        }
+      ]
+    }
+  ]
+}
