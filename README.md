@@ -223,6 +223,26 @@ it must be validated again. `fsw tbl dump active <table> <file>` writes a table 
 (same format as a load file) for `file get`. `fsw tbl send_registry <table>` sends
 `tbl.registry` with the next `tbl.hk`, so follow it with `fsw tbl hk`.
 
+**cFE time.** `fsw time hk` (time.hk: clock state, MET, STCF, leap seconds) and
+`fsw time send_diagnostic_tlm` (time.diag: TAI, UTC, tone details) read the clock
+(`config/telecommand/time.json`). Every command that changes it is critical (`!`):
+`set_time`, `set_met`, `set_stcf`, `add_adjust`/`sub_adjust` (once), the 1 Hz
+adjustment (every second until `add_1hz_adjustment 0 0`), `set_leap_seconds`,
+`set_state`. Commands take seconds + microseconds; time.hk shows subseconds (2^-32 s).
+This FSW is a time server without source or signal selection, so `set_source`,
+`set_signal`, `add_delay` and `sub_delay` are rejected by the FSW. On the BBB, MAIN
+sets the STCF from GPS time by itself, which can overwrite a STCF set from the ground.
+
+**cFE Software Bus.** When a packet does not arrive, SB shows where it goes
+(`config/telecommand/sb.json`): `fsw sb send_sb_stats` (sb.stats: MIDs, pipes, buffers,
+pipe depths), `fsw sb send_prev_subs` (sb.all_subs: every MID → pipe subscription), and
+`send_routing_info` / `send_pipe_info` / `send_map_info`, which write the routing table,
+the pipes (ID, name, owner app) and the MID map to `/ram` for `file get`. With
+`fsw sb enable_sub_reporting`, every new subscription is reported as sb.one_sub.
+`! fsw sb disable_route <mid> <pipe>` stops delivering a MID to one pipe (that app no
+longer gets it), `fsw sb enable_route <mid> <pipe>` resumes it; pipe IDs come from the
+pipe file, sb.all_subs or sb.one_sub.
+
 ### File transfer (CFDP)
 
 mcs is the ground CFDP entity (`0.23`) for CF (`0.24`). It runs the same CFDP
@@ -329,6 +349,10 @@ are the names in `config/telemetry/<app>.json` (arrays as `name_0`, ...).
 | `ds_full.mcs` | every DS command: nominal (each with its event and counters, file 15 and filter slot 2 of 0x0806 are changed and put back) and ~20 rejections, 12 of them as `raw` packets DS's own checks must catch | any time (repeatable) |
 | `ds_add_mid.mcs` | adding a message ID to DS's filter table | once per FSW start (DS cannot remove it) |
 | `evs_full.mcs` | cFE EVS: noop, reset, event types per app, ports (console echo off/on), log mode, event log and app data files (fetched into `downlink/ram/`), a filter on DS's noop event (first only, all, reset, delete), and 6 rejections (4 as `raw` packets); global type/app off, short format and clearing the log are left to manual tests | any time (repeatable; needs CF for `file get`) |
+| `ci_full.mcs` | CI: noop, reset, enable_to (TO's output) with the handshake watchdog it starts (handshake_signal, then delete_handshake_wdg so telemetry stays on), reset_incoming_mess_counter, and rejections | any time (repeatable) |
+| `apps_smoke.mcs` | every app the FSW runs answers its NOOP with an event and its housekeeping request with a packet (cFE services, TO, CI, SC, CF, PL, SCH, LC, DS, FM, PBM, HS, FDIR, MAIN, AOCS) | any time |
+| `sb_full.mcs` | cFE SB: noop, reset, statistics, the subscription list, the routing / pipe / map files (fetched into `downlink/ram/`), a route switched off and on (TO's time.diag subscription, its pipe ID taken from a subscription report; TO's entry is removed and added back as configured), and 5 rejections | any time (repeatable; needs CF for `file get`) |
+| `time_full.mcs` | cFE TIME: noop, reset, diagnostics, leap seconds, STCF (add/sub adjust, set), the 1 Hz adjustment, the 4 commands this time-server build rejects, and 3 rejections as `raw` packets; leap seconds, STCF and 1 Hz adjustment are saved first and put back exactly; set_time, set_met and set_state are left to manual tests | any time on the PC (on the BBB only with GPS off: MAIN sets the STCF from GPS) |
 | `tbl_full.mcs` | cFE TBL on DS.FILTER_TBL: noop, reset, registry (packet and file), dump, a full load cycle with the dump as load file (load, validate, re-load drops the validation, activate), abort_load, validate active, and 6 rejections; delete_cds and new table content are left to manual tests | any time (repeatable; the table keeps its content; needs CF for `file get`) |
 | `es_full.mcs` | cFE ES: noop, reset, query_one, the five file commands (each fetched with `file get` into `downlink/ram/`), syslog mode, perf masks and perf start/stop, shell, and 6 rejections (4 as `raw` packets); restart, app control, CDS and log clearing are left to manual tests | any time (repeatable; needs CF for `file get`) |
 

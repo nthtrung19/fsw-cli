@@ -1,0 +1,148 @@
+# Operational smoke test of every app the FSW runs: each one answers its NOOP with an event and
+# its housekeeping request with a telemetry packet. Repeatable, changes nothing.
+#
+#   ./build/src/mcs -f scripts/apps_smoke.mcs            run (FSW up: cd ~/SDE/fsw && sudo ./run_fsw.sh)
+#   ./build/src/mcs --check -f scripts/apps_smoke.mcs    check only, nothing sent
+#   mcs> run scripts/apps_smoke.mcs                      from the full-screen session
+#
+# Apps: the cFE services and the apps of ntpm_defs/ntpm_cfe_es_startup.scr, in that order. Every
+# NOOP answer is an INFO event (text: part of the message, case-insensitive). Not covered:
+# - CS and GPSR: in mcs, but not started by the startup script (their commands get no answer);
+# - TCS: started, but mcs has no catalog for it;
+# - PBM's housekeeping (0x08E0, "fsw pbm app_hk"): no telemetry definition in mcs.
+# The full per-app tests are the *_full.mcs scripts.
+
+fsw to enable_output 127.0.0.1 5011
+wait 2
+timeout 5
+
+test APP-ES "cFE ES answers" req APP-ALIVE
+  fsw es noop
+  expect-event CFE_ES id 3 type INFO text "no-op command"
+  fsw es hk
+  expect es.hk within 3
+end
+
+test APP-EVS "cFE EVS answers" req APP-ALIVE
+  fsw evs noop
+  expect-event CFE_EVS id 0 type INFO text "no-op command"
+  fsw evs hk
+  expect evs.hk within 3
+end
+
+test APP-SB "cFE SB answers" req APP-ALIVE
+  fsw sb noop
+  expect-event CFE_SB id 28 type INFO text "no-op cmd rcvd"
+  fsw sb hk
+  expect sb.hk within 3
+end
+
+test APP-TBL "cFE TBL answers" req APP-ALIVE
+  fsw tbl noop
+  expect-event CFE_TBL id 10 type INFO text "no-op command"
+  fsw tbl hk
+  expect tbl.hk within 3
+end
+
+test APP-TIME "cFE TIME answers" req APP-ALIVE
+  fsw time noop
+  expect-event CFE_TIME id 4 type INFO text "no-op command"
+  fsw time hk
+  expect time.hk within 3
+end
+
+test APP-TO "TO answers" req APP-ALIVE
+  fsw to noop
+  expect-event TO type INFO text "no-op command"
+  fsw to hk
+  expect to.hk within 3
+end
+
+test APP-CI "CI answers" req APP-ALIVE
+  fsw ci noop
+  expect-event CI type INFO text "no-op command"
+  fsw ci hk
+  expect ci.hk within 3
+end
+
+test APP-SC "SC answers" req APP-ALIVE
+  fsw sc noop
+  expect-event SC type INFO text "no-op command"
+  fsw sc hk
+  expect sc.hk within 3
+end
+
+test APP-CF "CF answers" req APP-ALIVE
+  fsw cf noop
+  expect-event CF type INFO text "no-op command"
+  fsw cf hk
+  expect cf.hk within 3
+end
+
+test APP-PL "PL answers" req APP-ALIVE
+  fsw pl noop
+  expect-event PL type INFO text "no-op command"
+  fsw pl hk
+  expect pl.hk within 3
+end
+
+test APP-SCH "SCH answers" req APP-ALIVE
+  fsw sch noop
+  expect-event SCH type INFO text "no-op command"
+  fsw sch hk
+  expect sch.hk within 3
+end
+
+test APP-LC "LC answers" req APP-ALIVE
+  fsw lc noop
+  expect-event LC type INFO text "no-op command"
+  fsw lc hk
+  expect lc.hk within 3
+end
+
+test APP-DS "DS answers" req APP-ALIVE
+  fsw ds noop
+  expect-event DS id 31 type INFO text "noop command"
+  fsw ds hk
+  expect ds.hk within 3
+end
+
+test APP-FM "FM answers" req APP-ALIVE
+  fsw fm noop
+  expect-event FM type INFO text "FM version"
+  fsw fm hk
+  expect fm.hk within 3
+end
+
+test APP-PBM "PBM answers" req APP-ALIVE
+  fsw pbm noop
+  expect-event PBM type INFO text "noop command"
+end
+
+test APP-HS "HS answers" req APP-ALIVE
+  fsw hs noop
+  expect-event HS type INFO text "no-op command"
+  fsw hs hk
+  expect hs.hk within 3
+end
+
+test APP-FDIR "FDIR answers" req APP-ALIVE
+  fsw fdir noop
+  expect-event FDIR type INFO text "noop command"
+  fsw fdir hk
+  expect fdir.hk within 3
+end
+
+test APP-MAIN "MAIN answers" req APP-ALIVE
+  fsw main noop
+  expect-event MAIN_APP type INFO text "no-op command"
+  fsw main hk
+  expect main.hk within 3
+end
+
+test APP-AOCS "AOCS answers" req APP-ALIVE
+  fsw aocs noop
+  expect-event AOCS_APP type INFO text "no-op command"
+  fsw aocs hk
+  expect aocs.cmd_hk within 3
+end

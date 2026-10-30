@@ -1,0 +1,139 @@
+# SB (cFE Software Bus) test: every SB command, nominal and rejected, including a route
+# switched off and on again. Repeatable.
+#
+#   ./build/src/mcs -f scripts/sb_full.mcs            run (FSW up: cd ~/SDE/fsw && sudo ./run_fsw.sh)
+#   ./build/src/mcs --check -f scripts/sb_full.mcs    check only, nothing sent
+#   mcs> run scripts/sb_full.mcs                      from the full-screen session
+#
+# What the FSW does that this script relies on (~/SDE/fsw/cfe/fsw/cfe-core/src/sb, apps/to):
+# - sb.hk comes only every 30 s (SCH): every counter check asks for it first with "fsw sb hk"
+#   (CFE_SB_SEND_HK_MID 0x180B). A check only sees packets received after the last command, so
+#   the event checks come before the "fsw sb hk".
+# - DEBUG events: SB reports most commands with DEBUG events; the script turns DEBUG on for
+#   CFE_SB and off again at the end (SB-99).
+# - Pipe IDs are numbered at start-up, so the route test (SB-04) makes TO subscribe while
+#   subscription reporting is on, and takes TO's pipe ID from the report (sb.one_sub and event 22):
+#   TO's entry for time.diag (CFE_TIME_DIAG_TLM_MID 0x0806) is removed and added back with its
+#   to_config.c values {0x0806, {0,0}, 1, 0xffff, TO_GROUP_CFE | TO_MGROUP_ONE, 0, 1}. That route
+#   is then disabled and enabled again, and time.diag (asked for with "fsw time
+#   send_diagnostic_tlm") must reach the ground again. mcs has no "packet must not arrive" check,
+#   so the gap while the route is off is not asserted. If the script stops inside SB-04, put the
+#   entry back by hand with the add_tbl_entry line below.
+# - Files go to /ram (on the PC build ~/SDE/fsw/build/exe/ntpm/ram must exist) and are fetched
+#   with "file get".
+# - mcs checks MID limits before sending, so SB's own checks are reached with "raw" packets
+#   (SB-05): 18 03 = CFE_SB_CMD_MID, C0 00 = sequence, then length - 7, checksum (0xFF XOR every
+#   other byte), command code, payload little-endian.
+# - Event IDs and texts: cfe_sb_events.h, cfe_sb_task.c, cfe_sb_api.c; TO: to_cmds.c.
+#
+# Requirement tags (req SB-...) name the SB function tested; map them to the mission's IDs.
+
+fsw to enable_output 127.0.0.1 5011
+wait 2
+timeout 5
+
+test SB-00 "Set-up: SB answers, its DEBUG events on, sb.hk on request" req SB-SETUP
+  fsw sb noop
+  expect-event CFE_SB id 28 type INFO text "No-op Cmd Rcvd"
+  fsw evs enable_app_event_type CFE_SB debug
+  wait 1
+  fsw sb hk
+  expect sb.hk within 2
+end
+
+test SB-01 "NOOP is accepted; reset clears the counters" req SB-NOOP,SB-RESET
+  fsw sb hk
+  save a sb.hk command_counter within 2
+  fsw sb noop
+  expect-event CFE_SB id 28 type INFO text "No-op Cmd Rcvd. cFE Version"
+  fsw sb hk
+  expect sb.hk command_counter == $a+1
+  raw 18 03 C0 00 00 01 46 63
+  expect-event CFE_SB id 42 type ERROR text "Unexpected Command Code 99"
+  fsw sb hk
+  expect sb.hk command_error_counter > 0
+  fsw sb reset
+  expect-event CFE_SB id 29 type DEBUG text "Reset Counters Cmd Rcvd"
+  fsw sb hk
+  expect sb.hk command_counter == 0
+  expect sb.hk command_error_counter == 0
+end
+
+test SB-02 "Statistics and the subscription list" req SB-STATS,SB-SUBS
+  fsw sb send_sb_stats
+  expect-event CFE_SB id 32 type DEBUG text "Software Bus Statistics packet sent"
+  expect sb.stats msg_ids_in_use > 0
+  expect sb.stats pipes_in_use > 0
+  fsw sb send_prev_subs
+  expect-event CFE_SB type DEBUG text "Sub Pkt"
+  expect sb.all_subs entries > 0
+end
+
+test SB-03 "Routing, pipe and map tables to files, fetched" req SB-FILES
+  fsw sb send_routing_info
+  expect-event CFE_SB id 39 type DEBUG text "/ram/cfe_sb_route.dat written"
+  file get /ram/cfe_sb_route.dat
+  fsw sb send_pipe_info
+  expect-event CFE_SB id 39 type DEBUG text "/ram/cfe_sb_pipe.dat written"
+  file get /ram/cfe_sb_pipe.dat
+  fsw sb send_map_info
+  expect-event CFE_SB id 39 type DEBUG text "/ram/cfe_sb_msgmap.dat written"
+  file get /ram/cfe_sb_msgmap.dat
+end
+
+test SB-04 "Route off and on: TO's subscription to time.diag" req SB-ROUTE,SB-SUB-REPORT
+  # baseline: time.diag reaches the ground through TO
+  fsw time send_diagnostic_tlm
+  expect time.diag within 3
+  # TO unsubscribes 0x0806, then subscribes it again while SB reports subscriptions
+  fsw to remove_tbl_entry 0x0806
+  expect-event TO text "Succesfully Removed TBL entry"
+  fsw sb enable_sub_reporting
+  wait 1
+  fsw to add_tbl_entry 0x0806 0 0 1 0xffff 0x01000001 0 1
+  expect-event TO text "Succesfully added TBL entry"
+  expect-event CFE_SB id 22 type DEBUG text "Sending Subscription Report Msg=0x806"
+  expect sb.one_sub msg_id == 2054
+  save p sb.one_sub pipe
+  fsw sb disable_sub_reporting
+  wait 1
+  # the route (0x0806, TO's pipe): off, then on
+  ! fsw sb disable_route 0x0806 $p
+  expect-event CFE_SB id 37 type DEBUG text "Route Disabled,Msg 0x806"
+  fsw sb enable_route 0x0806 $p
+  expect-event CFE_SB id 34 type DEBUG text "Enabling Route,Msg 0x806"
+  # delivered again
+  fsw time send_diagnostic_tlm
+  expect time.diag within 3
+end
+
+test SB-05 "Rejections SB checks itself" req SB-REJECT
+  fsw sb reset
+  expect-event CFE_SB id 29 type DEBUG
+  # noop with 2 extra payload bytes
+  raw 18 03 C0 00 00 03 27 00 00 00
+  expect-event CFE_SB id 61 type ERROR text "Invalid cmd length"
+  # enable_route for MID 0xFFFF (valid: up to 0x1FFF)
+  raw 18 03 C0 00 00 05 25 04 FF FF 00 00
+  expect-event CFE_SB id 35 type ERROR text "Enbl Route Cmd:Invalid Param"
+  # pipe 250 is not in use
+  ! fsw sb disable_route 0x0806 250
+  expect-event CFE_SB id 38 type ERROR text "Disable Route Cmd:Invalid Param.Msg 0x806,Pipe 250"
+  # a pipe in use, but nobody subscribed 0x1FF0 on it
+  fsw sb enable_route 0x1FF0 $p
+  expect-event CFE_SB id 33 type ERROR text "Route does not exist.Msg 0x1ff0"
+  ! fsw sb disable_route 0x1FF0 $p
+  expect-event CFE_SB id 36 type ERROR text "Route does not exist,Msg 0x1ff0"
+  fsw sb hk
+  expect sb.hk command_error_counter == 5
+end
+
+test SB-99 "Tear-down: SB DEBUG events off; time.diag still delivered" req SB-SETUP
+  fsw sb disable_sub_reporting
+  fsw evs disable_app_event_type CFE_SB debug
+  wait 1
+  fsw sb noop
+  expect-event CFE_SB id 28 type INFO
+  fsw time send_diagnostic_tlm
+  expect time.diag within 3
+end

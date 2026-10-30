@@ -1,4 +1,5 @@
-// CI (Command Ingest) ground commands. Source: ci_msgids.h, ci_msgdefs.h, ci_app.c.
+// CI (Command Ingest) ground commands. Source: ci_msgids.h, ci_msgdefs.h, ci_app.c, ci_custom.c,
+// ci_mission_cfg.h, ci_app.h.
 //
 // Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
 //   size     required for string and padding (bytes on the wire)
@@ -16,8 +17,17 @@
 // (char cDestIp[TO_MAX_IP_STRING_SIZE = 16]; uint16 usDestPort) with ENABLE_CRYPTO_LIB
 // off. With crypto on, append { "name": "key_id", "type": "u16" } (and a default for it).
 //
-// Not listed: CI_HANDSHAKE_SIGNAL_CC 3, CI_RESET_INCOMING_MESS_COUNTER_CC 5,
-// CI_DELETE_HANDSHAKE_WDG_CC 55 (handshake/crypto commands).
+// Handshake watchdog (ci_custom.c): enable_to also starts a timer that checks every 300 s that a
+// handshake_signal came in since the last check; if none did, CI sends TO DISABLE_OUTPUT itself
+// (telemetry stops) and deletes the timer. So after enable_to send handshake_signal at least
+// every 5 minutes, or delete_handshake_wdg to keep the output on.
+//
+// Incoming message counter (ci_custom.c, ci_app.h CI_NUM_MAX_INCOMING_MSG 65000): CI counts every
+// datagram it receives since boot (commands and CFDP PDUs of "file put"); at 65000 it reports
+// "DoS Attack Detected" and stops receiving commands until the FSW restarts. Send
+// reset_incoming_mess_counter well before that (it answers with no event).
+//
+// Not listed: none (CI_CUSTOM_EXAMPLE_CC and the gate commands are not built in).
 {
   "app": "ci",
   "help": "Command Ingest application",
@@ -45,6 +55,21 @@
             { "name": "dest_port", "type": "u16", "default": 5011,
               "help": "usDestPort" }
           ]
+        },
+        {
+          "name": "handshake_signal",
+          "cc": 3,
+          "help": "Pet the handshake watchdog that enable_to starts (send at least every 5 min, else CI stops telemetry)"
+        },
+        {
+          "name": "reset_incoming_mess_counter",
+          "cc": 5,
+          "help": "Zero CI's received-message count (at 65000 since boot CI stops taking commands); no event"
+        },
+        {
+          "name": "delete_handshake_wdg",
+          "cc": 55,
+          "help": "Stop the handshake watchdog: telemetry stays on without handshake_signal"
         }
       ]
     },

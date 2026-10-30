@@ -1,0 +1,205 @@
+// TIME (cFE Time Services) ground commands: clock state, STCF, MET, leap seconds, adjustments.
+// Source: cFE 6.7 cfe_time_msg.h, cfe_time_task.c, cfe_time_tone.c, cfe_time_utils.c,
+// cfe_time_events.h, cfe_time_extern_typedefs.h, ntpm_msgids.h, ntpm_mission_cfg.h,
+// ntpm_platform_cfg.h.
+//
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   enum     { "name": value, ... }  names accepted as arguments, shown in help
+//   min/max  inclusive range for integer fields
+//   default  value used when the argument is omitted (only trailing arguments may be omitted)
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 8-byte command header (CFE_SB_CMD_HDR_SIZE).
+// TIME checks the exact packet length (event 49).
+//
+//   ntpm_msgids.h  CFE_TIME_CMD_MID 0x1805      CFE_TIME_TaskPipe, dispatched by command code
+//                  CFE_TIME_SEND_HK_MID 0x180D  TIME housekeeping (SCH sends it every 40 s)
+// (0x1810 tone, 0x1811 1 Hz, 0x1860 time data, 0x1862 "send time at tone" are TIME's own
+// internal messages, not ground commands.)
+//
+// Time = MET + STCF (spacecraft time correlation factor), TAI by default; UTC = TAI - leap
+// seconds. Defaults (ntpm_mission_cfg.h): STCF 1000000 s, leap seconds 32, epoch 2025.
+// Units: the commands take seconds + MICROseconds (0..999999); the 1 Hz adjustment and time.hk
+// use seconds + SUBseconds (2^-32 s, e.g. 0x80000000 = 0.5 s).
+//
+// This build is a time server (CFE_PLATFORM_TIME_CFG_SERVER true, CLIENT false) without source or
+// signal selection (CFG_SOURCE false, CFG_SIGNAL false). The FSW therefore rejects, after checking
+// the argument value: set_source (ERROR 40), set_signal (ERROR 41), add_delay / sub_delay
+// (ERROR 42, client only). The other set/adjust commands work (server).
+//
+// MAIN sets the STCF itself from GPS time (main_task_handler.c, CFE_TIME_SET_STCF_CC) whenever it
+// can read the GPS receiver: on the BBB a STCF set from the ground can be overwritten.
+//
+// Every command that changes time is critical. Events come from app CFE_TIME: the changes report
+// INFO events with the new values (7 state, 12 time, 13 MET, 14 STCF, 15 adjust, 16 1 Hz,
+// 17 leap seconds); reset and diagnostics report DEBUG events (5, 6).
+//
+// Not listed: none (all 16 command codes).
+{
+  "app": "time",
+  "help": "cFE Time Services: clock state, STCF, MET, leap seconds, adjustments",
+  "mids": [
+    {
+      "mid": "0x1805",
+      "commands": [
+        {
+          "name": "noop",
+          "cc": 0,
+          "help": "No-op: reports the cFE version (INFO event 4)"
+        },
+        {
+          "name": "reset",
+          "cc": 1,
+          "help": "Reset the TIME command and error counters (DEBUG event 5)"
+        },
+        {
+          "name": "send_diagnostic_tlm",
+          "cc": 2,
+          "help": "Send time.diag (0x0806): MET, STCF, TAI, UTC, tone and clock details (DEBUG event 6)"
+        },
+        {
+          "name": "set_source",
+          "cc": 3,
+          "critical": true,
+          "help": "Time source; this build has no source selection: rejected (ERROR 40)",
+          "fields": [
+            { "name": "source", "type": "i16",
+              "enum": { "internal": 1, "external": 2 },
+              "help": "TimeSource" }
+          ]
+        },
+        {
+          "name": "set_state",
+          "cc": 4,
+          "critical": true,
+          "help": "Clock state seen by every app: invalid, valid or flywheel (INFO event 7)",
+          "fields": [
+            { "name": "state", "type": "i16",
+              "enum": { "invalid": -1, "valid": 0, "flywheel": 1 },
+              "help": "ClockState" }
+          ]
+        },
+        {
+          "name": "add_delay",
+          "cc": 5,
+          "critical": true,
+          "help": "Tone delay (time clients only); this build is a server: rejected (ERROR 42)",
+          "fields": [
+            { "name": "seconds", "type": "u32", "help": "Seconds" },
+            { "name": "microseconds", "type": "u32", "min": 0, "max": 999999, "help": "MicroSeconds" }
+          ]
+        },
+        {
+          "name": "sub_delay",
+          "cc": 6,
+          "critical": true,
+          "help": "Tone delay (time clients only); this build is a server: rejected (ERROR 42)",
+          "fields": [
+            { "name": "seconds", "type": "u32", "help": "Seconds" },
+            { "name": "microseconds", "type": "u32", "min": 0, "max": 999999, "help": "MicroSeconds" }
+          ]
+        },
+        {
+          "name": "set_time",
+          "cc": 7,
+          "critical": true,
+          "help": "Set spacecraft time (TAI): TIME computes the STCF from it and the MET (INFO event 12)",
+          "fields": [
+            { "name": "seconds", "type": "u32", "help": "Seconds since the epoch (2025)" },
+            { "name": "microseconds", "type": "u32", "min": 0, "max": 999999, "help": "MicroSeconds" }
+          ]
+        },
+        {
+          "name": "set_met",
+          "cc": 8,
+          "critical": true,
+          "help": "Set the mission elapsed time counter (INFO event 13)",
+          "fields": [
+            { "name": "seconds", "type": "u32", "help": "Seconds" },
+            { "name": "microseconds", "type": "u32", "min": 0, "max": 999999, "help": "MicroSeconds" }
+          ]
+        },
+        {
+          "name": "set_stcf",
+          "cc": 9,
+          "critical": true,
+          "help": "Set the STCF: time = MET + STCF (INFO event 14); MAIN may overwrite it from GPS",
+          "fields": [
+            { "name": "seconds", "type": "u32", "help": "Seconds" },
+            { "name": "microseconds", "type": "u32", "min": 0, "max": 999999, "help": "MicroSeconds" }
+          ]
+        },
+        {
+          "name": "set_leap_seconds",
+          "cc": 10,
+          "critical": true,
+          "help": "Set leap seconds: UTC = TAI - leap seconds (INFO event 17)",
+          "fields": [
+            { "name": "leap_seconds", "type": "i16", "help": "LeapSeconds (default 32)" }
+          ]
+        },
+        {
+          "name": "add_adjust",
+          "cc": 11,
+          "critical": true,
+          "help": "Add a delta to the STCF once, e.g. add_adjust 0 500000 (+0.5 s) (INFO event 15)",
+          "fields": [
+            { "name": "seconds", "type": "u32", "help": "Seconds" },
+            { "name": "microseconds", "type": "u32", "min": 0, "max": 999999, "help": "MicroSeconds" }
+          ]
+        },
+        {
+          "name": "sub_adjust",
+          "cc": 12,
+          "critical": true,
+          "help": "Subtract a delta from the STCF once (INFO event 15)",
+          "fields": [
+            { "name": "seconds", "type": "u32", "help": "Seconds" },
+            { "name": "microseconds", "type": "u32", "min": 0, "max": 999999, "help": "MicroSeconds" }
+          ]
+        },
+        {
+          "name": "add_1hz_adjustment",
+          "cc": 13,
+          "critical": true,
+          "help": "Add this to the STCF every second from now on; add_1hz_adjustment 0 0 stops it (INFO event 16)",
+          "fields": [
+            { "name": "seconds", "type": "u32", "help": "Seconds" },
+            { "name": "subseconds", "type": "u32", "help": "Subseconds: 2^-32 s (0x80000000 = 0.5 s)" }
+          ]
+        },
+        {
+          "name": "sub_1hz_adjustment",
+          "cc": 14,
+          "critical": true,
+          "help": "Subtract this from the STCF every second (replaces any 1 Hz adjustment; 0 0 stops it) (INFO event 16)",
+          "fields": [
+            { "name": "seconds", "type": "u32", "help": "Seconds" },
+            { "name": "subseconds", "type": "u32", "help": "Subseconds: 2^-32 s" }
+          ]
+        },
+        {
+          "name": "set_signal",
+          "cc": 15,
+          "critical": true,
+          "help": "Tone signal source; this build has no signal selection: rejected (ERROR 41)",
+          "fields": [
+            { "name": "signal", "type": "i16",
+              "enum": { "primary": 1, "redundant": 2 },
+              "help": "ToneSource" }
+          ]
+        }
+      ]
+    },
+    {
+      "mid": "0x180D",
+      "commands": [
+        {
+          "name": "hk",
+          "cc": 0,
+          "help": "Request time.hk now (normally sent by the scheduler every 40 s)"
+        }
+      ]
+    }
+  ]
+}

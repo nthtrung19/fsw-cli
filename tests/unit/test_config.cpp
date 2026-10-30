@@ -91,7 +91,7 @@ TEST(ShippedConfig, CiCatalogMatchesCiHeaders)
     const AppDef* ci = catalog.findApp("ci");
     ASSERT_NE(ci, nullptr);
     EXPECT_EQ(ci->mids(), (std::vector<std::uint16_t>{0x1934, 0x1935}));   // ci_msgids.h
-    ASSERT_EQ(ci->commands.size(), 4U);
+    ASSERT_EQ(ci->commands.size(), 7U);
 
     struct Expected {
         const char* name;
@@ -103,6 +103,9 @@ TEST(ShippedConfig, CiCatalogMatchesCiHeaders)
         {"noop", 0x1934, 0, 0},        // CI_NoArgCmd_t
         {"reset", 0x1934, 1, 0},       // CI_NoArgCmd_t
         {"enable_to", 0x1934, 2, 18},  // CI_EnableTOCmd_t: cDestIp[16] + usDestPort
+        {"handshake_signal", 0x1934, 3, 0},             // CI_HandshakeCmd_t = CI_NoArgCmd_t
+        {"reset_incoming_mess_counter", 0x1934, 5, 0},  // no length check in ci_custom.c
+        {"delete_handshake_wdg", 0x1934, 55, 0},        // CI_NoArgCmd_t
         {"hk", 0x1935, 0, 0},          // CI_SEND_HK_MID
     };
     for (const auto& e : expected) {
@@ -389,6 +392,93 @@ TEST(ShippedConfig, TblCatalogMatchesCfeTblMsgH)
     }
 }
 
+TEST(ShippedConfig, TimeCatalogMatchesCfeTimeMsgH)
+{
+    const CommandCatalog catalog = loadCatalog({kSourceDir + "/config/telecommand/time.json"});
+    const AppDef* time = catalog.findApp("time");
+    ASSERT_NE(time, nullptr);
+    EXPECT_EQ(time->mids(), (std::vector<std::uint16_t>{0x1805, 0x180D}));   // CFE_TIME_CMD_MID, CFE_TIME_SEND_HK_MID
+
+    // Command code (cfe_time_msg.h) and payload = sizeof(command struct) - 8: int16 2, a seconds +
+    // microseconds (or subseconds) pair 8. Every command that changes time is critical.
+    struct Expected {
+        const char* name;
+        std::uint16_t mid;
+        int cc;
+        std::size_t payload;
+        bool critical;
+    };
+    const Expected expected[] = {
+        {"noop", 0x1805, 0, 0, false},
+        {"reset", 0x1805, 1, 0, false},
+        {"send_diagnostic_tlm", 0x1805, 2, 0, false},
+        {"set_source", 0x1805, 3, 2, true},
+        {"set_state", 0x1805, 4, 2, true},
+        {"add_delay", 0x1805, 5, 8, true},
+        {"sub_delay", 0x1805, 6, 8, true},
+        {"set_time", 0x1805, 7, 8, true},
+        {"set_met", 0x1805, 8, 8, true},
+        {"set_stcf", 0x1805, 9, 8, true},
+        {"set_leap_seconds", 0x1805, 10, 2, true},
+        {"add_adjust", 0x1805, 11, 8, true},
+        {"sub_adjust", 0x1805, 12, 8, true},
+        {"add_1hz_adjustment", 0x1805, 13, 8, true},
+        {"sub_1hz_adjustment", 0x1805, 14, 8, true},
+        {"set_signal", 0x1805, 15, 2, true},
+        {"hk", 0x180D, 0, 0, false},
+    };
+    ASSERT_EQ(time->commands.size(), std::size(expected));
+    for (const auto& e : expected) {
+        const CommandDef* def = catalog.findCommand("time", e.name);
+        ASSERT_NE(def, nullptr) << e.name;
+        EXPECT_EQ(def->mid, e.mid) << e.name;
+        EXPECT_EQ(def->cc, e.cc) << e.name;
+        EXPECT_EQ(def->payloadSize(), e.payload) << e.name;
+        EXPECT_EQ(def->critical, e.critical) << e.name;
+    }
+}
+
+TEST(ShippedConfig, SbCatalogMatchesCfeSbMsgH)
+{
+    const CommandCatalog catalog = loadCatalog({kSourceDir + "/config/telecommand/sb.json"});
+    const AppDef* sb = catalog.findApp("sb");
+    ASSERT_NE(sb, nullptr);
+    EXPECT_EQ(sb->mids(), (std::vector<std::uint16_t>{0x1803, 0x180B}));   // CFE_SB_CMD_MID, CFE_SB_SEND_HK_MID
+
+    // Command code (cfe_sb_msg.h; there is no code 6) and payload = sizeof(command struct) - 8:
+    // CFE_SB_RouteCmd_t MsgId 2 + Pipe 1 + Spare 1, CFE_SB_WriteFileInfoCmd_t Filename[64].
+    struct Expected {
+        const char* name;
+        std::uint16_t mid;
+        int cc;
+        std::size_t payload;
+        bool critical;
+    };
+    const Expected expected[] = {
+        {"noop", 0x1803, 0, 0, false},
+        {"reset", 0x1803, 1, 0, false},
+        {"send_sb_stats", 0x1803, 2, 0, false},
+        {"send_routing_info", 0x1803, 3, 64, false},
+        {"enable_route", 0x1803, 4, 4, false},
+        {"disable_route", 0x1803, 5, 4, true},
+        {"send_pipe_info", 0x1803, 7, 64, false},
+        {"send_map_info", 0x1803, 8, 64, false},
+        {"enable_sub_reporting", 0x1803, 9, 0, false},
+        {"disable_sub_reporting", 0x1803, 10, 0, false},
+        {"send_prev_subs", 0x1803, 11, 0, false},
+        {"hk", 0x180B, 0, 0, false},
+    };
+    ASSERT_EQ(sb->commands.size(), std::size(expected));
+    for (const auto& e : expected) {
+        const CommandDef* def = catalog.findCommand("sb", e.name);
+        ASSERT_NE(def, nullptr) << e.name;
+        EXPECT_EQ(def->mid, e.mid) << e.name;
+        EXPECT_EQ(def->cc, e.cc) << e.name;
+        EXPECT_EQ(def->payloadSize(), e.payload) << e.name;
+        EXPECT_EQ(def->critical, e.critical) << e.name;
+    }
+}
+
 TEST(ShippedConfig, MainCatalogMatchesMainMsgdefsH)
 {
     const CommandCatalog catalog = loadCatalog({kSourceDir + "/config/telecommand/main.json"});
@@ -445,7 +535,7 @@ TEST(ShippedConfig, TargetsFileLoadsAndBuilds)
     EXPECT_EQ(fsw.format.type, "ccsds_v1");
     EXPECT_EQ(fsw.transport.type, "udp");
     EXPECT_EQ(fsw.transport.options.at("port"), "1234");   // JSON number -> option text
-    ASSERT_EQ(fsw.catalogFiles.size(), 19U);
+    ASSERT_EQ(fsw.catalogFiles.size(), 21U);
     EXPECT_TRUE(std::filesystem::exists(fsw.catalogFiles[0]));
 
     for (const auto& t : targets.targets) {

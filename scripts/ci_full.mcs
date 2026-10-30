@@ -1,0 +1,80 @@
+# CI (Command Ingest) test: every CI command, nominal and rejected. Repeatable.
+#
+#   ./build/src/mcs -f scripts/ci_full.mcs            run (FSW up: cd ~/SDE/fsw && sudo ./run_fsw.sh)
+#   ./build/src/mcs --check -f scripts/ci_full.mcs    check only, nothing sent
+#   mcs> run scripts/ci_full.mcs                      from the full-screen session
+#
+# What the FSW does that this script relies on (~/SDE/fsw/apps/ci/fsw/src):
+# - Every CI command answers with an INFO event (ci_app.c, ci_custom.c), also reset; ci.hk has the
+#   command and error counters. reset_incoming_mess_counter answers nothing and is not counted.
+# - enable_to forwards TO's ENABLE_OUTPUT (the destination given here) and starts a handshake
+#   watchdog: every 300 s CI checks that a handshake_signal came in; if not, it disables TO's
+#   output itself. The script sends one handshake_signal and then deletes the watchdog, so
+#   telemetry stays on after the run.
+# - enable_to uses this script's telemetry destination (127.0.0.1 5011), like the first line.
+# - "raw" packets reach CI's own checks (CI-04): 19 34 = CI_APP_CMD_MID, C0 00 = sequence, then
+#   length - 7, checksum (0xFF XOR every other byte), command code.
+# - Event IDs: ci_events.h (CI_CMD_ERR_EID 7, CI_MSGLEN_ERR_EID 10); TO_CMD_INF_EID 3.
+#
+# Requirement tags (req CI-...) name the CI function tested; map them to the mission's IDs.
+
+fsw to enable_output 127.0.0.1 5011
+wait 2
+timeout 5
+
+test CI-00 "Set-up: CI answers, ci.hk on request" req CI-SETUP
+  fsw ci noop
+  expect-event CI type INFO text "No-op command. Version"
+  fsw ci hk
+  expect ci.hk within 2
+end
+
+test CI-01 "NOOP is counted; reset clears the counters" req CI-NOOP,CI-RESET
+  fsw ci hk
+  save a ci.hk cmd_cnt within 2
+  fsw ci noop
+  expect-event CI type INFO text "No-op command"
+  fsw ci hk
+  expect ci.hk cmd_cnt == $a+1
+  raw 19 34 C0 00 00 01 70 63
+  expect-event CI id 7 type ERROR text "Recvd invalid app cmd code (99)"
+  fsw ci hk
+  expect ci.hk cmd_err_cnt > 0
+  fsw ci reset
+  expect-event CI type INFO text "Recvd RESET cmd (1)"
+  fsw ci hk
+  expect ci.hk cmd_cnt == 0
+  expect ci.hk cmd_err_cnt == 0
+end
+
+test CI-02 "Enable TO through CI, then handle the handshake watchdog" req CI-ENABLE-TO,CI-HANDSHAKE
+  fsw ci enable_to 127.0.0.1 5011
+  expect-event CI type INFO text "Sending Enable TO Cmd (2)"
+  expect-event TO id 3 type INFO text "ENABLE OUTPUT CMD Succesful"
+  fsw ci handshake_signal
+  expect-event CI type INFO text "Recvd Handshake Cmd (3)"
+  # no watchdog left behind: telemetry stays on after the run
+  fsw ci delete_handshake_wdg
+  expect-event CI type INFO text "Recvd Delete Handshake Cmd (55)"
+  fsw ci hk
+  expect ci.hk cmd_cnt == 3
+end
+
+test CI-03 "Reset the incoming message counter (no event, not counted)" req CI-DOS-COUNTER
+  fsw ci reset_incoming_mess_counter
+  expect-no-event CI for 2
+  fsw ci hk
+  expect ci.hk cmd_cnt == 3
+  expect ci.hk cmd_err_cnt == 0
+end
+
+test CI-04 "Rejections CI checks itself" req CI-REJECT
+  # noop with 2 extra payload bytes
+  raw 19 34 C0 00 00 03 11 00 00 00
+  expect-event CI id 10 type ERROR text "Rcvd invalid msgLen"
+  # handshake_signal with 2 extra payload bytes
+  raw 19 34 C0 00 00 03 12 03 00 00
+  expect-event CI id 10 type ERROR text "cmdCode=3"
+  fsw ci hk
+  expect ci.hk cmd_err_cnt == 2
+end

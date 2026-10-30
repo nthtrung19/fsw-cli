@@ -1,0 +1,163 @@
+# TIME (cFE Time Services) test: the TIME commands whose effect can be put back exactly, the
+# ones this build rejects by configuration, and rejections TIME checks itself. Repeatable.
+#
+#   ./build/src/mcs -f scripts/time_full.mcs            run (FSW up: cd ~/SDE/fsw && sudo ./run_fsw.sh)
+#   ./build/src/mcs --check -f scripts/time_full.mcs    check only, nothing sent
+#   mcs> run scripts/time_full.mcs                      from the full-screen session
+#
+# What the FSW does that this script relies on (~/SDE/fsw/cfe/fsw/cfe-core/src/time, ntpm_defs):
+# - time.hk comes only every 40 s (SCH): every check asks for it first with "fsw time hk"
+#   (CFE_TIME_SEND_HK_MID 0x180D). A check only sees packets received after the last command, so
+#   the event checks come before the "fsw time hk".
+# - Every command that changes time is critical in mcs: the script sends them with "!". It puts
+#   back what it changes exactly: leap seconds and the STCF are saved first and set back; the
+#   STCF is expected to have no subseconds (the default 1000000 s / 0, and the PC has no GPS for
+#   MAIN's STCF sync), so "set_stcf $s 0" restores it. On the BBB MAIN may set the STCF from GPS
+#   while the script runs: run it there only with GPS off.
+# - A 1 Hz adjustment is not cumulative: add/sub_1hz_adjustment set the amount and the direction
+#   (cfe_time_task.c CFE_TIME_1HzAdjImpl); "add_1hz_adjustment 0 0" stops it. While on, it changes
+#   the STCF every second, so the STCF is set back afterwards. time.hk shows the amount only.
+# - This build is a time server without source or signal selection: set_source, set_signal,
+#   add_delay and sub_delay are rejected after their argument check (TIME-08).
+# - DEBUG events: TIME reports reset and diagnostics with DEBUG events; the script turns DEBUG on
+#   for CFE_TIME and off again at the end (TIME-99).
+# - "raw" packets reach TIME's own checks (TIME-08): 18 05 = CFE_TIME_CMD_MID, C0 00 = sequence,
+#   then length - 7, checksum (0xFF XOR every other byte), command code, payload little-endian.
+# - Not run here: set_time, set_met, set_state (they change the clock or its validity for every
+#   app and cannot be put back exactly). Test them by hand.
+# - Event IDs and texts: cfe_time_events.h, cfe_time_task.c.
+#
+# Requirement tags (req TIME-...) name the TIME function tested; map them to the mission's IDs.
+
+fsw to enable_output 127.0.0.1 5011
+wait 2
+timeout 5
+
+test TIME-00 "Set-up: TIME answers, its DEBUG events on, time.hk on request" req TIME-SETUP
+  fsw time noop
+  expect-event CFE_TIME id 4 type INFO text "No-op command"
+  fsw evs enable_app_event_type CFE_TIME debug
+  wait 1
+  fsw time hk
+  expect time.hk within 2
+end
+
+test TIME-01 "NOOP is accepted; reset clears the counters" req TIME-NOOP,TIME-RESET
+  fsw time hk
+  save a time.hk command_counter within 2
+  fsw time noop
+  expect-event CFE_TIME id 4 type INFO text "No-op command. cFE Version"
+  fsw time hk
+  expect time.hk command_counter == $a+1
+  raw 18 05 C0 00 00 01 40 63
+  expect-event CFE_TIME id 27 type ERROR text "Invalid command code"
+  fsw time hk
+  expect time.hk command_error_counter > 0
+  fsw time reset
+  expect-event CFE_TIME id 5 type DEBUG text "Reset Counters command"
+  fsw time hk
+  expect time.hk command_counter == 0
+  expect time.hk command_error_counter == 0
+end
+
+test TIME-02 "Diagnostics: time.diag on request" req TIME-DIAG
+  fsw time send_diagnostic_tlm
+  expect-event CFE_TIME id 6 type DEBUG text "Request diagnostics command"
+  expect time.diag within 2
+end
+
+test TIME-03 "Leap seconds: change, then put back" req TIME-LEAPS
+  fsw time hk
+  save l time.hk leap_seconds within 2
+  ! fsw time set_leap_seconds 33
+  expect-event CFE_TIME id 17 type INFO text "Set Leap Seconds = 33"
+  fsw time hk
+  expect time.hk leap_seconds == 33
+  ! fsw time set_leap_seconds $l
+  expect-event CFE_TIME id 17 type INFO text "Set Leap Seconds"
+  fsw time hk
+  expect time.hk leap_seconds == $l
+end
+
+test TIME-04 "STCF: adjust up and down, set and set back" req TIME-STCF,TIME-ADJUST
+  fsw time hk
+  # precondition for an exact restore: no subseconds in the STCF
+  expect time.hk subsecs_stcf == 0
+  save s time.hk seconds_stcf
+  ! fsw time add_adjust 10 0
+  expect-event CFE_TIME id 15 type INFO text "STCF Adjust -- secs = 10, usecs = 0, ssecs = 0x0, dir[1=Pos, 2=Neg] = 1"
+  fsw time hk
+  expect time.hk seconds_stcf == $s+10
+  ! fsw time sub_adjust 10 0
+  expect-event CFE_TIME id 15 type INFO text "dir[1=Pos, 2=Neg] = 2"
+  fsw time hk
+  expect time.hk seconds_stcf == $s
+  ! fsw time set_stcf $s+5 0
+  expect-event CFE_TIME id 14 type INFO text "Set STCF -- secs = "
+  fsw time hk
+  expect time.hk seconds_stcf == $s+5
+  ! fsw time set_stcf $s 0
+  expect-event CFE_TIME id 14 type INFO text "usecs = 0, ssecs = 0x0"
+  fsw time hk
+  expect time.hk seconds_stcf == $s
+  expect time.hk subsecs_stcf == 0
+end
+
+test TIME-05 "1 Hz adjustment: add, replace by sub, stop; STCF set back" req TIME-1HZ
+  ! fsw time add_1hz_adjustment 0 0x00010000
+  expect-event CFE_TIME id 16 type INFO text "STCF 1Hz Adjust -- secs = 0, ssecs = 0x10000, dir[1=Pos, 2=Neg] = 1"
+  fsw time hk
+  expect time.hk subsecs_1hz_adj == 65536
+  ! fsw time sub_1hz_adjustment 0 0x00010000
+  expect-event CFE_TIME id 16 type INFO text "dir[1=Pos, 2=Neg] = 2"
+  ! fsw time add_1hz_adjustment 0 0
+  expect-event CFE_TIME id 16 type INFO text "secs = 0, ssecs = 0x0"
+  fsw time hk
+  expect time.hk seconds_1hz_adj == 0
+  expect time.hk subsecs_1hz_adj == 0
+  # the adjustment changed the STCF while it was on
+  ! fsw time set_stcf $s 0
+  expect-event CFE_TIME id 14 type INFO
+  fsw time hk
+  expect time.hk seconds_stcf == $s
+  expect time.hk subsecs_stcf == 0
+end
+
+test TIME-06 "Rejections: this build's configuration, and TIME's own checks" req TIME-REJECT
+  fsw time reset
+  expect-event CFE_TIME id 5 type DEBUG
+  # time server without source / signal selection (CFE_PLATFORM_TIME_CFG_*)
+  ! fsw time set_source internal
+  expect-event CFE_TIME id 40 type ERROR text "Set Source commands invalid without CFE_PLATFORM_TIME_CFG_SOURCE"
+  ! fsw time set_signal primary
+  expect-event CFE_TIME id 41 type ERROR text "Set Signal commands invalid without CFE_PLATFORM_TIME_CFG_SIGNAL"
+  ! fsw time add_delay 0 0
+  expect-event CFE_TIME id 42 type ERROR text "Set Delay commands invalid without CFE_PLATFORM_TIME_CFG_CLIENT"
+  ! fsw time sub_delay 0 0
+  expect-event CFE_TIME id 42 type ERROR text "Set Delay commands invalid"
+  # noop with 2 extra payload bytes
+  raw 18 05 C0 00 00 03 21 00 00 00
+  expect-event CFE_TIME id 49 type ERROR text "Invalid cmd length"
+  # set_stcf with microseconds 1000000 (valid: 0..999999); seconds 1000000 = the default
+  raw 18 05 C0 00 00 09 22 09 40 42 0F 00 40 42 0F 00
+  expect-event CFE_TIME id 36 type ERROR text "Invalid STCF -- secs = 1000000, usecs = 1000000"
+  # set_state 5 (valid: -1, 0, 1)
+  raw 18 05 C0 00 00 03 20 04 05 00
+  expect-event CFE_TIME id 30 type ERROR text "Invalid Clock State = 0x5"
+  fsw time hk
+  expect time.hk command_error_counter == 7
+  expect time.hk seconds_stcf == $s
+end
+
+test TIME-99 "Tear-down: TIME DEBUG events off; time as before" req TIME-SETUP
+  fsw evs disable_app_event_type CFE_TIME debug
+  wait 1
+  fsw time noop
+  expect-event CFE_TIME id 4 type INFO
+  fsw time hk
+  expect time.hk leap_seconds == $l
+  expect time.hk seconds_stcf == $s
+  expect time.hk subsecs_stcf == 0
+  expect time.hk seconds_1hz_adj == 0
+  expect time.hk subsecs_1hz_adj == 0
+end

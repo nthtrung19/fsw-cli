@@ -1,0 +1,134 @@
+// SB (cFE Software Bus) ground commands: statistics, routing / pipe / map tables, subscriptions,
+// routes. Source: cFE 6.7 cfe_sb_msg.h, cfe_sb_task.c, cfe_sb_api.c, cfe_sb_events.h,
+// ntpm_msgids.h, ntpm_mission_cfg.h, ntpm_platform_cfg.h.
+//
+// Field types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string padding
+//   size     required for string and padding (bytes on the wire)
+//   enum     { "name": value, ... }  names accepted as arguments, shown in help
+//   min/max  inclusive range for integer fields
+//   default  value used when the argument is omitted (only trailing arguments may be omitted)
+// Numbers may be written as JSON integers or as "0x.." strings.
+// Fields are listed in payload order, after the 8-byte command header (CFE_SB_CMD_HDR_SIZE).
+// SB checks the exact packet length (event 61). Sizes: CFE_SB_MsgId_t 2 bytes (CCSDS v1 build),
+// CFE_SB_PipeId_t 1 byte, file name CFE_MISSION_MAX_PATH_LEN 64.
+//
+//   ntpm_msgids.h  CFE_SB_CMD_MID 0x1803      CFE_SB_ProcessCmdPipePkt, dispatched by command code
+//                  CFE_SB_SEND_HK_MID 0x180B  SB housekeeping (SCH sends it every 30 s)
+//
+// What comes back (events from app CFE_SB; most are DEBUG, off by default:
+// "fsw evs enable_app_event_type CFE_SB debug"):
+//   send_sb_stats          sb.stats 0x080A: MIDs, pipes, buffers, memory in use / peak / max,
+//                          and the depth of every pipe (DEBUG event 32)
+//   send_routing_info      file: every route (MID, pipe, app, state, count)       } DEBUG event 39
+//   send_pipe_info         file: every pipe (ID, name, owner app, depth)           } "<file> written"
+//   send_map_info          file: MID -> routing table index                         }
+//   send_prev_subs         sb.all_subs 0x080D: every subscription (MID, pipe, QoS), 20 per packet
+//                          (DEBUG events 44 / 45 per packet)
+//   enable_sub_reporting   from now on every new or removed subscription is reported as
+//   disable_sub_reporting  sb.one_sub 0x080E (MID, pipe) and DEBUG event 22 / 24; no event of their own
+// Pipe IDs are numbered at start-up: find them in send_pipe_info's file, sb.all_subs or sb.one_sub.
+// Routes: a route is one (MID, pipe) subscription. disable_route stops delivering that MID to that
+// pipe (the app no longer gets it), enable_route resumes (DEBUG events 37 / 34). An invalid MID
+// (> 0x1FFF) or pipe not in use: ERROR 38 / 35; a valid pair that is not subscribed: ERROR 36 / 33.
+// Files go to /ram (omitted file name = SB's default); fetch them with "file get".
+//
+// Not listed: none (all 11 command codes; there is no code 6).
+{
+  "app": "sb",
+  "help": "cFE Software Bus: statistics, routing tables, subscriptions, routes",
+  "mids": [
+    {
+      "mid": "0x1803",
+      "commands": [
+        {
+          "name": "noop",
+          "cc": 0,
+          "help": "No-op: reports the cFE version (INFO event 28)"
+        },
+        {
+          "name": "reset",
+          "cc": 1,
+          "help": "Reset the SB housekeeping counters (DEBUG event 29)"
+        },
+        {
+          "name": "send_sb_stats",
+          "cc": 2,
+          "help": "Send sb.stats (0x080A): MIDs, pipes, buffers and memory in use, pipe depths (DEBUG event 32)"
+        },
+        {
+          "name": "send_routing_info",
+          "cc": 3,
+          "help": "Write every route (MID, pipe, app, state, message count) to a file (DEBUG event 39)",
+          "fields": [
+            { "name": "file", "type": "string", "size": 64, "default": "",
+              "help": "Filename: omitted = /ram/cfe_sb_route.dat" }
+          ]
+        },
+        {
+          "name": "enable_route",
+          "cc": 4,
+          "help": "Deliver a MID to a pipe again, e.g. enable_route 0x0806 12 (DEBUG event 34)",
+          "fields": [
+            { "name": "msg_id", "type": "u16", "max": 8191, "help": "MsgId (0x0000..0x1FFF)" },
+            { "name": "pipe", "type": "u8", "help": "Pipe ID (send_pipe_info, sb.all_subs, sb.one_sub)" },
+            { "type": "padding", "size": 1 }
+          ]
+        },
+        {
+          "name": "disable_route",
+          "cc": 5,
+          "critical": true,
+          "help": "Stop delivering a MID to a pipe: that app no longer gets it (DEBUG event 37)",
+          "fields": [
+            { "name": "msg_id", "type": "u16", "max": 8191, "help": "MsgId (0x0000..0x1FFF)" },
+            { "name": "pipe", "type": "u8", "help": "Pipe ID (send_pipe_info, sb.all_subs, sb.one_sub)" },
+            { "type": "padding", "size": 1 }
+          ]
+        },
+        {
+          "name": "send_pipe_info",
+          "cc": 7,
+          "help": "Write every pipe (ID, name, owner app, depth) to a file (DEBUG event 39)",
+          "fields": [
+            { "name": "file", "type": "string", "size": 64, "default": "",
+              "help": "Filename: omitted = /ram/cfe_sb_pipe.dat" }
+          ]
+        },
+        {
+          "name": "send_map_info",
+          "cc": 8,
+          "help": "Write the MID-to-routing-index map to a file (DEBUG event 39)",
+          "fields": [
+            { "name": "file", "type": "string", "size": 64, "default": "",
+              "help": "Filename: omitted = /ram/cfe_sb_msgmap.dat" }
+          ]
+        },
+        {
+          "name": "enable_sub_reporting",
+          "cc": 9,
+          "help": "Report every new or removed subscription as sb.one_sub (0x080E) from now on"
+        },
+        {
+          "name": "disable_sub_reporting",
+          "cc": 10,
+          "help": "Stop reporting subscriptions (the default)"
+        },
+        {
+          "name": "send_prev_subs",
+          "cc": 11,
+          "help": "Send every current subscription as sb.all_subs (0x080D), 20 per packet (DEBUG events 44/45)"
+        }
+      ]
+    },
+    {
+      "mid": "0x180B",
+      "commands": [
+        {
+          "name": "hk",
+          "cc": 0,
+          "help": "Request sb.hk now (normally sent by the scheduler every 30 s)"
+        }
+      ]
+    }
+  ]
+}
